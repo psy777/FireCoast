@@ -1,6 +1,12 @@
 @echo off
 setlocal ENABLEDELAYEDEXPANSION
 
+REM Capture the script directory, even when relaunched with elevation
+set "SCRIPT_DIR=%~dp0"
+if defined FIRECOAST_LAUNCH_DIR (
+    set "SCRIPT_DIR=%FIRECOAST_LAUNCH_DIR%"
+)
+
 REM Handle elevation relaunch flag
 if /I "%~1"=="__elevated__" (
     shift
@@ -14,7 +20,8 @@ fltmc >nul 2>&1
 if errorlevel 1 (
     if "%FIRECOAST_ELEVATED%"=="0" (
         echo [FireCoast] Requesting Administrator privileges to configure the firewall...
-        powershell -NoProfile -Command "Start-Process -FilePath '%~f0' -ArgumentList '__elevated__ %*' -Verb RunAs -WorkingDirectory '%CD%'"
+        set "FIRECOAST_LAUNCH_DIR=%SCRIPT_DIR%"
+        powershell -NoProfile -Command "Start-Process -FilePath '%~f0' -ArgumentList '__elevated__ %*' -Verb RunAs -WorkingDirectory '%SCRIPT_DIR%'"
         if %ERRORLEVEL% NEQ 0 (
             echo [FireCoast] Unable to request Administrator privileges. Exiting.
             exit /b %ERRORLEVEL%
@@ -30,9 +37,9 @@ if errorlevel 1 (
 )
 
 REM Determine repository root relative to this script
-set "SCRIPT_DIR=%~dp0"
 for %%I in ("%SCRIPT_DIR%.") do set "PROJECT_ROOT=%%~fI"
 cd /d "%PROJECT_ROOT%"
+set "FIRECOAST_LAUNCH_DIR="
 
 set "VENV_DIR=%PROJECT_ROOT%\.venv"
 set "PYTHON_EXE=%VENV_DIR%\Scripts\python.exe"
