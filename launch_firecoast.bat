@@ -1,10 +1,45 @@
 @echo off
 setlocal ENABLEDELAYEDEXPANSION
 
-REM Determine repository root relative to this script
+REM Capture the script directory, even when relaunched with elevation
 set "SCRIPT_DIR=%~dp0"
+if defined FIRECOAST_LAUNCH_DIR (
+    set "SCRIPT_DIR=%FIRECOAST_LAUNCH_DIR%"
+)
+
+REM Handle elevation relaunch flag
+if /I "%~1"=="__elevated__" (
+    shift
+    set "FIRECOAST_ELEVATED=1"
+) else (
+    set "FIRECOAST_ELEVATED=0"
+)
+
+REM Ensure we are running with Administrator rights so firewall changes succeed
+fltmc >nul 2>&1
+if errorlevel 1 (
+    if "%FIRECOAST_ELEVATED%"=="0" (
+        echo [FireCoast] Requesting Administrator privileges to configure the firewall...
+        set "FIRECOAST_LAUNCH_DIR=%SCRIPT_DIR%"
+        powershell -NoProfile -Command "Start-Process -FilePath '%~f0' -ArgumentList '__elevated__ %*' -Verb RunAs -WorkingDirectory '%SCRIPT_DIR%'"
+        if %ERRORLEVEL% NEQ 0 (
+            echo [FireCoast] Unable to request Administrator privileges. Exiting.
+            exit /b %ERRORLEVEL%
+        )
+        exit /b 0
+    ) else (
+        echo [FireCoast] Administrator privileges are required to manage the firewall automatically.
+        echo [FireCoast] Continuing without firewall automation.
+        set "FIRECOAST_SKIP_FIREWALL=1"
+    )
+) else (
+    set "FIRECOAST_SKIP_FIREWALL=0"
+)
+
+REM Determine repository root relative to this script
 for %%I in ("%SCRIPT_DIR%.") do set "PROJECT_ROOT=%%~fI"
 cd /d "%PROJECT_ROOT%"
+set "FIRECOAST_LAUNCH_DIR="
 
 set "VENV_DIR=%PROJECT_ROOT%\.venv"
 set "PYTHON_EXE=%VENV_DIR%\Scripts\python.exe"
@@ -42,6 +77,19 @@ if %ERRORLEVEL% NEQ 0 (
     echo [FireCoast] Failed to install dependencies.
     pause
     exit /b 1
+)
+
+if not "%FIRECOAST_SKIP_FIREWALL%"=="1" (
+    echo [FireCoast] Ensuring firewall access for new device registration...
+    "%PYTHON_EXE%" scripts\ensure_firewall_registration.py
+    set "FIRECOAST_FIREWALL_EXIT=%ERRORLEVEL%"
+    if "%FIRECOAST_FIREWALL_EXIT%"=="2" (
+        echo [FireCoast] Firewall automation requires Administrator privileges. FireCoast will continue to launch, but automatic device approval may be blocked until access is granted.
+    ) else if "%FIRECOAST_FIREWALL_EXIT%"=="3" (
+        echo [FireCoast] Warning: Automatic firewall configuration failed. Review the message above and adjust the firewall manually if needed.
+    )
+) else (
+    echo [FireCoast] Skipping firewall automation.
 )
 
 echo [FireCoast] Starting the application...
