@@ -31,8 +31,16 @@
                 <span id="fc-mobile-notes-count" class="fc-mobile-notes-toggle__count" hidden>0</span>
             </button>
             <div class="fc-chat-layout">
-                <aside class="fc-notes" aria-label="Notes">
-                    <div class="fc-notes__search">
+                <div class="fc-notes-drawer">
+                    <aside class="fc-notes" aria-label="Notes">
+                        <div class="fc-notes__mobile-bar">
+                            <h2 class="fc-notes__mobile-title">Notes</h2>
+                            <button type="button" id="fc-mobile-notes-close" class="fc-mobile-notes-close" aria-label="Close notes panel" aria-hidden="true" tabindex="-1">
+                                <span aria-hidden="true">✕</span>
+                                <span class="fc-mobile-notes-close__text">Close</span>
+                            </button>
+                        </div>
+                        <div class="fc-notes__search">
                         <label class="fc-screen-reader-only" for="fc-note-search">Search or create note</label>
                         <div class="fc-notes__search-row">
                             <input id="fc-note-search" class="fc-notes__search-input" type="search" placeholder="Search or create note" autocomplete="off">
@@ -44,7 +52,8 @@
                     </div>
                     <div id="fc-note-list" class="fc-notes__list" role="listbox" aria-label="Saved notes"></div>
                     <p id="fc-no-notes" class="fc-notes__empty" hidden></p>
-                </aside>
+                    </aside>
+                </div>
                 <section class="fc-chat-panel" aria-label="Note conversation">
                     <header class="fc-chat-panel__header">
                         <div class="fc-chat-panel__title-group">
@@ -130,7 +139,9 @@
             const pingButtonEl = document.getElementById('fc-ping-button');
             const typingIndicatorEl = document.getElementById('fc-typing-indicator');
             const chatWrapperEl = document.querySelector('.fc-chat-wrapper');
+            const bodyEl = document.body;
             const mobileNotesToggleButton = document.getElementById('fc-mobile-notes-toggle');
+            const mobileNotesCloseButton = document.getElementById('fc-mobile-notes-close');
             const mobileActiveNoteLabelEl = document.getElementById('fc-mobile-active-note');
             const mobileNotesCountEl = document.getElementById('fc-mobile-notes-count');
             const mobileLayoutQuery = typeof window !== 'undefined' && typeof window.matchMedia === 'function'
@@ -163,6 +174,7 @@
                 } else {
                     chatWrapperEl.removeAttribute('data-notes-open');
                 }
+                const mobile = isMobileLayout();
                 if (mobileNotesToggleButton) {
                     mobileNotesToggleButton.setAttribute('aria-expanded', open ? 'true' : 'false');
                     mobileNotesToggleButton.classList.toggle('is-open', open);
@@ -180,16 +192,42 @@
                         updateMobileNotesSummary();
                     }
                 }
+                if (mobileNotesCloseButton) {
+                    if (open && mobile) {
+                        mobileNotesCloseButton.removeAttribute('aria-hidden');
+                        mobileNotesCloseButton.tabIndex = 0;
+                    } else {
+                        mobileNotesCloseButton.setAttribute('aria-hidden', 'true');
+                        mobileNotesCloseButton.tabIndex = -1;
+                        if (typeof mobileNotesCloseButton.blur === 'function') {
+                            mobileNotesCloseButton.blur();
+                        }
+                    }
+                }
+                if (bodyEl) {
+                    if (open && mobile) {
+                        bodyEl.classList.add('fc-notes-locked');
+                    } else {
+                        bodyEl.classList.remove('fc-notes-locked');
+                    }
+                }
                 if (open && options.focusSearch) {
                     focusNoteSearch();
                 }
             };
 
-            const closeMobileNotes = () => {
+            const closeMobileNotes = (options = {}) => {
                 if (!isMobileNotesOpen()) {
                     return;
                 }
                 setMobileNotesOpen(false);
+                if (options.focusToggle && mobileNotesToggleButton && typeof mobileNotesToggleButton.focus === 'function') {
+                    try {
+                        mobileNotesToggleButton.focus({ preventScroll: true });
+                    } catch (error) {
+                        mobileNotesToggleButton.focus();
+                    }
+                }
             };
 
             const handleMobileLayoutChange = (event) => {
@@ -216,6 +254,12 @@
                 });
             }
 
+            if (mobileNotesCloseButton) {
+                mobileNotesCloseButton.addEventListener('click', () => {
+                    closeMobileNotes();
+                });
+            }
+
             if (chatWrapperEl) {
                 chatWrapperEl.addEventListener('click', (event) => {
                     if (!isMobileLayout() || !isMobileNotesOpen()) {
@@ -224,7 +268,7 @@
                     if (event.target.closest('.fc-notes') || event.target.closest('#fc-mobile-notes-toggle')) {
                         return;
                     }
-                    setMobileNotesOpen(false);
+                    closeMobileNotes();
                 });
             }
 
@@ -236,10 +280,7 @@
                     return;
                 }
                 event.preventDefault();
-                setMobileNotesOpen(false);
-                if (mobileNotesToggleButton && typeof mobileNotesToggleButton.focus === 'function') {
-                    mobileNotesToggleButton.focus();
-                }
+                closeMobileNotes({ focusToggle: true });
             });
 
             const API_BASE = '/api/firenotes';
@@ -3205,7 +3246,7 @@
                 renderMessages();
                 await loadMessages(noteId, { silent: options.silent });
                 if (isMobileLayout()) {
-                    setMobileNotesOpen(false);
+                    closeMobileNotes();
                 }
                 if (options.focusComposer) {
                     const textarea = getActiveTextarea();
