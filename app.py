@@ -96,8 +96,6 @@ app.secret_key = os.urandom(24)
 SESSION_MAX_AGE = timedelta(days=180)
 app.permanent_session_lifetime = SESSION_MAX_AGE
 
-DEVICE_IDENTITY_SALT = os.getenv('FIRECOAST_DEVICE_ID_SALT', 'firecoast-ip-device-salt')
-
 _db_bootstrapped = False
 
 _event_stream_lock = Lock()
