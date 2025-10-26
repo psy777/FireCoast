@@ -680,6 +680,21 @@ PUBLIC_PATH_PREFIXES = (
     '/device/blocked',
 )
 
+_DEVICE_IDENTITY_SALT_ENV = 'FIRECOAST_DEVICE_IDENTITY_SALT'
+_DEFAULT_DEVICE_IDENTITY_SALT = 'firecoast-device-identity'
+
+
+def _resolve_device_identity_salt() -> str:
+    raw_value = os.getenv(_DEVICE_IDENTITY_SALT_ENV)
+    if raw_value:
+        normalized = raw_value.strip()
+        if normalized:
+            return normalized
+    return _DEFAULT_DEVICE_IDENTITY_SALT
+
+
+DEVICE_IDENTITY_SALT = _resolve_device_identity_salt()
+
 DEVICE_TOKEN_SESSION_KEY = 'device_token'
 PENDING_DEVICE_TOKEN_SESSION_KEY = 'pending_device_token'
 
