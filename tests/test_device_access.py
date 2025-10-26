@@ -138,6 +138,34 @@ def test_firewall_unsupported_marks_status(device_control_environment, monkeypat
     assert 'unsupported platform' in (status['last_error'] or '').lower()
 
 
+def test_firewall_sync_skipped_when_env_set(device_control_environment, monkeypatch):
+    firecoast_app = device_control_environment
+
+    original_testing = firecoast_app.app.config.get('TESTING')
+    firecoast_app.app.config['TESTING'] = False
+    monkeypatch.setenv('FIRECOAST_SKIP_FIREWALL', '1')
+
+    invoked = {'called': False}
+
+    def _fail_sync():
+        invoked['called'] = True
+        raise AssertionError('Firewall sync should be skipped when FIRECOAST_SKIP_FIREWALL is set')
+
+    monkeypatch.setattr(firecoast_app, '_synchronize_firewall_rules', _fail_sync)
+
+    try:
+        firecoast_app._prepare_firewall_background_sync()
+    finally:
+        firecoast_app.app.config['TESTING'] = original_testing
+
+    assert invoked['called'] is False
+    status = firecoast_app.get_firewall_status()
+    assert status['supported'] is False
+    assert status['requires_admin'] is False
+    assert status['last_success'] is None
+    assert 'disabled' in (status['last_error'] or '').lower()
+
+
 def test_new_device_is_redirected_and_logged(device_control_environment, monkeypatch):
     firecoast_app = device_control_environment
 
