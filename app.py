@@ -1,3 +1,4 @@
+import base64
 import os
 import shutil
 from pathlib import Path
@@ -92,6 +93,11 @@ app = Flask(__name__, template_folder='templates')
 app.config['JSON_SORT_KEYS'] = False
 app.secret_key = os.urandom(24)
 
+SESSION_MAX_AGE = timedelta(days=180)
+app.permanent_session_lifetime = SESSION_MAX_AGE
+
+DEVICE_IDENTITY_SALT = os.getenv('FIRECOAST_DEVICE_ID_SALT', 'firecoast-ip-device-salt')
+
 _db_bootstrapped = False
 
 _event_stream_lock = Lock()
@@ -120,6 +126,11 @@ def _default_firewall_status() -> Dict[str, Any]:
 
 _firewall_status_lock = Lock()
 _firewall_status: Dict[str, Any] = _default_firewall_status()
+
+
+@app.before_request
+def _ensure_persistent_session() -> None:
+    session.permanent = True
 
 
 def _update_firewall_status(**kwargs: Any) -> None:
@@ -710,13 +721,25 @@ def _is_valid_device_token(candidate: Any) -> bool:
     return bool(candidate.strip())
 
 
+def _derive_device_token_from_ip(ip_address: Optional[str]) -> str:
+    if not ip_address:
+        return _generate_device_token()
+    normalized = str(ip_address).strip()
+    if not normalized:
+        return _generate_device_token()
+    payload = f"{DEVICE_IDENTITY_SALT}|{normalized}".encode('utf-8')
+    digest = hashlib.sha256(payload).digest()
+    token = base64.urlsafe_b64encode(digest).decode('ascii').rstrip('=')
+    return token
+
+
 def _get_session_device_token(create_if_missing: bool = True) -> Optional[str]:
     existing = session.get(DEVICE_TOKEN_SESSION_KEY)
     if _is_valid_device_token(existing):
         return str(existing)
     if not create_if_missing:
         return None
-    token = _generate_device_token()
+    token = _derive_device_token_from_ip(_get_request_ip_address())
     session[DEVICE_TOKEN_SESSION_KEY] = token
     session.modified = True
     return token

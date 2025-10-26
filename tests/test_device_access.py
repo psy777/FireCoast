@@ -142,7 +142,11 @@ def test_new_device_is_redirected_and_logged(device_control_environment, monkeyp
     firecoast_app = device_control_environment
 
     monkeypatch.setattr(firecoast_app, '_get_request_ip_address', lambda: '192.168.0.42')
-    monkeypatch.setattr(firecoast_app, '_generate_device_token', lambda: 'token-new-device')
+    monkeypatch.setattr(
+        firecoast_app,
+        '_derive_device_token_from_ip',
+        lambda ip: 'token-new-device',
+    )
 
     original_testing = firecoast_app.app.config.get('TESTING')
     firecoast_app.app.config['TESTING'] = False
@@ -187,7 +191,11 @@ def test_pending_device_without_details_can_submit_request(device_control_enviro
     device_token = f'token-form-flow-{uuid.uuid4()}'
 
     monkeypatch.setattr(firecoast_app, '_get_request_ip_address', lambda: '192.168.0.77')
-    monkeypatch.setattr(firecoast_app, '_generate_device_token', lambda: device_token)
+    monkeypatch.setattr(
+        firecoast_app,
+        '_derive_device_token_from_ip',
+        lambda ip: device_token,
+    )
 
     original_testing = firecoast_app.app.config.get('TESTING')
     firecoast_app.app.config['TESTING'] = False
@@ -240,7 +248,11 @@ def test_trusted_device_gains_access_without_login(device_control_environment, m
     placeholder_mac = firecoast_app._derive_device_identifier_from_token(trusted_token)
 
     initial_testing = firecoast_app.app.config.get('TESTING')
-    monkeypatch.setattr(firecoast_app, '_generate_device_token', lambda: trusted_token)
+    monkeypatch.setattr(
+        firecoast_app,
+        '_derive_device_token_from_ip',
+        lambda ip: trusted_token,
+    )
     firecoast_app.app.config['TESTING'] = False
     try:
         with firecoast_app.app.test_request_context('/orders'):
@@ -445,7 +457,11 @@ def test_trusted_device_does_not_block_new_device_registration(device_control_en
 
     try:
         monkeypatch.setattr(firecoast_app, '_get_request_ip_address', lambda: '192.168.0.10')
-        monkeypatch.setattr(firecoast_app, '_generate_device_token', lambda: trusted_token)
+        monkeypatch.setattr(
+            firecoast_app,
+            '_derive_device_token_from_ip',
+            lambda ip: trusted_token,
+        )
 
         with firecoast_app.app.test_request_context('/orders'):
             session.clear()
@@ -473,7 +489,11 @@ def test_trusted_device_does_not_block_new_device_registration(device_control_en
             conn.close()
 
         monkeypatch.setattr(firecoast_app, '_get_request_ip_address', lambda: '192.168.0.42')
-        monkeypatch.setattr(firecoast_app, '_generate_device_token', lambda: new_token)
+        monkeypatch.setattr(
+            firecoast_app,
+            '_derive_device_token_from_ip',
+            lambda ip: new_token,
+        )
 
         with firecoast_app.app.test_request_context('/orders'):
             session.clear()
@@ -494,7 +514,11 @@ def test_blocked_device_receives_blocked_page(device_control_environment, monkey
     placeholder_mac = firecoast_app._derive_device_identifier_from_token(blocked_token)
 
     initial_testing = firecoast_app.app.config.get('TESTING')
-    monkeypatch.setattr(firecoast_app, '_generate_device_token', lambda: blocked_token)
+    monkeypatch.setattr(
+        firecoast_app,
+        '_derive_device_token_from_ip',
+        lambda ip: blocked_token,
+    )
     firecoast_app.app.config['TESTING'] = False
     try:
         with firecoast_app.app.test_request_context('/orders'):
