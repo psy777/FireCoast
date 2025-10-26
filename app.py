@@ -92,6 +92,9 @@ app = Flask(__name__, template_folder='templates')
 app.config['JSON_SORT_KEYS'] = False
 app.secret_key = os.urandom(24)
 
+SESSION_MAX_AGE = timedelta(days=180)
+app.permanent_session_lifetime = SESSION_MAX_AGE
+
 _db_bootstrapped = False
 
 _event_stream_lock = Lock()
@@ -120,6 +123,11 @@ def _default_firewall_status() -> Dict[str, Any]:
 
 _firewall_status_lock = Lock()
 _firewall_status: Dict[str, Any] = _default_firewall_status()
+
+
+@app.before_request
+def _ensure_persistent_session() -> None:
+    session.permanent = True
 
 
 def _update_firewall_status(**kwargs: Any) -> None:
