@@ -1,3 +1,4 @@
+import base64
 import os
 import shutil
 from pathlib import Path
@@ -109,6 +110,11 @@ MAX_CHAT_PING_RECIPIENTS = 8
 _FIREWALL_SYNC_INTERVAL_SECONDS = 60
 _firewall_sync_thread: Optional[Thread] = None
 _firewall_sync_thread_lock = Lock()
+_firewall_bootstrap_thread: Optional[Thread] = None
+_firewall_bootstrap_lock = Lock()
+
+_FIREWALL_SKIP_ENV = 'FIRECOAST_SKIP_FIREWALL'
+_FIREWALL_SKIP_MESSAGE = 'Firewall automation disabled via FIRECOAST_SKIP_FIREWALL.'
 
 
 def _default_firewall_status() -> Dict[str, Any]:
@@ -153,6 +159,23 @@ def reset_firewall_status_for_testing() -> None:
 
 def get_firewall_status() -> Dict[str, Any]:
     return _get_firewall_status()
+
+
+def _firewall_automation_disabled() -> bool:
+    raw_value = os.getenv(_FIREWALL_SKIP_ENV)
+    if raw_value is None:
+        return False
+    normalized = raw_value.strip().lower()
+    return normalized in {'1', 'true', 'yes', 'on'}
+
+
+def _record_firewall_disabled() -> None:
+    _update_firewall_status(
+        supported=False,
+        requires_admin=False,
+        last_error=_FIREWALL_SKIP_MESSAGE,
+        last_success=None,
+    )
 
 
 def _event_default_serializer(value: Any) -> str:
@@ -718,13 +741,25 @@ def _is_valid_device_token(candidate: Any) -> bool:
     return bool(candidate.strip())
 
 
+def _derive_device_token_from_ip(ip_address: Optional[str]) -> str:
+    if not ip_address:
+        return _generate_device_token()
+    normalized = str(ip_address).strip()
+    if not normalized:
+        return _generate_device_token()
+    payload = f"{DEVICE_IDENTITY_SALT}|{normalized}".encode('utf-8')
+    digest = hashlib.sha256(payload).digest()
+    token = base64.urlsafe_b64encode(digest).decode('ascii').rstrip('=')
+    return token
+
+
 def _get_session_device_token(create_if_missing: bool = True) -> Optional[str]:
     existing = session.get(DEVICE_TOKEN_SESSION_KEY)
     if _is_valid_device_token(existing):
         return str(existing)
     if not create_if_missing:
         return None
-    token = _generate_device_token()
+    token = _derive_device_token_from_ip(_get_request_ip_address())
     session[DEVICE_TOKEN_SESSION_KEY] = token
     session.modified = True
     return token
@@ -947,6 +982,9 @@ def _record_firewall_exception(exc: Exception) -> None:
 
 
 def _synchronize_firewall_rules() -> None:
+    if _firewall_automation_disabled():
+        _record_firewall_disabled()
+        return
     try:
         manager = firewall_service.get_firewall_manager()
     except firewall_service.FirewallError as exc:
@@ -1030,11 +1068,28 @@ def _ensure_firewall_sync_loop() -> None:
 def _prepare_firewall_background_sync() -> None:
     if app.config.get('TESTING'):
         return
-    try:
-        _synchronize_firewall_rules()
-    except Exception as exc:  # pragma: no cover - defensive logging
-        if app.logger:
-            app.logger.warning('Failed to pre-sync firewall rules: %s', exc)
+    if _firewall_automation_disabled():
+        _record_firewall_disabled()
+        return
+
+    def _bootstrap_firewall_sync() -> None:
+        try:
+            _synchronize_firewall_rules()
+        except Exception as exc:  # pragma: no cover - defensive logging
+            if app.logger:
+                app.logger.warning('Failed to pre-sync firewall rules: %s', exc)
+
+    global _firewall_bootstrap_thread
+    with _firewall_bootstrap_lock:
+        if not _firewall_bootstrap_thread or not _firewall_bootstrap_thread.is_alive():
+            thread = Thread(
+                target=_bootstrap_firewall_sync,
+                name='firecoast-firewall-bootstrap',
+                daemon=True,
+            )
+            _firewall_bootstrap_thread = thread
+            thread.start()
+
     try:
         _ensure_firewall_sync_loop()
     except Exception as exc:  # pragma: no cover - defensive logging
