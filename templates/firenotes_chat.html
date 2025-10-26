@@ -22,71 +22,79 @@
 
     <main class="page-main page-main--xl page-main--flush">
         <div class="fc-chat-wrapper">
-        <div class="fc-chat-layout">
-            <aside class="fc-notes" aria-label="Notes">
-                <div class="fc-notes__search">
-                    <label class="fc-screen-reader-only" for="fc-note-search">Search or create note</label>
-                    <div class="fc-notes__search-row">
-                        <input id="fc-note-search" class="fc-notes__search-input" type="search" placeholder="Search or create note" autocomplete="off">
-                        <button type="button" id="fc-create-note" class="fc-notes__create-button" aria-label="Create a new note">
-                            <span class="fc-notes__create-icon" aria-hidden="true">＋</span>
-                            <span class="fc-notes__create-label">New</span>
-                        </button>
-                    </div>
-                </div>
-                <div id="fc-note-list" class="fc-notes__list" role="listbox" aria-label="Saved notes"></div>
-                <p id="fc-no-notes" class="fc-notes__empty" hidden></p>
-            </aside>
-            <section class="fc-chat-panel" aria-label="Note conversation">
-                <header class="fc-chat-panel__header">
-                    <div class="fc-chat-panel__title-group">
-                        <h1 id="fc-note-title" class="fc-chat-panel__title">Untitled note</h1>
-                        <button type="button" id="fc-note-handle" class="fc-note-handle" hidden></button>
-                    </div>
-                    <div class="fc-chat-panel__actions">
-                        <label class="fc-screen-reader-only" for="fc-message-search">Search this note</label>
-                        <input id="fc-message-search" class="fc-chat-search" type="search" placeholder="Search this note" autocomplete="off">
-                        <button type="button" id="fc-refresh" class="fc-icon-button" aria-label="Refresh note">
-                            <span aria-hidden="true">↺</span>
-                        </button>
-                        <button type="button" id="fc-delete-note" class="fc-icon-button fc-icon-button--danger" aria-label="Delete note">
-                            <span aria-hidden="true">🗑</span>
-                        </button>
-                    </div>
-                </header>
-                <div class="fc-chat-panel__body">
-                    <div id="fc-chat-scroll" class="fc-chat-scroll" role="presentation">
-                        <div id="fc-chat-log" class="fc-chat-log" role="log" aria-live="polite" aria-busy="false"></div>
-                    </div>
-                </div>
-                <footer class="fc-chat-panel__footer">
-                    <p id="fc-error" class="fc-chat-error" role="status" aria-live="assertive" hidden></p>
-                    <div class="fc-composer" data-disabled="true">
-                        {% if current_device %}
-                            <div class="fc-composer__identity">Chatting as <span class="font-semibold">{{ current_device.display_name }}</span></div>
-                        {% endif %}
-                        <div id="fc-reply-preview" class="fc-composer__reply" hidden></div>
-                        <div id="fc-attachment-chips" class="fc-composer__attachments" aria-live="polite"></div>
-                        <div id="fc-ping-chips" class="fc-composer__pings" aria-live="polite" hidden></div>
-                        <label class="fc-screen-reader-only" for="fc-input">Write a message</label>
-                        <div class="fc-composer__input-wrapper">
-                            <textarea id="fc-input" class="fc-composer__input" placeholder="Write a message" rows="1" disabled></textarea>
-                            <div id="fc-mention-root" class="fc-composer__mention-root" hidden></div>
-                        </div>
-                        <div class="fc-composer__actions">
-                            <button type="button" id="fc-ping-button" class="fc-icon-button" aria-label="Notify someone" disabled>
-                                <span aria-hidden="true">🔔</span>
-                            </button>
-                            <input type="file" id="fc-attachment-input" class="fc-composer__file-input" multiple hidden>
-                            <button type="button" id="fc-attach-button" class="fc-icon-button" aria-label="Add files" disabled>
-                                <span aria-hidden="true">＋</span>
+            <button type="button" id="fc-mobile-notes-toggle" class="fc-mobile-notes-toggle" aria-expanded="false" aria-controls="fc-note-list">
+                <span class="fc-mobile-notes-toggle__icon" aria-hidden="true">☰</span>
+                <span class="fc-mobile-notes-toggle__label-group">
+                    <span class="fc-mobile-notes-toggle__text">Notes</span>
+                    <span id="fc-mobile-active-note" class="fc-mobile-notes-toggle__active">Select a note</span>
+                </span>
+                <span id="fc-mobile-notes-count" class="fc-mobile-notes-toggle__count" hidden>0</span>
+            </button>
+            <div class="fc-chat-layout">
+                <aside class="fc-notes" aria-label="Notes">
+                    <div class="fc-notes__search">
+                        <label class="fc-screen-reader-only" for="fc-note-search">Search or create note</label>
+                        <div class="fc-notes__search-row">
+                            <input id="fc-note-search" class="fc-notes__search-input" type="search" placeholder="Search or create note" autocomplete="off">
+                            <button type="button" id="fc-create-note" class="fc-notes__create-button" aria-label="Create a new note">
+                                <span class="fc-notes__create-icon" aria-hidden="true">＋</span>
+                                <span class="fc-notes__create-label">New</span>
                             </button>
                         </div>
                     </div>
-                    <div id="fc-typing-indicator" class="fc-typing-indicator" hidden aria-live="polite"></div>
-                </footer>
-            </section>
-        </div>
+                    <div id="fc-note-list" class="fc-notes__list" role="listbox" aria-label="Saved notes"></div>
+                    <p id="fc-no-notes" class="fc-notes__empty" hidden></p>
+                </aside>
+                <section class="fc-chat-panel" aria-label="Note conversation">
+                    <header class="fc-chat-panel__header">
+                        <div class="fc-chat-panel__title-group">
+                            <h1 id="fc-note-title" class="fc-chat-panel__title">Untitled note</h1>
+                            <button type="button" id="fc-note-handle" class="fc-note-handle" hidden></button>
+                        </div>
+                        <div class="fc-chat-panel__actions">
+                            <label class="fc-screen-reader-only" for="fc-message-search">Search this note</label>
+                            <input id="fc-message-search" class="fc-chat-search" type="search" placeholder="Search this note" autocomplete="off">
+                            <button type="button" id="fc-refresh" class="fc-icon-button" aria-label="Refresh note">
+                                <span aria-hidden="true">↺</span>
+                            </button>
+                            <button type="button" id="fc-delete-note" class="fc-icon-button fc-icon-button--danger" aria-label="Delete note">
+                                <span aria-hidden="true">🗑</span>
+                            </button>
+                        </div>
+                    </header>
+                    <div class="fc-chat-panel__body">
+                        <div id="fc-chat-scroll" class="fc-chat-scroll" role="presentation">
+                            <div id="fc-chat-log" class="fc-chat-log" role="log" aria-live="polite" aria-busy="false"></div>
+                        </div>
+                    </div>
+                    <footer class="fc-chat-panel__footer">
+                        <p id="fc-error" class="fc-chat-error" role="status" aria-live="assertive" hidden></p>
+                        <div class="fc-composer" data-disabled="true">
+                            {% if current_device %}
+                                <div class="fc-composer__identity">Chatting as <span class="font-semibold">{{ current_device.display_name }}</span></div>
+                            {% endif %}
+                            <div id="fc-reply-preview" class="fc-composer__reply" hidden></div>
+                            <div id="fc-attachment-chips" class="fc-composer__attachments" aria-live="polite"></div>
+                            <div id="fc-ping-chips" class="fc-composer__pings" aria-live="polite" hidden></div>
+                            <label class="fc-screen-reader-only" for="fc-input">Write a message</label>
+                            <div class="fc-composer__input-wrapper">
+                                <textarea id="fc-input" class="fc-composer__input" placeholder="Write a message" rows="1" disabled></textarea>
+                                <div id="fc-mention-root" class="fc-composer__mention-root" hidden></div>
+                            </div>
+                            <div class="fc-composer__actions">
+                                <button type="button" id="fc-ping-button" class="fc-icon-button" aria-label="Notify someone" disabled>
+                                    <span aria-hidden="true">🔔</span>
+                                </button>
+                                <input type="file" id="fc-attachment-input" class="fc-composer__file-input" multiple hidden>
+                                <button type="button" id="fc-attach-button" class="fc-icon-button" aria-label="Add files" disabled>
+                                    <span aria-hidden="true">＋</span>
+                                </button>
+                            </div>
+                        </div>
+                        <div id="fc-typing-indicator" class="fc-typing-indicator" hidden aria-live="polite"></div>
+                    </footer>
+                </section>
+            </div>
         </div>
     </main>
 
@@ -121,6 +129,118 @@
             const errorEl = document.getElementById('fc-error');
             const pingButtonEl = document.getElementById('fc-ping-button');
             const typingIndicatorEl = document.getElementById('fc-typing-indicator');
+            const chatWrapperEl = document.querySelector('.fc-chat-wrapper');
+            const mobileNotesToggleButton = document.getElementById('fc-mobile-notes-toggle');
+            const mobileActiveNoteLabelEl = document.getElementById('fc-mobile-active-note');
+            const mobileNotesCountEl = document.getElementById('fc-mobile-notes-count');
+            const mobileLayoutQuery = typeof window !== 'undefined' && typeof window.matchMedia === 'function'
+                ? window.matchMedia('(max-width: 768px)')
+                : null;
+
+            const focusNoteSearch = () => {
+                if (!noteSearchEl) {
+                    return;
+                }
+                try {
+                    noteSearchEl.focus({ preventScroll: true });
+                } catch (error) {
+                    noteSearchEl.focus();
+                }
+            };
+
+            const isMobileLayout = () => Boolean(mobileLayoutQuery && mobileLayoutQuery.matches);
+
+            const isMobileNotesOpen = () => Boolean(
+                chatWrapperEl && chatWrapperEl.getAttribute('data-notes-open') === 'true'
+            );
+
+            const setMobileNotesOpen = (open, options = {}) => {
+                if (!chatWrapperEl) {
+                    return;
+                }
+                if (open) {
+                    chatWrapperEl.setAttribute('data-notes-open', 'true');
+                } else {
+                    chatWrapperEl.removeAttribute('data-notes-open');
+                }
+                if (mobileNotesToggleButton) {
+                    mobileNotesToggleButton.setAttribute('aria-expanded', open ? 'true' : 'false');
+                    mobileNotesToggleButton.classList.toggle('is-open', open);
+                    if (open) {
+                        const activeLabel = mobileActiveNoteLabelEl
+                            ? (mobileActiveNoteLabelEl.textContent || '').trim()
+                            : '';
+                        const hasActiveNote = state && state.activeNote;
+                        const hideLabel = hasActiveNote && activeLabel
+                            ? `Hide notes (viewing ${activeLabel})`
+                            : 'Hide notes';
+                        mobileNotesToggleButton.setAttribute('aria-label', hideLabel);
+                        mobileNotesToggleButton.title = hideLabel;
+                    } else {
+                        updateMobileNotesSummary();
+                    }
+                }
+                if (open && options.focusSearch) {
+                    focusNoteSearch();
+                }
+            };
+
+            const closeMobileNotes = () => {
+                if (!isMobileNotesOpen()) {
+                    return;
+                }
+                setMobileNotesOpen(false);
+            };
+
+            const handleMobileLayoutChange = (event) => {
+                if (!event.matches) {
+                    closeMobileNotes();
+                }
+            };
+
+            if (mobileLayoutQuery) {
+                if (typeof mobileLayoutQuery.addEventListener === 'function') {
+                    mobileLayoutQuery.addEventListener('change', handleMobileLayoutChange);
+                } else if (typeof mobileLayoutQuery.addListener === 'function') {
+                    mobileLayoutQuery.addListener(handleMobileLayoutChange);
+                }
+            }
+
+            if (mobileNotesToggleButton) {
+                mobileNotesToggleButton.addEventListener('click', () => {
+                    if (!isMobileLayout()) {
+                        return;
+                    }
+                    const next = !isMobileNotesOpen();
+                    setMobileNotesOpen(next, { focusSearch: next });
+                });
+            }
+
+            if (chatWrapperEl) {
+                chatWrapperEl.addEventListener('click', (event) => {
+                    if (!isMobileLayout() || !isMobileNotesOpen()) {
+                        return;
+                    }
+                    if (event.target.closest('.fc-notes') || event.target.closest('#fc-mobile-notes-toggle')) {
+                        return;
+                    }
+                    setMobileNotesOpen(false);
+                });
+            }
+
+            document.addEventListener('keydown', (event) => {
+                if (event.key !== 'Escape') {
+                    return;
+                }
+                if (!isMobileLayout() || !isMobileNotesOpen()) {
+                    return;
+                }
+                event.preventDefault();
+                setMobileNotesOpen(false);
+                if (mobileNotesToggleButton && typeof mobileNotesToggleButton.focus === 'function') {
+                    mobileNotesToggleButton.focus();
+                }
+            });
 
             const API_BASE = '/api/firenotes';
             const REACTION_ENDPOINT = `${API_BASE}/chat/reactions`;
@@ -630,6 +750,41 @@
                 noteId: '',
             };
 
+            const updateMobileNotesSummary = () => {
+                if (!mobileNotesToggleButton) {
+                    return;
+                }
+                const noteCount = Array.isArray(state.notes) ? state.notes.length : 0;
+                if (mobileNotesCountEl) {
+                    if (noteCount > 0) {
+                        mobileNotesCountEl.hidden = false;
+                        mobileNotesCountEl.textContent = String(noteCount);
+                    } else {
+                        mobileNotesCountEl.hidden = true;
+                        mobileNotesCountEl.textContent = '';
+                    }
+                }
+                const activeLabelRaw = state.activeNote
+                    ? normalizePreview(state.activeNote.title || '') || 'Untitled note'
+                    : '';
+                if (mobileActiveNoteLabelEl) {
+                    mobileActiveNoteLabelEl.textContent = activeLabelRaw || 'Select a note';
+                }
+                const buttonLabel = activeLabelRaw
+                    ? `Show notes (viewing ${activeLabelRaw})`
+                    : 'Show notes';
+                if (isMobileNotesOpen()) {
+                    const hideLabel = state && state.activeNote && activeLabelRaw
+                        ? `Hide notes (viewing ${activeLabelRaw})`
+                        : 'Hide notes';
+                    mobileNotesToggleButton.setAttribute('aria-label', hideLabel);
+                    mobileNotesToggleButton.title = hideLabel;
+                } else {
+                    mobileNotesToggleButton.setAttribute('aria-label', buttonLabel);
+                    mobileNotesToggleButton.title = buttonLabel;
+                }
+            };
+
 
             const handlePopoverDocumentClick = (event) => {
                 if (!activePopover) {
@@ -1137,6 +1292,7 @@
                     noteTitleEl.title = 'Select a note to view messages';
                     noteTitleEl.removeAttribute('data-handle');
                     updateNoteHandleButton('');
+                    updateMobileNotesSummary();
                     return;
                 }
                 const label = normalizePreview(note.title || '') || 'Untitled note';
@@ -1149,6 +1305,7 @@
                     noteTitleEl.removeAttribute('data-handle');
                 }
                 updateNoteHandleButton(handle);
+                updateMobileNotesSummary();
             };
 
             const sortNotes = () => {
@@ -1185,6 +1342,8 @@
                     ? state.notes.some((note) => normalizePreview(note.title || '').toLowerCase() === loweredQuery)
                     : false;
                 const createSuggestion = hasQuery && !exactMatch;
+
+                updateMobileNotesSummary();
 
                 if (!filtered.length && !createSuggestion) {
                     if (noteEmptyEl) {
@@ -3045,6 +3204,9 @@
                 renderAttachmentChips();
                 renderMessages();
                 await loadMessages(noteId, { silent: options.silent });
+                if (isMobileLayout()) {
+                    setMobileNotesOpen(false);
+                }
                 if (options.focusComposer) {
                     const textarea = getActiveTextarea();
                     if (textarea) {
