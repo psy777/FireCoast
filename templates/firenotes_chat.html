@@ -301,6 +301,21 @@
                 return '';
             };
 
+            const getCurrentDeviceDisplayName = () => {
+                const context = window.fireCoastCurrentDevice || {};
+                const raw =
+                    (context &&
+                        (context.display_name ||
+                            context.displayName ||
+                            context.owner_name ||
+                            context.device_name ||
+                            context.handle)) ||
+                    '';
+                const label = typeof raw === 'string' ? raw : String(raw || '');
+                const trimmed = label.trim();
+                return trimmed || 'You';
+            };
+
             const getMessageDisplayAuthor = (message) => {
                 if (!message) {
                     return '';
@@ -781,6 +796,7 @@
                 typingTypers: [],
             };
             const pendingReactions = new Set();
+            const pendingOutgoingMessages = new Map();
             let activePopover = null;
             let pendingScrollToBottom = false;
             const typingState = {
@@ -1014,6 +1030,20 @@
                     return mentionRootEl.querySelector('textarea');
                 }
                 return inputEl;
+            };
+
+            const focusComposerInput = () => {
+                scheduleFrame(() => {
+                    const textarea = getActiveTextarea();
+                    if (!textarea) {
+                        return;
+                    }
+                    try {
+                        textarea.focus({ preventScroll: true });
+                    } catch (error) {
+                        textarea.focus();
+                    }
+                });
             };
 
             const renderMentionComposer = () => {
@@ -2978,17 +3008,21 @@
                 };
                 if (!state.activeNoteId) {
                     replaceWithPlaceholder('Create a note to start chatting.');
-                    if (scrollPort) {
-                        scrollPort.scrollTop = 0;
-                    }
+                    scheduleFrame(() => {
+                        if (scrollPort) {
+                            scrollPort.scrollTop = 0;
+                        }
+                    });
                     return;
                 }
                 if (state.isLoadingMessages) {
                     setBusy(true);
                     replaceWithPlaceholder('Loading note…');
-                    if (scrollPort) {
-                        scrollPort.scrollTop = 0;
-                    }
+                    scheduleFrame(() => {
+                        if (scrollPort) {
+                            scrollPort.scrollTop = 0;
+                        }
+                    });
                     return;
                 }
                 setBusy(false);
@@ -2999,9 +3033,11 @@
                     : state.messages.slice();
                 if (!visible.length) {
                     replaceWithPlaceholder(lowered ? 'No matches in this note.' : 'Drop a thought to get started.');
-                    if (scrollPort) {
-                        scrollPort.scrollTop = 0;
-                    }
+                    scheduleFrame(() => {
+                        if (scrollPort) {
+                            scrollPort.scrollTop = 0;
+                        }
+                    });
                     return;
                 }
                 const fragment = document.createDocumentFragment();
@@ -3017,22 +3053,27 @@
                 if (!scrollPort) {
                     return;
                 }
-                if (pendingScrollToBottom) {
-                    jumpToBottom();
-                    pendingScrollToBottom = false;
-                    return;
-                }
-                if (lowered) {
-                    scrollPort.scrollTop = 0;
-                    return;
-                }
-                if (shouldStickToBottom) {
-                    jumpToBottom();
-                    return;
-                }
-                const maxScrollTop = Math.max(0, scrollPort.scrollHeight - scrollPort.clientHeight);
-                const targetScrollTop = Math.min(previousScrollTop, maxScrollTop);
-                scrollPort.scrollTop = targetScrollTop;
+                scheduleFrame(() => {
+                    if (!scrollPort) {
+                        return;
+                    }
+                    if (pendingScrollToBottom) {
+                        pendingScrollToBottom = false;
+                        jumpToBottom();
+                        return;
+                    }
+                    if (lowered) {
+                        scrollPort.scrollTop = 0;
+                        return;
+                    }
+                    if (shouldStickToBottom) {
+                        jumpToBottom();
+                        return;
+                    }
+                    const maxScrollTop = Math.max(0, scrollPort.scrollHeight - scrollPort.clientHeight);
+                    const targetScrollTop = Math.min(previousScrollTop, maxScrollTop);
+                    scrollPort.scrollTop = targetScrollTop;
+                });
             };
 
             const autoResizeInput = () => {
@@ -3323,6 +3364,79 @@
                 }
             };
 
+            const mapPingRecipientsToMetadata = (recipients) => {
+                if (!Array.isArray(recipients) || !recipients.length) {
+                    return [];
+                }
+                return recipients
+                    .map((recipient) => {
+                        if (!recipient || !recipient.id) {
+                            return null;
+                        }
+                        const label = recipient.displayName || recipient.display_name || recipient.id;
+                        return {
+                            device_id: recipient.id,
+                            deviceId: recipient.id,
+                            display_name: label,
+                            displayName: label,
+                            is_host: Boolean(recipient.isHost || recipient.is_host),
+                            isHost: Boolean(recipient.isHost || recipient.is_host),
+                        };
+                    })
+                    .filter(Boolean);
+            };
+
+            const buildReplyMetadata = (replyState) => {
+                if (!replyState) {
+                    return null;
+                }
+                const author = (replyState.authorLabel || '').trim();
+                const preview = replyState.preview || '';
+                const noteTitle = replyState.noteTitle || '';
+                const metadata = {
+                    id: replyState.id || '',
+                    note_id: replyState.noteId || '',
+                    noteId: replyState.noteId || '',
+                    author_display: author,
+                    author_label: author,
+                    author,
+                    display_author: author,
+                    preview,
+                    content: preview,
+                };
+                if (noteTitle) {
+                    metadata.note_title = noteTitle;
+                    metadata.noteTitle = noteTitle;
+                }
+                return metadata;
+            };
+
+            const createOptimisticMessage = (options) => {
+                const createdAt = options.createdAt || new Date().toISOString();
+                const metadata = {
+                    actor_role: 'user',
+                    device_id: getCurrentDeviceId(),
+                    deviceId: getCurrentDeviceId(),
+                    device_name: getCurrentDeviceDisplayName(),
+                    display_author: getCurrentDeviceDisplayName(),
+                    client_generated_id: options.id,
+                    pending: true,
+                };
+                if (options.replyState) {
+                    metadata.reply_to = buildReplyMetadata(options.replyState);
+                }
+                if (Array.isArray(options.pingRecipients) && options.pingRecipients.length) {
+                    metadata.pings = mapPingRecipientsToMetadata(options.pingRecipients);
+                }
+                return {
+                    id: options.id,
+                    note_id: options.noteId,
+                    content: options.content,
+                    created_at: createdAt,
+                    metadata,
+                };
+            };
+
             const sendMessage = async (overrideContent = undefined) => {
                 if (!state.activeNoteId || state.isSending) {
                     return;
@@ -3332,31 +3446,64 @@
                         ? String(overrideContent)
                         : getComposerValue();
                 const trimmed = normalizePreview(rawContent);
-                if (!trimmed && !state.pendingFiles.length) {
+                const hasAttachments = state.pendingFiles.length > 0;
+                if (!trimmed && !hasAttachments) {
                     return;
                 }
+                const noteId = state.activeNoteId;
+                const replyState = state.activeReply ? { ...state.activeReply } : null;
+                const pingRecipientsSnapshot = state.pingRecipients
+                    .map((entry) => (entry ? { ...entry } : entry))
+                    .filter(Boolean);
+                const fileSnapshot = state.pendingFiles
+                    .map((item) => (item ? { ...item } : item))
+                    .filter(Boolean);
+                const composerSnapshot = {
+                    rawContent,
+                    reply: replyState,
+                    pingRecipients: pingRecipientsSnapshot,
+                    files: fileSnapshot,
+                    replyAutoPingId: state.replyAutoPingId || null,
+                };
+                const optimisticId = `local-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+                const shouldStickBeforeSend = isNearBottom(scrollPort);
+                const optimisticMessage = createOptimisticMessage({
+                    id: optimisticId,
+                    content: rawContent,
+                    noteId,
+                    createdAt: new Date().toISOString(),
+                    replyState,
+                    pingRecipients: pingRecipientsSnapshot,
+                });
+                pendingOutgoingMessages.set(optimisticId, composerSnapshot);
+                state.messages.push(optimisticMessage);
+                sortMessages();
+                resetComposer();
+                pendingScrollToBottom = pendingScrollToBottom || shouldStickBeforeSend;
+                renderMessages();
+                focusComposerInput();
                 state.isSending = true;
                 clearError();
                 try {
                     let response;
-                    const replyTarget = state.activeReply && state.activeReply.id
-                        ? { id: state.activeReply.id, note_id: state.activeReply.noteId }
+                    const replyTarget = replyState && replyState.id
+                        ? { id: replyState.id, note_id: replyState.noteId }
                         : null;
-                    if (state.pendingFiles.length) {
+                    if (fileSnapshot.length) {
                         const formData = new FormData();
-                        formData.append('note_id', state.activeNoteId);
+                        formData.append('note_id', noteId);
                         formData.append('content', rawContent);
                         if (replyTarget) {
                             formData.append('reply_to', JSON.stringify(replyTarget));
                         }
-                        if (state.pingRecipients.length) {
-                            state.pingRecipients.forEach((recipient) => {
+                        if (pingRecipientsSnapshot.length) {
+                            pingRecipientsSnapshot.forEach((recipient) => {
                                 if (recipient && recipient.id) {
                                     formData.append('ping_device_ids', recipient.id);
                                 }
                             });
                         }
-                        state.pendingFiles.forEach((item) => {
+                        fileSnapshot.forEach((item) => {
                             formData.append('attachments', item.file, item.file.name);
                         });
                         response = await fetch(`${API_BASE}/chat`, {
@@ -3364,12 +3511,12 @@
                             body: formData,
                         });
                     } else {
-                        const payload = { note_id: state.activeNoteId, content: rawContent };
+                        const payload = { note_id: noteId, content: rawContent };
                         if (replyTarget) {
                             payload.reply_to = replyTarget;
                         }
-                        if (state.pingRecipients.length) {
-                            payload.ping_device_ids = state.pingRecipients
+                        if (pingRecipientsSnapshot.length) {
+                            payload.ping_device_ids = pingRecipientsSnapshot
                                 .filter((recipient) => recipient && recipient.id)
                                 .map((recipient) => recipient.id);
                         }
@@ -3383,6 +3530,8 @@
                         throw new Error('Message failed');
                     }
                     const payload = await response.json();
+                    const shouldStickAfterResponse = isNearBottom(scrollPort);
+                    removeMessageById(optimisticId);
                     const incoming = Array.isArray(payload.messages) ? payload.messages : [];
                     incoming.forEach((entry) => {
                         upsertMessage(entry);
@@ -3393,8 +3542,7 @@
                     if (payload.note) {
                         updateNoteFromResponse(payload.note);
                     }
-                    resetComposer();
-                    pendingScrollToBottom = true;
+                    pendingScrollToBottom = pendingScrollToBottom || shouldStickAfterResponse;
                     renderMessages();
                     if (!displayedClearError) {
                         clearError();
@@ -3402,9 +3550,48 @@
                 } catch (error) {
                     console.error('Failed to send message', error);
                     showError('Unable to send that message.');
+                    const snapshot = pendingOutgoingMessages.get(optimisticId) || composerSnapshot;
+                    const shouldStickAfterFailure = isNearBottom(scrollPort);
+                    removeMessageById(optimisticId);
+                    if (snapshot.rawContent) {
+                        const existingValue = state.composerValue || '';
+                        const combinedValue = existingValue
+                            ? `${snapshot.rawContent}\n${existingValue}`
+                            : snapshot.rawContent;
+                        setComposerValue(combinedValue, { forceRender: true });
+                    }
+                    if (snapshot.files && snapshot.files.length) {
+                        state.pendingFiles = [...snapshot.files, ...state.pendingFiles];
+                        renderAttachmentChips();
+                    }
+                    if (snapshot.reply) {
+                        state.activeReply = { ...snapshot.reply };
+                        renderReplyPreview();
+                    }
+                    if (snapshot.pingRecipients && snapshot.pingRecipients.length) {
+                        const existing = new Set(
+                            state.pingRecipients.map((recipient) => (recipient && recipient.id ? recipient.id : null)).filter(Boolean)
+                        );
+                        const merged = [...state.pingRecipients];
+                        snapshot.pingRecipients.forEach((recipient) => {
+                            if (recipient && recipient.id && !existing.has(recipient.id)) {
+                                merged.push({ ...recipient });
+                                existing.add(recipient.id);
+                            }
+                        });
+                        state.pingRecipients = merged;
+                        state.replyAutoPingId = snapshot.replyAutoPingId || null;
+                        renderPingChips();
+                    } else {
+                        state.replyAutoPingId = snapshot.replyAutoPingId || null;
+                        renderPingChips();
+                    }
+                    pendingScrollToBottom = pendingScrollToBottom || shouldStickAfterFailure;
+                    renderMessages();
+                    focusComposerInput();
                 } finally {
                     state.isSending = false;
-                    jumpToBottom();
+                    pendingOutgoingMessages.delete(optimisticId);
                     if (attachmentInputEl) {
                         attachmentInputEl.value = '';
                     }
@@ -3501,7 +3688,8 @@
                     notifyTypingActivity();
                 });
                 inputEl.addEventListener('keydown', (event) => {
-                    if (event.key === 'Enter' && !event.shiftKey) {
+                    const isComposing = event.isComposing || event.keyCode === 229;
+                    if (!isComposing && event.key === 'Enter' && !event.shiftKey) {
                         event.preventDefault();
                         sendMessage(inputEl.value || '');
                     }

@@ -769,6 +769,12 @@ function RecordMentionTextarea({
     };
 
     const handleKeyDown = event => {
+        const nativeEvent = event && event.nativeEvent ? event.nativeEvent : event;
+        const isComposing = Boolean(
+            (nativeEvent && typeof nativeEvent.isComposing === 'boolean' && nativeEvent.isComposing) ||
+            (event && typeof event.isComposing === 'boolean' && event.isComposing) ||
+            (nativeEvent && nativeEvent.keyCode === 229)
+        );
         requestAnimationFrame(() => updateSelectionFromTextarea());
         if (event.key === 'Escape') {
             if (isContextMenuOpen) {
@@ -794,6 +800,9 @@ function RecordMentionTextarea({
                 return;
             }
             if (event.key === 'Enter' || event.key === 'Tab') {
+                if (event.key === 'Enter' && isComposing) {
+                    return;
+                }
                 event.preventDefault();
                 const suggestion = suggestions[highlightIndex] || suggestions[0];
                 if (suggestion) {
@@ -802,7 +811,7 @@ function RecordMentionTextarea({
                 return;
             }
         }
-        if (event.key === 'Enter' && !event.shiftKey) {
+        if (!isComposing && event.key === 'Enter' && !event.shiftKey) {
             if (typeof onSubmit === 'function') {
                 event.preventDefault();
                 const textarea = textareaRef.current;
