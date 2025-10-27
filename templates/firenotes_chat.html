@@ -3335,6 +3335,7 @@
                 if (!trimmed && !state.pendingFiles.length) {
                     return;
                 }
+                const shouldAutoScrollAfterSend = scrollPort ? isNearBottom(scrollPort) : true;
                 state.isSending = true;
                 clearError();
                 try {
@@ -3394,7 +3395,7 @@
                         updateNoteFromResponse(payload.note);
                     }
                     resetComposer();
-                    pendingScrollToBottom = true;
+                    pendingScrollToBottom = shouldAutoScrollAfterSend;
                     renderMessages();
                     if (!displayedClearError) {
                         clearError();
@@ -3404,7 +3405,6 @@
                     showError('Unable to send that message.');
                 } finally {
                     state.isSending = false;
-                    jumpToBottom();
                     if (attachmentInputEl) {
                         attachmentInputEl.value = '';
                     }
