@@ -3004,13 +3004,10 @@
                     }
                     return;
                 }
-                const fragment = document.createDocumentFragment();
-                visible.forEach((message) => {
-                    const messageIndex = state.messages.indexOf(message);
-                    const previousMessage = messageIndex > 0 ? state.messages[messageIndex - 1] : null;
-                    fragment.appendChild(createMessageElement(message, previousMessage));
-                });
-                setChatLogContent(fragment);
+                const lastVisibleMessage = visible[visible.length - 1];
+                const messageIndex = state.messages.indexOf(lastVisibleMessage);
+                const previousMessage = messageIndex > 0 ? state.messages[messageIndex - 1] : null;
+                setChatLogContent(createMessageElement(lastVisibleMessage, previousMessage));
                 if (focusMessageIfNeeded()) {
                     return;
                 }
