@@ -553,10 +553,11 @@ body.fc-notes-locked {
     display: flex;
     flex-direction: column;
     justify-content: flex-end;
-    gap: 0;
+    gap: 0.35rem;
     background: transparent;
     box-sizing: border-box;
     align-items: stretch;
+    position: relative;
 }
 
 .fc-chat-bottom-anchor {
@@ -575,23 +576,122 @@ body.fc-notes-locked {
     font-size: 0.95rem;
 }
 
+.fc-chat-divider {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.75rem;
+    align-self: center;
+    padding: 0.25rem 0.75rem;
+    border-radius: 999px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: #94a3b8;
+    background: rgba(148, 163, 184, 0.12);
+    box-shadow: 0 10px 24px -20px rgba(15, 23, 42, 0.55);
+}
+
+.fc-new-messages {
+    position: sticky;
+    bottom: 1.25rem;
+    margin-top: 1rem;
+    align-self: center;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.55rem;
+    padding: 0.45rem 1.1rem;
+    border-radius: 999px;
+    border: none;
+    background: linear-gradient(135deg, rgba(59, 130, 246, 0.95), rgba(37, 99, 235, 0.9));
+    color: #ffffff;
+    font-weight: 600;
+    font-size: 0.85rem;
+    letter-spacing: 0.01em;
+    cursor: pointer;
+    box-shadow: 0 22px 48px -26px rgba(37, 99, 235, 0.65);
+    transition: transform 0.18s ease, box-shadow 0.18s ease, background 0.18s ease;
+    z-index: 5;
+}
+
+.fc-new-messages:hover,
+.fc-new-messages:focus-visible {
+    transform: translateY(-1px);
+    box-shadow: 0 28px 52px -24px rgba(37, 99, 235, 0.7);
+    background: linear-gradient(135deg, rgba(59, 130, 246, 1), rgba(37, 99, 235, 0.95));
+    outline: none;
+}
+
+.fc-new-messages:active {
+    transform: translateY(0);
+}
+
+.fc-new-messages__dot {
+    width: 0.5rem;
+    height: 0.5rem;
+    border-radius: 999px;
+    background: #22c55e;
+    box-shadow: 0 0 0 6px rgba(34, 197, 94, 0.18);
+}
+
+.fc-new-messages__label {
+    white-space: nowrap;
+}
+
 .fc-message {
-    display: flex;
-    flex-direction: column;
-    gap: 0;
-    padding: 0;
+    display: grid;
+    grid-template-columns: 52px minmax(0, 1fr);
+    column-gap: 0.85rem;
+    align-items: flex-start;
+    padding: 0.25rem 0;
     margin: 0;
     position: relative;
     width: 100%;
 }
 
 .fc-message--grouped {
-    gap: 0;
     padding-top: 0;
 }
 
 .fc-message--grouped .fc-message__bubble {
     padding-top: 0;
+}
+
+.fc-message__avatar {
+    width: 44px;
+    height: 44px;
+    border-radius: 14px;
+    background: var(--fc-avatar-color, rgba(79, 70, 229, 0.9));
+    color: #ffffff;
+    font-weight: 700;
+    font-size: 0.95rem;
+    letter-spacing: 0.04em;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    text-transform: uppercase;
+    box-shadow: 0 18px 36px -24px rgba(15, 23, 42, 0.65);
+    transition: transform 0.18s ease, box-shadow 0.18s ease;
+    position: relative;
+    top: 0.15rem;
+}
+
+.fc-message:hover .fc-message__avatar:not(.fc-message__avatar--grouped) {
+    transform: translateY(-1px);
+    box-shadow: 0 26px 48px -28px rgba(15, 23, 42, 0.55);
+}
+
+.fc-message__avatar--grouped {
+    visibility: hidden;
+}
+
+.fc-message__avatar--self {
+    background: linear-gradient(135deg, rgba(59, 130, 246, 0.95), rgba(14, 165, 233, 0.82));
+}
+
+.fc-message__avatar--assistant {
+    background: linear-gradient(135deg, rgba(249, 115, 22, 0.9), rgba(249, 115, 22, 0.75));
 }
 
 .fc-message__bubble {
@@ -600,6 +700,14 @@ body.fc-notes-locked {
     border-radius: 12px;
     transition: background 0.16s ease, box-shadow 0.16s ease;
     width: 100%;
+}
+
+.fc-message--self .fc-message__bubble {
+    background: rgba(37, 99, 235, 0.08);
+}
+
+.fc-message--assistant .fc-message__bubble {
+    background: rgba(249, 115, 22, 0.08);
 }
 
 .fc-message:hover .fc-message__bubble,
@@ -1929,6 +2037,21 @@ body.fc-notes-locked {
         max-height: none;
     }
 
+    .fc-message {
+        grid-template-columns: 46px minmax(0, 1fr);
+        column-gap: 0.65rem;
+    }
+
+    .fc-message__avatar {
+        width: 40px;
+        height: 40px;
+        border-radius: 12px;
+    }
+
+    .fc-new-messages {
+        bottom: 0.75rem;
+    }
+
     .fc-chat-log {
         padding: 0.75rem 1rem 4.5rem;
     }
@@ -1978,6 +2101,18 @@ body.fc-notes-locked {
 
     .fc-chat-log {
         padding: 0.6rem 0.75rem 4rem;
+    }
+
+    .fc-message {
+        grid-template-columns: 42px minmax(0, 1fr);
+        column-gap: 0.6rem;
+    }
+
+    .fc-message__avatar {
+        width: 36px;
+        height: 36px;
+        border-radius: 11px;
+        font-size: 0.85rem;
     }
 
     .fc-chat-panel__header {

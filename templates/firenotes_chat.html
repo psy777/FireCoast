@@ -74,6 +74,10 @@
                     <div class="fc-chat-panel__body">
                         <div id="fc-chat-scroll" class="fc-chat-scroll" role="presentation">
                             <div id="fc-chat-log" class="fc-chat-log" role="log" aria-live="polite" aria-busy="false"></div>
+                            <button id="fc-new-messages" class="fc-new-messages" type="button" hidden>
+                                <span class="fc-new-messages__dot" aria-hidden="true"></span>
+                                <span class="fc-new-messages__label">New messages</span>
+                            </button>
                         </div>
                     </div>
                     <footer class="fc-chat-panel__footer">
@@ -118,6 +122,10 @@
             const noteHandleButton = document.getElementById('fc-note-handle');
             const chatLogEl = document.getElementById('fc-chat-log');
             const chatScrollEl = document.getElementById('fc-chat-scroll');
+            const newMessagesButtonEl = document.getElementById('fc-new-messages');
+            const newMessagesLabelEl = newMessagesButtonEl
+                ? newMessagesButtonEl.querySelector('.fc-new-messages__label')
+                : null;
             const chatBottomAnchor = chatLogEl ? document.createElement('div') : null;
             if (chatLogEl && chatBottomAnchor) {
                 chatBottomAnchor.className = 'fc-chat-bottom-anchor';
@@ -755,6 +763,39 @@
                 settle();
             };
 
+            const updateNewMessageBanner = () => {
+                if (!newMessagesButtonEl) {
+                    return;
+                }
+                const count = Number(state.unreadCount || 0);
+                if (count > 0) {
+                    const labelText = count === 1 ? '1 new message' : `${count} new messages`;
+                    if (newMessagesLabelEl) {
+                        newMessagesLabelEl.textContent = labelText;
+                    } else {
+                        newMessagesButtonEl.textContent = labelText;
+                    }
+                    newMessagesButtonEl.hidden = false;
+                    newMessagesButtonEl.setAttribute('data-count', String(count));
+                    newMessagesButtonEl.setAttribute('aria-label', `${labelText}. Jump to latest messages.`);
+                } else {
+                    newMessagesButtonEl.hidden = true;
+                    newMessagesButtonEl.removeAttribute('data-count');
+                    newMessagesButtonEl.removeAttribute('aria-label');
+                }
+            };
+
+            const resetUnreadMessages = () => {
+                state.unreadCount = 0;
+                updateNewMessageBanner();
+            };
+
+            const incrementUnreadMessages = () => {
+                const nextCount = Number(state.unreadCount || 0) + 1;
+                state.unreadCount = Math.min(99, nextCount);
+                updateNewMessageBanner();
+            };
+
             const state = {
                 notes: [],
                 messages: [],
@@ -779,6 +820,7 @@
                 isLoadingParticipants: false,
                 replyAutoPingId: null,
                 typingTypers: [],
+                unreadCount: 0,
             };
             const pendingReactions = new Set();
             let activePopover = null;
@@ -2001,6 +2043,27 @@
                 return getMessageDisplayAuthor(message).toLowerCase() === 'user';
             };
 
+            const isSelfMessage = (message) => {
+                if (!message) {
+                    return false;
+                }
+                const metadata = message.metadata || {};
+                if (typeof metadata.is_self === 'boolean') {
+                    return metadata.is_self;
+                }
+                if (typeof metadata.isSelf === 'boolean') {
+                    return metadata.isSelf;
+                }
+                const currentId = getCurrentDeviceId();
+                if (currentId) {
+                    const deviceId = metadata.device_id || metadata.deviceId;
+                    if (deviceId) {
+                        return String(deviceId) === currentId;
+                    }
+                }
+                return false;
+            };
+
             const isMessageBeingEdited = (messageId) => {
                 return Boolean(state.activeMessageEdit && state.activeMessageEdit.id === messageId);
             };
@@ -2772,11 +2835,136 @@
                 return button;
             };
 
+            const DAY_DIVIDER_FORMATTER = new Intl.DateTimeFormat(undefined, {
+                weekday: 'long',
+                month: 'short',
+                day: 'numeric',
+                year: 'numeric',
+            });
+
+            const AVATAR_COLORS = [
+                '#6366F1',
+                '#8B5CF6',
+                '#0EA5E9',
+                '#10B981',
+                '#F97316',
+                '#EC4899',
+                '#F59E0B',
+                '#14B8A6',
+            ];
+
+            const getMessageDayKey = (message) => {
+                const timestampValue = getMessageTimestampValue(message);
+                if (timestampValue === null) {
+                    return '';
+                }
+                const stamp = new Date(timestampValue);
+                const year = stamp.getFullYear();
+                const month = String(stamp.getMonth() + 1).padStart(2, '0');
+                const day = String(stamp.getDate()).padStart(2, '0');
+                return `${year}-${month}-${day}`;
+            };
+
+            const formatDayDividerLabel = (timestampValue) => {
+                if (!Number.isFinite(timestampValue)) {
+                    return '';
+                }
+                const target = new Date(timestampValue);
+                const today = new Date();
+                const startOf = (date) => new Date(date.getFullYear(), date.getMonth(), date.getDate());
+                const diffMs = startOf(today).getTime() - startOf(target).getTime();
+                const diffDays = Math.round(diffMs / (24 * 60 * 60 * 1000));
+                if (diffDays === 0) {
+                    return 'Today';
+                }
+                if (diffDays === 1) {
+                    return 'Yesterday';
+                }
+                if (diffDays === -1) {
+                    return 'Tomorrow';
+                }
+                return DAY_DIVIDER_FORMATTER.format(target);
+            };
+
+            const createDayDividerElement = (message) => {
+                const timestampValue = getMessageTimestampValue(message);
+                if (timestampValue === null) {
+                    return null;
+                }
+                const label = formatDayDividerLabel(timestampValue);
+                if (!label) {
+                    return null;
+                }
+                const divider = document.createElement('div');
+                divider.className = 'fc-chat-divider';
+                divider.setAttribute('data-day', getMessageDayKey(message));
+                divider.setAttribute('role', 'separator');
+                divider.setAttribute('aria-label', label);
+                divider.textContent = label;
+                return divider;
+            };
+
+            const hashTextToIndex = (text) => {
+                const normalized = String(text || '').toLowerCase();
+                if (!normalized) {
+                    return 0;
+                }
+                let hash = 0;
+                for (let index = 0; index < normalized.length; index += 1) {
+                    hash = (hash << 5) - hash + normalized.charCodeAt(index);
+                    hash |= 0; // eslint-disable-line no-bitwise
+                }
+                return Math.abs(hash) % AVATAR_COLORS.length;
+            };
+
+            const getAvatarInitials = (label) => {
+                const normalized = String(label || '').trim();
+                if (!normalized) {
+                    return '?';
+                }
+                const parts = normalized.split(/\s+/).filter(Boolean);
+                if (!parts.length) {
+                    return normalized.slice(0, 2).toUpperCase();
+                }
+                if (parts.length === 1) {
+                    const token = parts[0];
+                    if (token.startsWith('@') && token.length > 1) {
+                        return token.slice(1, Math.min(3, token.length)).toUpperCase();
+                    }
+                    return token.slice(0, 2).toUpperCase();
+                }
+                const first = parts[0] ? parts[0].charAt(0) : '';
+                const last = parts[parts.length - 1] ? parts[parts.length - 1].charAt(0) : '';
+                return `${first}${last}`.toUpperCase();
+            };
+
+            const createMessageAvatar = (label, options = {}) => {
+                const avatar = document.createElement('div');
+                const classes = ['fc-message__avatar'];
+                if (options.variant) {
+                    classes.push(`fc-message__avatar--${options.variant}`);
+                }
+                if (options.grouped) {
+                    classes.push('fc-message__avatar--grouped');
+                }
+                avatar.className = classes.join(' ');
+                avatar.textContent = getAvatarInitials(label);
+                avatar.title = label || '';
+                avatar.setAttribute('aria-hidden', 'true');
+                const paletteIndex = hashTextToIndex(label);
+                avatar.style.setProperty('--fc-avatar-color', AVATAR_COLORS[paletteIndex]);
+                return avatar;
+            };
+
             const createMessageElement = (message, previousMessage = null) => {
                 const isUser = isUserMessage(message);
+                const isSelf = isSelfMessage(message);
                 const shouldGroup = shouldGroupWithPreviousMessage(message, previousMessage);
                 const wrapper = document.createElement('article');
                 const wrapperClasses = ['fc-message', isUser ? 'fc-message--user' : 'fc-message--assistant'];
+                if (isSelf) {
+                    wrapperClasses.push('fc-message--self');
+                }
                 if (shouldGroup) {
                     wrapperClasses.push('fc-message--grouped');
                 }
@@ -2806,6 +2994,14 @@
                     wrapper.classList.add('is-editing');
                 }
 
+                const authorLabelText = formatMessageAuthorLabel(getMessageDisplayAuthor(message));
+                const avatarVariant = isSelf ? 'self' : isUser ? null : 'assistant';
+
+                const avatar = createMessageAvatar(authorLabelText, {
+                    variant: avatarVariant,
+                    grouped: shouldGroup,
+                });
+
                 const bubble = document.createElement('div');
                 bubble.className = 'fc-message__bubble';
 
@@ -2817,7 +3013,7 @@
 
                 const authorLabel = document.createElement('span');
                 authorLabel.className = 'fc-message__author';
-                authorLabel.textContent = formatMessageAuthorLabel(getMessageDisplayAuthor(message));
+                authorLabel.textContent = authorLabelText;
                 header.appendChild(authorLabel);
 
                 const timestamp = document.createElement('time');
@@ -2927,6 +3123,7 @@
                 const toolbar = createMessageToolbar(message);
                 bubble.appendChild(toolbar);
 
+                wrapper.appendChild(avatar);
                 wrapper.appendChild(bubble);
                 return wrapper;
             };
@@ -3002,12 +3199,25 @@
                     if (scrollPort) {
                         scrollPort.scrollTop = 0;
                     }
+                    resetUnreadMessages();
                     return;
                 }
-                const lastVisibleMessage = visible[visible.length - 1];
-                const messageIndex = state.messages.indexOf(lastVisibleMessage);
-                const previousMessage = messageIndex > 0 ? state.messages[messageIndex - 1] : null;
-                setChatLogContent(createMessageElement(lastVisibleMessage, previousMessage));
+                const fragment = document.createDocumentFragment();
+                let lastRenderedDay = '';
+                visible.forEach((message) => {
+                    const dayKey = getMessageDayKey(message);
+                    if (dayKey && dayKey !== lastRenderedDay) {
+                        const divider = createDayDividerElement(message);
+                        if (divider) {
+                            fragment.appendChild(divider);
+                        }
+                        lastRenderedDay = dayKey;
+                    }
+                    const messageIndex = state.messages.indexOf(message);
+                    const previousMessage = messageIndex > 0 ? state.messages[messageIndex - 1] : null;
+                    fragment.appendChild(createMessageElement(message, previousMessage));
+                });
+                setChatLogContent(fragment);
                 if (focusMessageIfNeeded()) {
                     return;
                 }
@@ -3017,14 +3227,17 @@
                 if (pendingScrollToBottom) {
                     jumpToBottom();
                     pendingScrollToBottom = false;
+                    resetUnreadMessages();
                     return;
                 }
                 if (lowered) {
                     scrollPort.scrollTop = 0;
+                    resetUnreadMessages();
                     return;
                 }
                 if (shouldStickToBottom) {
                     jumpToBottom();
+                    resetUnreadMessages();
                     return;
                 }
                 const maxScrollTop = Math.max(0, scrollPort.scrollHeight - scrollPort.clientHeight);
@@ -3238,6 +3451,7 @@
                 resetPingRecipients();
                 renderNoteTitle(state.activeNote);
                 renderNotes();
+                resetUnreadMessages();
                 updateComposerAvailability();
                 renderAttachmentChips();
                 renderMessages();
@@ -3530,6 +3744,22 @@
                 });
             }
 
+            if (newMessagesButtonEl) {
+                newMessagesButtonEl.addEventListener('click', () => {
+                    pendingScrollToBottom = false;
+                    jumpToBottom();
+                    resetUnreadMessages();
+                });
+            }
+
+            if (scrollPort) {
+                scrollPort.addEventListener('scroll', () => {
+                    if (isNearBottom(scrollPort)) {
+                        resetUnreadMessages();
+                    }
+                });
+            }
+
             const handleCollaborationEvent = (event) => {
                 const detail = event && event.detail ? event.detail : null;
                 if (!detail || typeof detail !== 'object') {
@@ -3602,8 +3832,13 @@
                         }
                         const shouldAutoScroll = scrollPort ? isNearBottom(scrollPort) : false;
                         const inserted = upsertMessage(message);
-                        if (inserted && shouldAutoScroll) {
-                            pendingScrollToBottom = true;
+                        if (inserted) {
+                            if (shouldAutoScroll) {
+                                pendingScrollToBottom = true;
+                                resetUnreadMessages();
+                            } else if (!state.messageSearch && !isSelfMessage(message)) {
+                                incrementUnreadMessages();
+                            }
                         }
                         renderMessages();
                         break;
@@ -3647,6 +3882,7 @@
             });
 
             renderNotes();
+            updateNewMessageBanner();
             renderMessages();
             renderAttachmentChips();
             renderPingChips();
