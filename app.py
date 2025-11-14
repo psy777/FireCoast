@@ -621,11 +621,19 @@ def _sanitize_last_view_state(candidate: Any) -> Dict[str, Any]:
     base = _default_order_view_state()
     if not isinstance(candidate, dict):
         return base
-    base['search_input'] = _coerce_short_string(candidate.get('search_input'), max_length=256) or ''
-    base['search_query'] = _coerce_short_string(candidate.get('search_query'), max_length=512) or ''
-    base['search_pills'] = _coerce_string_list(candidate.get('search_pills'), limit=30, max_length=128)
-    base['advanced_filters'] = _sanitize_advanced_filters(candidate.get('advanced_filters'))
-    base['status_selections'] = _coerce_string_list(candidate.get('status_selections'), limit=20, max_length=64)
+    def _pick(*keys: str):
+        for key in keys:
+            if key in candidate:
+                return candidate.get(key)
+        return None
+
+    base['search_input'] = _coerce_short_string(_pick('search_input', 'searchInput'), max_length=256) or ''
+    base['search_query'] = _coerce_short_string(_pick('search_query', 'searchQuery'), max_length=512) or ''
+    base['search_pills'] = _coerce_string_list(_pick('search_pills', 'searchPills'), limit=30, max_length=128)
+    base['advanced_filters'] = _sanitize_advanced_filters(_pick('advanced_filters', 'advancedFilters'))
+    base['status_selections'] = _coerce_string_list(
+        _pick('status_selections', 'statusSelections'), limit=20, max_length=64
+    )
     return base
 
 
