@@ -470,6 +470,8 @@ DEFAULT_STATUS_PALETTE = (
     {'value': 'Shipped', 'label': 'Shipped', 'color': '#FDE047', 'shimmer': True},
 )
 
+ORDER_COLUMN_IDS = ('order', 'customer', 'date', 'total', 'status', 'actions')
+
 
 def _default_status_palette() -> List[Dict[str, Any]]:
     entries: List[Dict[str, Any]] = []
@@ -491,7 +493,44 @@ def _default_order_view_state() -> Dict[str, Any]:
         'search_query': '',
         'advanced_filters': [],
         'status_selections': [],
+        'column_order': list(ORDER_COLUMN_IDS),
+        'sort_state': {'column_id': None, 'direction': 'asc'},
     }
+
+
+def _sanitize_column_order(candidate: Any) -> List[str]:
+    values: List[str] = []
+    if isinstance(candidate, (list, tuple)):
+        for raw_value in candidate:
+            if isinstance(raw_value, str):
+                normalized = raw_value.strip()
+                if normalized and normalized in ORDER_COLUMN_IDS and normalized not in values:
+                    values.append(normalized)
+    for column_id in ORDER_COLUMN_IDS:
+        if column_id not in values:
+            values.append(column_id)
+    return values
+
+
+def _sanitize_sort_state(candidate: Any) -> Dict[str, Any]:
+    base = {'column_id': None, 'direction': 'asc'}
+    if not isinstance(candidate, dict):
+        return base
+    raw_column = candidate.get('column_id')
+    if raw_column is None:
+        raw_column = candidate.get('columnId')
+    if isinstance(raw_column, str):
+        normalized_column = raw_column.strip()
+    else:
+        normalized_column = ''
+    if normalized_column in ORDER_COLUMN_IDS:
+        base['column_id'] = normalized_column
+    raw_direction = candidate.get('direction')
+    if raw_direction is None:
+        raw_direction = candidate.get('sortDirection')
+    if isinstance(raw_direction, str) and raw_direction.strip().lower() == 'desc':
+        base['direction'] = 'desc'
+    return base
 
 
 def _sanitize_hex_color(candidate: Any, fallback: str = '#E2E8F0') -> str:
@@ -634,6 +673,8 @@ def _sanitize_last_view_state(candidate: Any) -> Dict[str, Any]:
     base['status_selections'] = _coerce_string_list(
         _pick('status_selections', 'statusSelections'), limit=20, max_length=64
     )
+    base['column_order'] = _sanitize_column_order(_pick('column_order', 'columnOrder'))
+    base['sort_state'] = _sanitize_sort_state(_pick('sort_state', 'sortState'))
     return base
 
 
@@ -740,6 +781,8 @@ def _serialize_order_view_settings(
             'textColor': _pick_text_color(entry.get('color', '#E2E8F0')),
         })
     last_view_state = order_view_settings.get('last_view_state', _default_order_view_state())
+    column_order = _sanitize_column_order(last_view_state.get('column_order'))
+    sort_state = _sanitize_sort_state(last_view_state.get('sort_state'))
     return {
         'rememberLastView': bool(order_view_settings.get('remember_last_view', True)),
         'statusPalette': palette_payload,
@@ -749,6 +792,11 @@ def _serialize_order_view_settings(
             'searchQuery': last_view_state.get('search_query', ''),
             'advancedFilters': last_view_state.get('advanced_filters', []),
             'statusSelections': last_view_state.get('status_selections', []),
+            'columnOrder': column_order,
+            'sortState': {
+                'columnId': sort_state.get('column_id'),
+                'direction': sort_state.get('direction', 'asc'),
+            },
         },
     }
 

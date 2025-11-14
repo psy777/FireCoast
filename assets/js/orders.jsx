@@ -64,12 +64,120 @@ const DEFAULT_STATUS_PALETTE = [
     { value: 'Shipped', label: 'Shipped', color: '#FDE047', textColor: '#78350F', shimmer: true },
 ];
 
-const DEFAULT_ORDER_VIEW_STATE = {
+const ORDER_COLUMN_IDS = ['order', 'customer', 'date', 'total', 'status', 'actions'];
+const DEFAULT_SORT_STATE = { columnId: null, direction: 'asc' };
+
+const createDefaultOrderViewState = () => ({
     searchInput: '',
     searchPills: [],
     searchQuery: '',
     advancedFilters: [],
     statusSelections: [],
+    columnOrder: [...ORDER_COLUMN_IDS],
+    sortState: { ...DEFAULT_SORT_STATE },
+});
+
+const sanitizeColumnOrderPreference = (candidate) => {
+    const resolved = [];
+    if (Array.isArray(candidate)) {
+        candidate.forEach((value) => {
+            if (typeof value !== 'string') {
+                return;
+            }
+            const normalized = value.trim();
+            if (!normalized || !ORDER_COLUMN_IDS.includes(normalized) || resolved.includes(normalized)) {
+                return;
+            }
+            resolved.push(normalized);
+        });
+    }
+    ORDER_COLUMN_IDS.forEach((columnId) => {
+        if (!resolved.includes(columnId)) {
+            resolved.push(columnId);
+        }
+    });
+    return resolved;
+};
+
+const sanitizeSortPreference = (candidate) => {
+    if (candidate && typeof candidate === 'object') {
+        const rawColumn = typeof candidate.columnId === 'string'
+            ? candidate.columnId
+            : typeof candidate.column_id === 'string'
+                ? candidate.column_id
+                : null;
+        const normalizedColumn = rawColumn && ORDER_COLUMN_IDS.includes(rawColumn) ? rawColumn : null;
+        const rawDirection = typeof candidate.direction === 'string'
+            ? candidate.direction.toLowerCase()
+            : typeof candidate.sortDirection === 'string'
+                ? candidate.sortDirection.toLowerCase()
+                : null;
+        const direction = rawDirection === 'desc' ? 'desc' : 'asc';
+        if (normalizedColumn) {
+            return { columnId: normalizedColumn, direction };
+        }
+    }
+    return { ...DEFAULT_SORT_STATE };
+};
+
+const sanitizeOrderViewStateSnapshot = (candidate) => {
+    const base = createDefaultOrderViewState();
+    if (!candidate || typeof candidate !== 'object') {
+        return base;
+    }
+    if (typeof candidate.searchInput === 'string') {
+        base.searchInput = candidate.searchInput;
+    }
+    if (typeof candidate.searchQuery === 'string') {
+        base.searchQuery = candidate.searchQuery;
+    }
+    if (Array.isArray(candidate.searchPills)) {
+        base.searchPills = [...candidate.searchPills];
+    }
+    if (Array.isArray(candidate.advancedFilters)) {
+        base.advancedFilters = candidate.advancedFilters.map((entry) => ({ ...entry }));
+    }
+    if (Array.isArray(candidate.statusSelections)) {
+        base.statusSelections = [...candidate.statusSelections];
+    }
+    if (Array.isArray(candidate.columnOrder)) {
+        base.columnOrder = sanitizeColumnOrderPreference(candidate.columnOrder);
+    }
+    if (candidate.sortState) {
+        base.sortState = sanitizeSortPreference(candidate.sortState);
+    }
+    return base;
+};
+
+const compareSortValues = (left, right) => {
+    if (left === right) {
+        return 0;
+    }
+    const leftExists = left !== undefined && left !== null && left !== '';
+    const rightExists = right !== undefined && right !== null && right !== '';
+    if (!leftExists && !rightExists) {
+        return 0;
+    }
+    if (!leftExists) {
+        return -1;
+    }
+    if (!rightExists) {
+        return 1;
+    }
+    if (typeof left === 'number' && typeof right === 'number') {
+        return left - right;
+    }
+    if (left instanceof Date && right instanceof Date) {
+        return left.getTime() - right.getTime();
+    }
+    const leftNumber = Number(left);
+    const rightNumber = Number(right);
+    if (!Number.isNaN(leftNumber) && !Number.isNaN(rightNumber)) {
+        return leftNumber - rightNumber;
+    }
+    const leftString = String(left).toLowerCase();
+    const rightString = String(right).toLowerCase();
+    return leftString.localeCompare(rightString, undefined, { numeric: true });
 };
 
 const FILTER_FIELDS = [
@@ -1558,6 +1666,35 @@ const getContactDisplayName = (contact) => {
     return name || company || email || (handle ? `@${handle}` : 'Unnamed contact');
 };
 
+const getOrderSortLabel = (order) => {
+    if (!order) {
+        return '';
+    }
+    const title = safeText(order.title).toLowerCase();
+    const displayId = typeof order.display_id === 'string' ? order.display_id.trim().toLowerCase() : '';
+    return `${title} ${displayId}`.trim();
+};
+
+const ORDER_COLUMN_SORTERS = {
+    order: (order) => getOrderSortLabel(order),
+    customer: (order) => safeText(getContactDisplayName(order?.primaryContact || order?.contactInfo || {})).toLowerCase(),
+    date: (order) => {
+        if (!order?.date) {
+            return 0;
+        }
+        const timestamp = Date.parse(order.date);
+        return Number.isFinite(timestamp) ? timestamp : 0;
+    },
+    total: (order) => {
+        if (typeof order?.total === 'number' && Number.isFinite(order.total)) {
+            return order.total;
+        }
+        const parsed = parseFloat(order?.total);
+        return Number.isFinite(parsed) ? parsed : 0;
+    },
+    status: (order) => safeText(order?.status).toLowerCase(),
+};
+
 const formatContactAddress = (address, city, state, zip) => {
     const parts = [];
     if (address) parts.push(address);
@@ -1667,6 +1804,58 @@ const Dashboard = ({ orders, navigateTo, viewOrder, allContacts, allSelectableIt
     const filtersMenuRef = useRef(null);
     const filtersButtonRef = useRef(null);
     const filtersPanelId = 'orders-filters-popover';
+    const [columnOrder, setColumnOrder] = useState(() => sanitizeColumnOrderPreference(initialViewState?.columnOrder));
+    const [sortState, setSortState] = useState(() => sanitizeSortPreference(initialViewState?.sortState));
+    const columnDragIdRef = useRef(null);
+    const stopRowClick = useCallback((event) => event.stopPropagation(), []);
+    const handleColumnDragStart = useCallback((event, columnId) => {
+        columnDragIdRef.current = columnId;
+        if (event.dataTransfer) {
+            event.dataTransfer.effectAllowed = 'move';
+            event.dataTransfer.setData('text/plain', columnId);
+        }
+        event.stopPropagation();
+    }, []);
+    const handleColumnDragEnd = useCallback(() => {
+        columnDragIdRef.current = null;
+    }, []);
+    const handleColumnDragOver = useCallback((event) => {
+        event.preventDefault();
+        if (event.dataTransfer) {
+            event.dataTransfer.dropEffect = 'move';
+        }
+    }, []);
+    const handleColumnDrop = useCallback((event, targetColumnId) => {
+        event.preventDefault();
+        event.stopPropagation();
+        const sourceColumnId = columnDragIdRef.current;
+        columnDragIdRef.current = null;
+        if (!sourceColumnId || !targetColumnId || sourceColumnId === targetColumnId) {
+            return;
+        }
+        setColumnOrder((prev) => {
+            const working = Array.isArray(prev) ? [...prev] : [];
+            const withoutSource = working.filter((id) => id !== sourceColumnId);
+            const targetIndex = withoutSource.indexOf(targetColumnId);
+            if (targetIndex === -1) {
+                withoutSource.push(sourceColumnId);
+            } else {
+                withoutSource.splice(targetIndex, 0, sourceColumnId);
+            }
+            return sanitizeColumnOrderPreference(withoutSource);
+        });
+    }, []);
+    const toggleColumnSort = useCallback((columnId) => {
+        setSortState((prev) => {
+            if (prev?.columnId !== columnId) {
+                return { columnId, direction: 'asc' };
+            }
+            if (prev.direction === 'asc') {
+                return { columnId, direction: 'desc' };
+            }
+            return { columnId: null, direction: 'asc' };
+        });
+    }, []);
 
     useEffect(() => {
         return () => {
@@ -1701,12 +1890,14 @@ const Dashboard = ({ orders, navigateTo, viewOrder, allContacts, allSelectableIt
         if (viewStateHydratedRef.current) {
             return;
         }
-        const snapshot = initialViewState || DEFAULT_ORDER_VIEW_STATE;
+        const snapshot = sanitizeOrderViewStateSnapshot(initialViewState);
         setSearchPills(Array.isArray(snapshot.searchPills) ? snapshot.searchPills : []);
         setInputValue(snapshot.searchInput || '');
         setAdvancedFilters(Array.isArray(snapshot.advancedFilters) ? snapshot.advancedFilters : []);
         setStatusSelections(Array.isArray(snapshot.statusSelections) ? snapshot.statusSelections : []);
         setActiveSearchQuery(snapshot.searchQuery || '');
+        setColumnOrder(sanitizeColumnOrderPreference(snapshot.columnOrder));
+        setSortState(sanitizeSortPreference(snapshot.sortState));
         viewStateHydratedRef.current = true;
     }, [initialViewState]);
 
@@ -2003,9 +2194,27 @@ const Dashboard = ({ orders, navigateTo, viewOrder, allContacts, allSelectableIt
         });
     }, [advancedFilters, evaluateRule, normalizedStatusSet]);
 
+    const sortOrders = useCallback((ordersList) => {
+        if (!Array.isArray(ordersList)) {
+            return [];
+        }
+        const columnId = sortState?.columnId;
+        const accessor = columnId ? ORDER_COLUMN_SORTERS[columnId] : null;
+        if (!accessor) {
+            return [...ordersList];
+        }
+        const sorted = [...ordersList].sort((left, right) => compareSortValues(accessor(left), accessor(right)));
+        if (sortState.direction === 'desc') {
+            sorted.reverse();
+        }
+        return sorted;
+    }, [sortState]);
+
     useEffect(() => {
-        setFilteredOrders(applyAllFilters(searchScopeOrders));
-    }, [searchScopeOrders, applyAllFilters]);
+        const filtered = applyAllFilters(searchScopeOrders);
+        const sorted = sortOrders(filtered);
+        setFilteredOrders(sorted);
+    }, [searchScopeOrders, applyAllFilters, sortOrders]);
 
     useEffect(() => {
         const fetchDashboardStats = async () => {
@@ -2032,9 +2241,11 @@ const Dashboard = ({ orders, navigateTo, viewOrder, allContacts, allSelectableIt
                 searchQuery: activeSearchQuery,
                 advancedFilters,
                 statusSelections,
+                columnOrder,
+                sortState,
             });
         }
-    }, [inputValue, searchPills, activeSearchQuery, advancedFilters, statusSelections, onViewStateChange]);
+    }, [inputValue, searchPills, activeSearchQuery, advancedFilters, statusSelections, columnOrder, sortState, onViewStateChange]);
 
     const addFilterRule = () => {
         setAdvancedFilters((prev) => {
@@ -2137,7 +2348,7 @@ const Dashboard = ({ orders, navigateTo, viewOrder, allContacts, allSelectableIt
 
     const statusFilterDisabled = statusSelections.length === 0;
 
-    const formatCurrency = (amountInDollars) => {
+    const formatCurrency = useCallback((amountInDollars) => {
         const numericAmount = typeof amountInDollars === 'number' ? amountInDollars : parseFloat(amountInDollars) || 0;
         return numericAmount.toLocaleString('en-US', {
             style: 'currency',
@@ -2145,11 +2356,117 @@ const Dashboard = ({ orders, navigateTo, viewOrder, allContacts, allSelectableIt
             minimumFractionDigits: 2,
             maximumFractionDigits: 2,
         });
-    };
+    }, []);
 
     const noFiltersApplied = advancedFilters.length === 0 && statusSelections.length === 0;
     const activeFilterCount = advancedFilters.length + statusSelections.length;
     const hasActiveFilters = !noFiltersApplied;
+    const columnDefinitions = useMemo(() => {
+        const timeZone = 'America/Chicago';
+        const dateOptions = { year: 'numeric', month: 'long', day: 'numeric' };
+        return {
+            order: {
+                id: 'order',
+                label: 'Order',
+                sortable: true,
+                headerClassName: 'px-4 py-3 text-left',
+                cellClassName: 'px-4 py-3 align-top',
+                renderCell: (order) => {
+                    const orderTitle = (order.title || '').trim();
+                    const displayIdValue = typeof order.display_id === 'string' ? order.display_id : '';
+                    const trimmedDisplayId = displayIdValue.trim();
+                    const hasDisplayId = Boolean(trimmedDisplayId);
+                    const primaryLabel = orderTitle || 'Untitled Order';
+                    const shortId = order.id ? (order.id.length > 12 ? `${order.id.slice(0, 8)}…` : order.id) : '';
+                    const secondaryTags = [];
+                    if (hasDisplayId) {
+                        secondaryTags.push(`Ref: ${trimmedDisplayId}`);
+                    }
+                    if (order.id && (!hasDisplayId || trimmedDisplayId !== order.id)) {
+                        secondaryTags.push(`ID: ${shortId}`);
+                    }
+                    const idLabel = secondaryTags.join(' • ');
+                    return (
+                        <div className="flex flex-col">
+                            <span className="font-medium text-slate-800">{primaryLabel}</span>
+                            {idLabel && <span className="text-xs text-slate-500" title={order.id}>{idLabel}</span>}
+                        </div>
+                    );
+                },
+            },
+            customer: {
+                id: 'customer',
+                label: 'Customer',
+                sortable: true,
+                headerClassName: 'px-4 py-3 text-left',
+                cellClassName: 'px-4 py-3',
+                renderCell: (order) => getContactDisplayName(order.primaryContact || order.contactInfo),
+            },
+            date: {
+                id: 'date',
+                label: 'Date',
+                sortable: true,
+                headerClassName: 'px-4 py-3 text-left',
+                cellClassName: 'px-4 py-3',
+                renderCell: (order) => formatInTimeZone(order.date, timeZone, dateOptions),
+            },
+            total: {
+                id: 'total',
+                label: 'Total',
+                sortable: true,
+                headerClassName: 'px-4 py-3 text-left',
+                cellClassName: 'px-4 py-3',
+                renderCell: (order) => formatCurrency(order.total),
+            },
+            status: {
+                id: 'status',
+                label: 'Status',
+                sortable: true,
+                headerClassName: 'px-4 py-3 text-left',
+                cellClassName: 'px-4 py-3',
+                renderCell: (order) => (
+                    <StatusBadge statusText={order.status || 'Unknown'} appearance={paletteForStatus(order.status)} />
+                ),
+            },
+            actions: {
+                id: 'actions',
+                label: 'Actions',
+                sortable: false,
+                headerClassName: 'px-4 py-3 text-center',
+                cellClassName: 'px-4 py-3 text-center',
+                cellProps: { onClick: stopRowClick },
+                renderCell: (order) => (
+                    <div className="flex items-center justify-center space-x-2">
+                        <button
+                            type="button"
+                            onClick={(event) => {
+                                event.stopPropagation();
+                                generateInvoicePdf(order, allSelectableItems, 'preview', branding);
+                            }}
+                            className="p-1 text-slate-500 hover:text-orange-600"
+                        >
+                            <PdfIcon />
+                        </button>
+                        <button
+                            type="button"
+                            onClick={(event) => {
+                                event.stopPropagation();
+                                setOrderForEmailModal(order);
+                            }}
+                            className="p-1 text-slate-500 hover:text-orange-600"
+                        >
+                            <EmailIcon />
+                        </button>
+                    </div>
+                ),
+            },
+        };
+    }, [allSelectableItems, branding, formatCurrency, paletteForStatus, stopRowClick, setOrderForEmailModal]);
+    const normalizedColumnOrder = useMemo(() => sanitizeColumnOrderPreference(columnOrder), [columnOrder]);
+    const orderedColumns = useMemo(
+        () => normalizedColumnOrder.map((columnId) => columnDefinitions[columnId]).filter(Boolean),
+        [normalizedColumnOrder, columnDefinitions]
+    );
 
     return (
         <React.Fragment>
@@ -2405,59 +2722,84 @@ const Dashboard = ({ orders, navigateTo, viewOrder, allContacts, allSelectableIt
                 <div className="pt-4 border-t border-slate-200">
                     <div className="overflow-x-auto">
                         <table className="w-full text-sm text-left text-slate-500">
-                        <thead className="text-xs text-slate-700 uppercase bg-slate-100">
-                            <tr>
-                                <th className="px-4 py-3">Order</th>
-                                <th className="px-4 py-3">Customer</th>
-                                <th className="px-4 py-3">Date</th>
-                                <th className="px-4 py-3">Total</th>
-                                <th className="px-4 py-3">Status</th>
-                                <th className="px-4 py-3 text-center">Actions</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {filteredOrders.map((order) => {
-                                const timeZone = 'America/Chicago';
-                                const dateOptions = { year: 'numeric', month: 'long', day: 'numeric' };
-                                const orderTitle = (order.title || '').trim();
-                                const displayIdValue = typeof order.display_id === 'string' ? order.display_id : '';
-                                const trimmedDisplayId = displayIdValue.trim();
-                                const hasDisplayId = Boolean(trimmedDisplayId);
-                                const primaryLabel = orderTitle || 'Untitled Order';
-                                const shortId = order.id ? (order.id.length > 12 ? `${order.id.slice(0, 8)}…` : order.id) : '';
-                                const secondaryTags = [];
-                                if (hasDisplayId) {
-                                    secondaryTags.push(`Ref: ${trimmedDisplayId}`);
-                                }
-                                if (order.id && (!hasDisplayId || trimmedDisplayId !== order.id)) {
-                                    secondaryTags.push(`ID: ${shortId}`);
-                                }
-                                const idLabel = secondaryTags.join(' • ');
-                                const paletteEntry = paletteForStatus(order.status);
-                                return (
-                                    <tr key={order.id} onClick={() => viewOrder(order)} className="bg-white border-b hover:bg-slate-50 cursor-pointer">
-                                        <td className="px-4 py-3 align-top">
-                                            <div className="flex flex-col">
-                                                <span className="font-medium text-slate-800">{primaryLabel}</span>
-                                                {idLabel && <span className="text-xs text-slate-500" title={order.id}>{idLabel}</span>}
-                                            </div>
-                                        </td>
-                                        <td className="px-4 py-3">{getContactDisplayName(order.primaryContact || order.contactInfo)}</td>
-                                        <td className="px-4 py-3">{formatInTimeZone(order.date, timeZone, dateOptions)}</td>
-                                        <td className="px-4 py-3">{formatCurrency(order.total)}</td>
-                                        <td className="px-4 py-3">
-                                            <StatusBadge statusText={order.status || 'Unknown'} appearance={paletteEntry} />
-                                        </td>
-                                        <td className="px-4 py-3 text-center" onClick={(e) => e.stopPropagation()}>
-                                            <div className="flex items-center justify-center space-x-2">
-                                                <button onClick={() => generateInvoicePdf(order, allSelectableItems, 'preview', branding)} className="p-1 text-slate-500 hover:text-orange-600"><PdfIcon /></button>
-                                                <button onClick={() => setOrderForEmailModal(order)} className="p-1 text-slate-500 hover:text-orange-600"><EmailIcon /></button>
-                                            </div>
+                            <thead className="text-xs text-slate-700 uppercase bg-slate-100">
+                                <tr>
+                                    {orderedColumns.map((column) => {
+                                        const isSorted = sortState?.columnId === column.id;
+                                        const ariaSort = column.sortable
+                                            ? isSorted
+                                                ? sortState.direction === 'asc'
+                                                    ? 'ascending'
+                                                    : 'descending'
+                                                : 'none'
+                                            : undefined;
+                                        return (
+                                            <th
+                                                key={column.id}
+                                                className={column.headerClassName || 'px-4 py-3 text-left'}
+                                                aria-sort={ariaSort}
+                                                onClick={column.sortable ? () => toggleColumnSort(column.id) : undefined}
+                                                onDragOver={handleColumnDragOver}
+                                                onDrop={(event) => handleColumnDrop(event, column.id)}
+                                            >
+                                                <div className="flex items-center gap-2">
+                                                    <span>{column.label}</span>
+                                                    {column.sortable && (
+                                                        <span className={`text-[10px] ${isSorted ? 'text-orange-600' : 'text-slate-400'}`}>
+                                                            {isSorted ? (sortState.direction === 'asc' ? '▲' : '▼') : '↕'}
+                                                        </span>
+                                                    )}
+                                                    <button
+                                                        type="button"
+                                                        className="ml-auto text-slate-300 hover:text-slate-500 cursor-grab"
+                                                        draggable
+                                                        onDragStart={(event) => handleColumnDragStart(event, column.id)}
+                                                        onDragEnd={handleColumnDragEnd}
+                                                        onClick={(event) => event.stopPropagation()}
+                                                        aria-label={`Reorder ${column.label} column`}
+                                                    >
+                                                        ⠿
+                                                    </button>
+                                                </div>
+                                            </th>
+                                        );
+                                    })}
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {filteredOrders.map((order) => (
+                                    <tr
+                                        key={order.id}
+                                        onClick={() => viewOrder(order)}
+                                        className="bg-white border-b hover:bg-slate-50 cursor-pointer"
+                                    >
+                                        {orderedColumns.map((column) => {
+                                            const cellProps = typeof column.cellProps === 'function'
+                                                ? column.cellProps(order)
+                                                : (column.cellProps || {});
+                                            return (
+                                                <td
+                                                    key={`${order.id}-${column.id}`}
+                                                    className={column.cellClassName || 'px-4 py-3'}
+                                                    {...cellProps}
+                                                >
+                                                    {column.renderCell(order)}
+                                                </td>
+                                            );
+                                        })}
+                                    </tr>
+                                ))}
+                                {filteredOrders.length === 0 && (
+                                    <tr>
+                                        <td
+                                            colSpan={Math.max(orderedColumns.length, 1)}
+                                            className="px-4 py-6 text-center text-slate-500"
+                                        >
+                                            No orders match your filters yet.
                                         </td>
                                     </tr>
-                                );
-                            })}
-                        </tbody>
+                                )}
+                            </tbody>
                     </table>
                 </div>
             </div>
@@ -4165,9 +4507,9 @@ const App = () => {
         invoice_logo_data_url: "",
     });
     const [orderViewSettings, setOrderViewSettings] = useState({ rememberLastView: true, statusPalette: DEFAULT_STATUS_PALETTE });
-    const [orderViewState, setOrderViewState] = useState(DEFAULT_ORDER_VIEW_STATE);
+    const [orderViewState, setOrderViewState] = useState(() => createDefaultOrderViewState());
     const orderViewSaveTimeoutRef = useRef(null);
-    const latestOrderViewStateRef = useRef(DEFAULT_ORDER_VIEW_STATE);
+    const latestOrderViewStateRef = useRef(createDefaultOrderViewState());
 
     const updateBrowserUrl = useCallback((updater) => {
         if (typeof window === 'undefined') {
@@ -4239,10 +4581,7 @@ const App = () => {
             const sanitizedPalette = Array.isArray(orderViewData.statusPalette) && orderViewData.statusPalette.length
                 ? orderViewData.statusPalette
                 : DEFAULT_STATUS_PALETTE;
-            const hydratedViewState = {
-                ...DEFAULT_ORDER_VIEW_STATE,
-                ...(orderViewData.lastViewState || {}),
-            };
+            const hydratedViewState = sanitizeOrderViewStateSnapshot(orderViewData.lastViewState);
             setOrderViewSettings({
                 rememberLastView: orderViewData.rememberLastView !== false,
                 statusPalette: sanitizedPalette,
@@ -4359,8 +4698,9 @@ const App = () => {
             } catch (error) {
             console.error("Failed to fetch data:", error);
             setOrderViewSettings({ rememberLastView: true, statusPalette: DEFAULT_STATUS_PALETTE });
-            setOrderViewState(DEFAULT_ORDER_VIEW_STATE);
-            latestOrderViewStateRef.current = DEFAULT_ORDER_VIEW_STATE;
+            const resetViewState = createDefaultOrderViewState();
+            setOrderViewState(resetViewState);
+            latestOrderViewStateRef.current = resetViewState;
             } finally {
             setIsLoading(false);
             }
@@ -4372,15 +4712,8 @@ const App = () => {
         if (!nextState || typeof nextState !== 'object') {
             return;
         }
-        const snapshot = {
-            ...DEFAULT_ORDER_VIEW_STATE,
-            ...nextState,
-            searchInput: typeof nextState.searchInput === 'string' ? nextState.searchInput : '',
-            searchQuery: typeof nextState.searchQuery === 'string' ? nextState.searchQuery : '',
-            searchPills: Array.isArray(nextState.searchPills) ? nextState.searchPills : [],
-            advancedFilters: Array.isArray(nextState.advancedFilters) ? nextState.advancedFilters : [],
-            statusSelections: Array.isArray(nextState.statusSelections) ? nextState.statusSelections : [],
-        };
+        const mergedState = { ...latestOrderViewStateRef.current, ...nextState };
+        const snapshot = sanitizeOrderViewStateSnapshot(mergedState);
         setOrderViewState(snapshot);
         latestOrderViewStateRef.current = snapshot;
         if (orderViewSettings.rememberLastView === false) {
