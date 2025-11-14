@@ -313,6 +313,64 @@ const normalizeDiscountsForTotals = (discounts, lineItems) => {
     return normalized;
 };
 
+const ORDER_COLUMN_IDS = ['order', 'customer', 'date', 'total', 'status', 'actions'];
+const ORDER_COLUMN_ID_SET = new Set(ORDER_COLUMN_IDS);
+const ORDER_COLUMN_LABELS = {
+    order: 'Order',
+    customer: 'Customer',
+    date: 'Date',
+    total: 'Total',
+    status: 'Status',
+    actions: 'Actions',
+};
+
+const createDefaultViewPreferences = () => ({
+    columnOrder: [...ORDER_COLUMN_IDS],
+    hiddenColumns: [],
+    searchPills: [],
+    searchInput: '',
+});
+
+const normalizeColumnOrder = (candidate) => {
+    const provided = Array.isArray(candidate) ? candidate : [];
+    const normalized = [];
+    provided.forEach((value) => {
+        const key = String(value);
+        if (ORDER_COLUMN_ID_SET.has(key) && !normalized.includes(key)) {
+            normalized.push(key);
+        }
+    });
+    ORDER_COLUMN_IDS.forEach((value) => {
+        if (!normalized.includes(value)) {
+            normalized.push(value);
+        }
+    });
+    return normalized;
+};
+
+const normalizeHiddenColumns = (candidate) => {
+    if (!Array.isArray(candidate)) {
+        return [];
+    }
+    const normalized = [];
+    candidate.forEach((value) => {
+        const key = String(value);
+        if (ORDER_COLUMN_ID_SET.has(key) && !normalized.includes(key)) {
+            normalized.push(key);
+        }
+    });
+    return normalized;
+};
+
+const normalizeViewPreferences = (candidate = {}) => ({
+    columnOrder: normalizeColumnOrder(candidate.columnOrder),
+    hiddenColumns: normalizeHiddenColumns(candidate.hiddenColumns),
+    searchPills: Array.isArray(candidate.searchPills)
+        ? candidate.searchPills.map(value => String(value)).filter(Boolean)
+        : [],
+    searchInput: typeof candidate.searchInput === 'string' ? candidate.searchInput : '',
+});
+
 const sanitizePlaceholderValue = (value) => {
     if (!value) return '';
     const trimmed = value.toString().trim();
@@ -334,6 +392,84 @@ const Select = ({ value, onChange, disabled = false, children }) => (
 const Textarea = ({ label, placeholder, value, onChange, disabled = false, rows = 3, onFocus, onBlur }) => (
     <div><label className="block text-sm font-medium text-slate-600">{label}</label><textarea rows={rows} placeholder={placeholder} value={value} onChange={onChange} disabled={disabled} onFocus={onFocus} onBlur={onBlur} className="mt-1 block w-full text-sm px-3 py-2 bg-white border border-slate-300 rounded-md shadow-sm placeholder-slate-400 focus:outline-none focus:ring-orange-500 focus:border-orange-500 disabled:bg-slate-100 disabled:text-slate-500"></textarea></div>
 );
+
+const TagsEditor = ({ tags = [], onChange = () => {}, disabled = false }) => {
+    const [draftTag, setDraftTag] = React.useState('');
+    const normalizedTags = Array.isArray(tags) ? tags : [];
+
+    const handleAddTag = () => {
+        const trimmed = draftTag.trim();
+        if (!trimmed) {
+            return;
+        }
+        const exists = normalizedTags.some(tag => tag.toLowerCase() === trimmed.toLowerCase());
+        if (exists) {
+            setDraftTag('');
+            return;
+        }
+        onChange([...normalizedTags, trimmed]);
+        setDraftTag('');
+    };
+
+    const handleKeyDown = (event) => {
+        if (event.key === 'Enter') {
+            event.preventDefault();
+            handleAddTag();
+        }
+    };
+
+    const handleRemove = (tagToRemove) => {
+        onChange(normalizedTags.filter(tag => tag !== tagToRemove));
+    };
+
+    return (
+        <div>
+            <label className="block text-sm font-medium text-slate-600">Tags</label>
+            <div className="mt-1 flex flex-wrap gap-2">
+                {normalizedTags.length === 0 && (
+                    <span className="text-sm text-slate-400">No tags yet</span>
+                )}
+                {normalizedTags.map(tag => (
+                    <span
+                        key={tag}
+                        className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-slate-100 text-xs font-medium text-slate-700 border border-slate-200"
+                    >
+                        {tag}
+                        {!disabled && (
+                            <button
+                                type="button"
+                                onClick={() => handleRemove(tag)}
+                                className="text-slate-400 hover:text-slate-600 focus:outline-none"
+                                aria-label={`Remove tag ${tag}`}
+                            >
+                                &times;
+                            </button>
+                        )}
+                    </span>
+                ))}
+            </div>
+            {!disabled && (
+                <div className="mt-2 flex gap-2">
+                    <input
+                        type="text"
+                        value={draftTag}
+                        onChange={event => setDraftTag(event.target.value)}
+                        onKeyDown={handleKeyDown}
+                        placeholder="Add tag"
+                        className="flex-grow px-3 py-2 bg-white border border-slate-300 rounded-md shadow-sm focus:outline-none focus:ring-orange-500 focus:border-orange-500 text-sm"
+                    />
+                    <button
+                        type="button"
+                        onClick={handleAddTag}
+                        className="px-4 py-2 bg-orange-600 text-white text-sm font-semibold rounded-md hover:bg-orange-700 transition-colors"
+                    >
+                        Add
+                    </button>
+                </div>
+            )}
+        </div>
+    );
+};
 
 const mentionComponents = window.RecordMentionComponents || {};
 const MentionText = mentionComponents.RecordMentionText;
@@ -1601,11 +1737,92 @@ const ContactSummaryCard = ({ contact, shippingFallback, billingFallback }) => {
 };
 
 // --- COMPONENTS ---
-const Dashboard = ({ orders, navigateTo, viewOrder, allContacts, allSelectableItems, setOrderForEmailModal, branding }) => {
-    const { useState, useEffect, useMemo, useRef } = React;
+const ViewPreferencesModal = ({
+    visible,
+    columnOrder,
+    hiddenColumns,
+    onMoveColumn,
+    onToggleColumn,
+    onReset,
+    onClose,
+}) => {
+    if (!visible) {
+        return null;
+    }
+    const hiddenSet = new Set(hiddenColumns || []);
+    return (
+        <div className="fixed inset-0 bg-black bg-opacity-40 z-40 flex items-center justify-center px-4">
+            <div className="bg-white rounded-lg shadow-2xl w-full max-w-lg">
+                <div className="flex items-center justify-between border-b px-6 py-4">
+                    <h3 className="text-lg font-semibold text-slate-800">Customize columns</h3>
+                    <button onClick={onClose} className="text-slate-400 hover:text-slate-600 text-2xl leading-none" aria-label="Close">
+                        &times;
+                    </button>
+                </div>
+                <div className="px-6 py-4 max-h-[60vh] overflow-y-auto space-y-3">
+                    {columnOrder.map((columnId, index) => {
+                        const label = ORDER_COLUMN_LABELS[columnId] || columnId;
+                        const isHidden = hiddenSet.has(columnId);
+                        return (
+                            <div key={columnId} className="flex items-center justify-between border border-slate-200 rounded-md px-3 py-2">
+                                <div>
+                                    <p className="text-sm font-medium text-slate-800">{label}</p>
+                                    <p className="text-xs text-slate-500">{isHidden ? 'Hidden' : 'Visible'}</p>
+                                </div>
+                                <div className="flex items-center gap-2">
+                                    <button
+                                        type="button"
+                                        onClick={() => onMoveColumn(columnId, -1)}
+                                        disabled={index === 0}
+                                        className="px-2 py-1 border border-slate-200 rounded text-xs text-slate-600 disabled:opacity-50"
+                                    >
+                                        ↑
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => onMoveColumn(columnId, 1)}
+                                        disabled={index === columnOrder.length - 1}
+                                        className="px-2 py-1 border border-slate-200 rounded text-xs text-slate-600 disabled:opacity-50"
+                                    >
+                                        ↓
+                                    </button>
+                                    <label className="flex items-center gap-1 text-xs font-medium text-slate-600">
+                                        <input
+                                            type="checkbox"
+                                            checked={!isHidden}
+                                            onChange={event => onToggleColumn(columnId, event.target.checked)}
+                                            className="rounded border-slate-300 text-orange-600 focus:ring-orange-500"
+                                        />
+                                        Show
+                                    </label>
+                                </div>
+                            </div>
+                        );
+                    })}
+                </div>
+                <div className="flex items-center justify-between border-t px-6 py-4">
+                    <button onClick={onReset} className="text-sm font-medium text-slate-500 hover:text-slate-700">Reset to default</button>
+                    <button onClick={onClose} className="px-4 py-2 bg-orange-600 text-white text-sm font-semibold rounded-md hover:bg-orange-700">
+                        Done
+                    </button>
+                </div>
+            </div>
+        </div>
+    );
+};
+
+const Dashboard = ({ orders, navigateTo, viewOrder, allContacts, allSelectableItems, setOrderForEmailModal, branding, orderPreferences, onPreferencesChange, preferencesReady }) => {
+    const { useState, useEffect, useMemo, useRef, useCallback } = React;
+    const initialPreferencesRef = useRef(null);
+    const preferencesSignatureRef = useRef(null);
+    const lastSavedSignatureRef = useRef(null);
+    if (initialPreferencesRef.current === null) {
+        initialPreferencesRef.current = normalizeViewPreferences(orderPreferences || createDefaultViewPreferences());
+    }
+    const initialPreferences = initialPreferencesRef.current;
     const [filteredOrders, setFilteredOrders] = useState(orders);
-    const [searchPills, setSearchPills] = useState([]);
-    const [inputValue, setInputValue] = useState('');
+    const [searchPills, setSearchPills] = useState(initialPreferences.searchPills);
+    const [inputValue, setInputValue] = useState(initialPreferences.searchInput);
     const [dashboardStats, setDashboardStats] = useState({ totalRevenue: 0, averageOrderRevenue: 0, totalOrders: 0 });
     const searchInputRef = useRef(null);
     const searchAbortRef = useRef(null);
@@ -1614,6 +1831,11 @@ const Dashboard = ({ orders, navigateTo, viewOrder, allContacts, allSelectableIt
     const [dateKeyword, setDateKeyword] = useState('');
     const [isSearching, setIsSearching] = useState(false);
     const [searchError, setSearchError] = useState(null);
+    const [columnOrder, setColumnOrder] = useState(initialPreferences.columnOrder);
+    const [hiddenColumnIds, setHiddenColumnIds] = useState(initialPreferences.hiddenColumns);
+    const [showPreferencesModal, setShowPreferencesModal] = useState(false);
+    const [hasHydratedPreferences, setHasHydratedPreferences] = useState(false);
+    const hiddenColumnsSet = useMemo(() => new Set(hiddenColumnIds), [hiddenColumnIds]);
 
     useEffect(() => {
         return () => {
@@ -1622,6 +1844,48 @@ const Dashboard = ({ orders, navigateTo, viewOrder, allContacts, allSelectableIt
             }
         };
     }, []);
+
+    useEffect(() => {
+        const normalized = normalizeViewPreferences(orderPreferences || initialPreferences);
+        const signature = JSON.stringify(normalized);
+        if (signature === preferencesSignatureRef.current) {
+            if (!hasHydratedPreferences) {
+                setHasHydratedPreferences(true);
+            }
+            return;
+        }
+        preferencesSignatureRef.current = signature;
+        lastSavedSignatureRef.current = signature;
+        setColumnOrder(normalized.columnOrder);
+        setHiddenColumnIds(normalized.hiddenColumns);
+        setSearchPills(normalized.searchPills);
+        setInputValue(normalized.searchInput);
+        if (!hasHydratedPreferences) {
+            setHasHydratedPreferences(true);
+        }
+    }, [orderPreferences, hasHydratedPreferences, initialPreferences]);
+
+    useEffect(() => {
+        if (!hasHydratedPreferences || !preferencesReady || typeof onPreferencesChange !== 'function') {
+            return;
+        }
+        const payload = {
+            searchPills,
+            searchInput: inputValue,
+            columnOrder,
+            hiddenColumns: hiddenColumnIds,
+        };
+        const normalized = normalizeViewPreferences(payload);
+        const signature = JSON.stringify(normalized);
+        if (signature === lastSavedSignatureRef.current) {
+            return;
+        }
+        const timeout = setTimeout(() => {
+            lastSavedSignatureRef.current = signature;
+            onPreferencesChange(normalized);
+        }, 600);
+        return () => clearTimeout(timeout);
+    }, [searchPills, inputValue, columnOrder, hiddenColumnIds, hasHydratedPreferences, preferencesReady, onPreferencesChange]);
 
     const handleDateSelect = (date) => {
         const dateString = date.toISOString().split('T')[0];
@@ -1695,6 +1959,157 @@ const Dashboard = ({ orders, navigateTo, viewOrder, allContacts, allSelectableIt
         setInputValue('');
         setSearchError(null);
     };
+
+    const handleMoveColumn = useCallback((columnId, delta) => {
+        setColumnOrder(prev => {
+            const next = [...prev];
+            const currentIndex = next.indexOf(columnId);
+            if (currentIndex === -1) {
+                return next;
+            }
+            const targetIndex = currentIndex + delta;
+            if (targetIndex < 0 || targetIndex >= next.length) {
+                return next;
+            }
+            const temp = next[targetIndex];
+            next[targetIndex] = next[currentIndex];
+            next[currentIndex] = temp;
+            return next;
+        });
+    }, []);
+
+    const handleToggleColumnVisibility = useCallback((columnId, shouldShow) => {
+        setHiddenColumnIds(prev => {
+            const current = new Set(prev);
+            if (shouldShow) {
+                current.delete(columnId);
+            } else if (ORDER_COLUMN_ID_SET.has(columnId)) {
+                current.add(columnId);
+            }
+            return Array.from(current);
+        });
+    }, []);
+
+    const handleResetView = useCallback(() => {
+        const defaults = createDefaultViewPreferences();
+        setColumnOrder(defaults.columnOrder);
+        setHiddenColumnIds(defaults.hiddenColumns);
+        setSearchPills(defaults.searchPills);
+        setInputValue(defaults.searchInput);
+    }, []);
+
+    const columnDefinitions = useMemo(() => {
+        const timeZone = 'America/Chicago';
+        const dateOptions = { year: 'numeric', month: 'long', day: 'numeric' };
+        return {
+            order: {
+                label: ORDER_COLUMN_LABELS.order,
+                headerClassName: 'px-4 py-3',
+                cellClassName: 'px-4 py-3 align-top',
+                render: (order) => {
+                    const orderTitle = (order.title || '').trim();
+                    const displayIdValue = typeof order.display_id === 'string' ? order.display_id.trim() : '';
+                    const hasDisplayId = Boolean(displayIdValue);
+                    const primaryLabel = orderTitle || 'Untitled Order';
+                    const shortId = order.id ? (order.id.length > 12 ? `${order.id.slice(0, 8)}…` : order.id) : '';
+                    const secondaryTags = [];
+                    if (hasDisplayId) {
+                        secondaryTags.push(`Ref: ${displayIdValue}`);
+                    }
+                    if (order.id && (!hasDisplayId || displayIdValue !== order.id)) {
+                        secondaryTags.push(`ID: ${shortId}`);
+                    }
+                    const idLabel = secondaryTags.join(' • ');
+                    const tagList = Array.isArray(order.tags) ? order.tags : [];
+                    return (
+                        <div className="flex flex-col gap-1">
+                            <span className="font-medium text-slate-800">{primaryLabel}</span>
+                            {idLabel && <span className="text-xs text-slate-500" title={order.id}>{idLabel}</span>}
+                            {tagList.length > 0 && (
+                                <div className="flex flex-wrap gap-1.5">
+                                    {tagList.map(tag => (
+                                        <span
+                                            key={tag}
+                                            className="text-[11px] font-semibold uppercase tracking-wide bg-orange-50 text-orange-700 border border-orange-100 px-2 py-0.5 rounded-full"
+                                        >
+                                            {tag}
+                                        </span>
+                                    ))}
+                                </div>
+                            )}
+                        </div>
+                    );
+                }
+            },
+            customer: {
+                label: ORDER_COLUMN_LABELS.customer,
+                headerClassName: 'px-4 py-3',
+                cellClassName: 'px-4 py-3',
+                render: (order) => getContactDisplayName(order.primaryContact || order.contactInfo),
+            },
+            date: {
+                label: ORDER_COLUMN_LABELS.date,
+                headerClassName: 'px-4 py-3',
+                cellClassName: 'px-4 py-3',
+                render: (order) => (order.date ? formatInTimeZone(order.date, timeZone, dateOptions) : '—'),
+            },
+            total: {
+                label: ORDER_COLUMN_LABELS.total,
+                headerClassName: 'px-4 py-3',
+                cellClassName: 'px-4 py-3',
+                render: (order) => {
+                    const parsedTotal = parseFloat(order.total || 0);
+                    const safeTotal = Number.isFinite(parsedTotal) ? parsedTotal : 0;
+                    return `$${safeTotal.toFixed(2)}`;
+                },
+            },
+            status: {
+                label: ORDER_COLUMN_LABELS.status,
+                headerClassName: 'px-4 py-3',
+                cellClassName: 'px-4 py-3',
+                render: (order) => (
+                    order.status === 'Shipped'
+                        ? <ShippedStatusBadge statusText={order.status} />
+                        : (
+                            <span
+                                className={`px-2 py-1 text-xs font-semibold rounded-full ${
+                                    order.status === 'Paid'
+                                        ? 'bg-green-100 text-green-800'
+                                        : order.status === 'Sent'
+                                            ? 'bg-blue-100 text-blue-800'
+                                            : 'bg-slate-100 text-slate-800'
+                                }`}
+                            >
+                                {order.status}
+                            </span>
+                        )
+                ),
+            },
+            actions: {
+                label: ORDER_COLUMN_LABELS.actions,
+                headerClassName: 'px-4 py-3 text-center',
+                cellClassName: 'px-4 py-3',
+                render: (order) => (
+                    <div className="flex items-center justify-center space-x-2" onClick={(event) => event.stopPropagation()}>
+                        <button
+                            onClick={() => generateInvoicePdf(order, allSelectableItems, 'preview', branding)}
+                            className="p-1 text-slate-500 hover:text-orange-600"
+                            aria-label="Preview invoice"
+                        >
+                            <PdfIcon />
+                        </button>
+                        <button
+                            onClick={() => setOrderForEmailModal(order)}
+                            className="p-1 text-slate-500 hover:text-orange-600"
+                            aria-label="Send order via email"
+                        >
+                            <EmailIcon />
+                        </button>
+                    </div>
+                ),
+            },
+        };
+    }, [allSelectableItems, branding, setOrderForEmailModal]);
 
     const buildSearchQuery = () => {
         const fragments = [...searchPills];
@@ -1801,38 +2216,47 @@ const Dashboard = ({ orders, navigateTo, viewOrder, allContacts, allSelectableIt
                 <div className="space-y-4">
                     <div className="py-3 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
                         <h2 className="text-xl font-semibold text-slate-700">All Orders</h2>
-                        <div className="w-full sm:max-w-sm lg:max-w-xs">
-                            <div
-                                className="relative"
-                                onClick={() => searchInputRef.current && searchInputRef.current.focus()}
-                            >
-                                <input
-                                    id="orders-search-input"
-                                    ref={searchInputRef}
-                                    type="search"
-                                    value={inputValue}
-                                    onChange={handleInputChange}
-                                    onKeyDown={handleKeyDown}
-                                    onBlur={() => {
-                                        parseInputToPills(inputValue);
-                                        setTimeout(() => {
-                                            if (!document.activeElement.closest('.calendar-container')) {
-                                                setShowCalendar(false);
-                                            }
-                                        }, 150);
-                                    }}
-                                    placeholder="Search Orders"
-                                    className="block w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-orange-500 focus:border-orange-500"
-                                />
-                                {isSearching && (
-                                    <span className="absolute inset-y-0 right-3 flex items-center">
-                                        <svg className="h-4 w-4 animate-spin text-slate-400" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"></path>
-                                        </svg>
-                                    </span>
-                                )}
+                        <div className="w-full flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-end">
+                            <div className="w-full sm:max-w-sm lg:max-w-xs">
+                                <div
+                                    className="relative"
+                                    onClick={() => searchInputRef.current && searchInputRef.current.focus()}
+                                >
+                                    <input
+                                        id="orders-search-input"
+                                        ref={searchInputRef}
+                                        type="search"
+                                        value={inputValue}
+                                        onChange={handleInputChange}
+                                        onKeyDown={handleKeyDown}
+                                        onBlur={() => {
+                                            parseInputToPills(inputValue);
+                                            setTimeout(() => {
+                                                if (!document.activeElement.closest('.calendar-container')) {
+                                                    setShowCalendar(false);
+                                                }
+                                            }, 150);
+                                        }}
+                                        placeholder="Search Orders"
+                                        className="block w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-orange-500 focus:border-orange-500"
+                                    />
+                                    {isSearching && (
+                                        <span className="absolute inset-y-0 right-3 flex items-center">
+                                            <svg className="h-4 w-4 animate-spin text-slate-400" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                                                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"></path>
+                                            </svg>
+                                        </span>
+                                    )}
+                                </div>
                             </div>
+                            <button
+                                type="button"
+                                onClick={() => setShowPreferencesModal(true)}
+                                className="inline-flex items-center justify-center gap-2 rounded-md border border-slate-300 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+                            >
+                                Customize view
+                            </button>
                         </div>
                     </div>
                     {searchPills.length > 0 && (
@@ -1849,52 +2273,58 @@ const Dashboard = ({ orders, navigateTo, viewOrder, allContacts, allSelectableIt
                     )}
                     {searchError && <p className="text-xs text-red-600">{searchError}</p>}
                 </div>
-                <div className="overflow-x-auto"><table className="w-full text-sm text-left text-slate-500"><thead className="text-xs text-slate-700 uppercase bg-slate-100"><tr><th className="px-4 py-3">Order</th><th className="px-4 py-3">Customer</th><th className="px-4 py-3">Date</th><th className="px-4 py-3">Total</th><th className="px-4 py-3">Status</th><th className="px-4 py-3 text-center">Actions</th></tr></thead>
-                    <tbody>{filteredOrders.map(order => {
-                        const timeZone = "America/Chicago";
-                        const dateOptions = { year: 'numeric', month: 'long', day: 'numeric' };
-                        const orderTitle = (order.title || '').trim();
-                        const displayIdValue = typeof order.display_id === 'string' ? order.display_id : '';
-                        const trimmedDisplayId = displayIdValue.trim();
-                        const hasDisplayId = Boolean(trimmedDisplayId);
-                        const primaryLabel = orderTitle || 'Untitled Order';
-                        const shortId = order.id ? (order.id.length > 12 ? `${order.id.slice(0, 8)}…` : order.id) : '';
-                        const secondaryTags = [];
-                        if (hasDisplayId) {
-                            secondaryTags.push(`Ref: ${trimmedDisplayId}`);
-                        }
-                        if (order.id && (!hasDisplayId || trimmedDisplayId !== order.id)) {
-                            secondaryTags.push(`ID: ${shortId}`);
-                        }
-                        const idLabel = secondaryTags.join(' • ');
-                        return (<tr key={order.id} onClick={() => viewOrder(order)} className="bg-white border-b hover:bg-slate-50 cursor-pointer">
-                        <td className="px-4 py-3 align-top">
-                            <div className="flex flex-col">
-                                <span className="font-medium text-slate-800">{primaryLabel}</span>
-                                {idLabel && <span className="text-xs text-slate-500" title={order.id}>{idLabel}</span>}
-                            </div>
-                        </td><td className="px-4 py-3">{getContactDisplayName(order.primaryContact || order.contactInfo)}</td>
-                        <td className="px-4 py-3">{formatInTimeZone(order.date, timeZone, dateOptions)}</td><td className="px-4 py-3">${parseFloat(order.total || 0).toFixed(2)}</td>
-                        <td className="px-4 py-3">
-                            {order.status === 'Shipped' ? (
-                                <ShippedStatusBadge statusText={order.status} />
-                            ) : (
-                                <span className={`px-2 py-1 text-xs font-semibold rounded-full ${
-                                    order.status === 'Paid' ? 'bg-green-100 text-green-800' :
-                                    order.status === 'Sent' ? 'bg-blue-100 text-blue-800' :
-                                    'bg-slate-100 text-slate-800' // Draft or other
-                                }`}>{order.status}</span>
-                            )}
-                        </td>
-                        <td className="px-4 py-3 text-center" onClick={e => e.stopPropagation()}>
-                            <div className="flex items-center justify-center space-x-2">
-                                <button onClick={() => generateInvoicePdf(order, allSelectableItems, 'preview', branding)} className="p-1 text-slate-500 hover:text-orange-600"><PdfIcon /></button>
-                                <button onClick={() => setOrderForEmailModal(order)} className="p-1 text-slate-500 hover:text-orange-600"><EmailIcon /></button>
-                            </div>
-                        </td>
-                    </tr>)})}</tbody>
-                </table></div>
+                <div className="overflow-x-auto">
+                    <table className="w-full text-sm text-left text-slate-500">
+                        <thead className="text-xs text-slate-700 uppercase bg-slate-100">
+                            <tr>
+                                {columnOrder.map(columnId => {
+                                    if (hiddenColumnsSet.has(columnId)) {
+                                        return null;
+                                    }
+                                    const column = columnDefinitions[columnId];
+                                    if (!column) {
+                                        return null;
+                                    }
+                                    return (
+                                        <th key={columnId} className={column.headerClassName || 'px-4 py-3'}>
+                                            {column.label}
+                                        </th>
+                                    );
+                                })}
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {filteredOrders.map(order => (
+                                <tr key={order.id} onClick={() => viewOrder(order)} className="bg-white border-b hover:bg-slate-50 cursor-pointer">
+                                    {columnOrder.map(columnId => {
+                                        if (hiddenColumnsSet.has(columnId)) {
+                                            return null;
+                                        }
+                                        const column = columnDefinitions[columnId];
+                                        if (!column) {
+                                            return null;
+                                        }
+                                        return (
+                                            <td key={`${order.id}-${columnId}`} className={column.cellClassName || 'px-4 py-3'}>
+                                                {column.render(order)}
+                                            </td>
+                                        );
+                                    })}
+                                </tr>
+                            ))}
+                        </tbody>
+                    </table>
             </div>
+        </div>
+        <ViewPreferencesModal
+            visible={showPreferencesModal}
+            columnOrder={columnOrder}
+            hiddenColumns={hiddenColumnIds}
+            onMoveColumn={handleMoveColumn}
+            onToggleColumn={handleToggleColumnVisibility}
+            onReset={handleResetView}
+            onClose={() => setShowPreferencesModal(false)}
+        />
         </React.Fragment>
     );
 };
@@ -1924,6 +2354,7 @@ const OrderForm = ({ order, navigateTo, saveOrder, deleteOrder, allContacts, all
         contactInfo: {},
         additionalContacts: [],
         lineItems: [],
+        tags: [],
         notes: '',
         estimatedShippingDate: '',
         estimatedShipping: '0.00',
@@ -2021,6 +2452,11 @@ const OrderForm = ({ order, navigateTo, saveOrder, deleteOrder, allContacts, all
                     price: Number(item?.price) || 0,
                     packageId: item?.packageId ?? item?.package_id ?? null,
                 }))
+                : [],
+            tags: Array.isArray(incomingOrder.tags)
+                ? incomingOrder.tags
+                    .filter(tag => typeof tag === 'string' && tag.trim())
+                    .map(tag => tag.trim())
                 : [],
             notes: incomingOrder.notes || '',
             statusHistory: incomingOrder.statusHistory || defaultOrderState.statusHistory,
@@ -2741,6 +3177,11 @@ const unpackPackage = (id, pkgCode) => {
             taxAmount: centsToCurrency(taxCents),
             discounts: payloadDiscounts,
             discountTotal: discountTotalCents,
+            tags: Array.isArray(formData.tags)
+                ? formData.tags
+                    .filter(tag => typeof tag === 'string' && tag.trim())
+                    .map(tag => tag.trim())
+                : [],
             id: formData.id || null,
             date: isNewOrder ? (formData.date || new Date().toISOString()) : formData.date,
             status: finalStatus,
@@ -3304,7 +3745,37 @@ const unpackPackage = (id, pkgCode) => {
 </tbody></table></div>{canEdit && <div className="p-6 border-t"><button onClick={addEmptyLineItem} className="w-full text-center px-4 py-2 bg-orange-100 text-orange-700 font-semibold rounded-md hover:bg-orange-200 transition-colors">+ Add Line Item</button></div>}</div>
                 </div>
                 <div className="lg:col-span-1 space-y-6">
-                    <div className="bg-white p-6 rounded-lg shadow-sm border border-slate-200"><h2 className="text-xl font-semibold text-slate-700 border-b pb-3 mb-4">Order Metadata</h2><div className="space-y-4"><Input label="Estimated Shipping Date" type="date" value={formData.estimatedShippingDate} onChange={e => setFormData(p=>({...p, estimatedShippingDate: e.target.value}))} disabled={!canEdit} /><div><label className="block text-sm font-medium text-slate-600 mb-1">Priority Level</label><Select value={formData.priorityLevel} onChange={e => setFormData(p=>({...p, priorityLevel: e.target.value}))} disabled={!canEdit}><option value="">No priority set</option><option value="High">High</option><option value="Standard">Standard</option><option value="Low">Low</option></Select></div><div><label className="block text-sm font-medium text-slate-600 mb-1">Fulfillment Channel</label><Select value={formData.fulfillmentChannel} onChange={e => setFormData(p=>({...p, fulfillmentChannel: e.target.value}))} disabled={!canEdit}><option value="">Not specified</option><option value="In-House">In-House</option><option value="Dropship">Dropship</option><option value="Third-Party">Third-Party</option><option value="Pickup">Customer Pickup</option></Select></div><Input label="Customer Reference" placeholder="Optional PO, campaign, or reference" value={formData.customerReference} onChange={e => setFormData(p=>({...p, customerReference: e.target.value}))} disabled={!canEdit} /></div></div>
+                    <div className="bg-white p-6 rounded-lg shadow-sm border border-slate-200">
+                        <h2 className="text-xl font-semibold text-slate-700 border-b pb-3 mb-4">Order Metadata</h2>
+                        <div className="space-y-4">
+                            <Input label="Estimated Shipping Date" type="date" value={formData.estimatedShippingDate} onChange={e => setFormData(p=>({...p, estimatedShippingDate: e.target.value}))} disabled={!canEdit} />
+                            <div>
+                                <label className="block text-sm font-medium text-slate-600 mb-1">Priority Level</label>
+                                <Select value={formData.priorityLevel} onChange={e => setFormData(p=>({...p, priorityLevel: e.target.value}))} disabled={!canEdit}>
+                                    <option value="">No priority set</option>
+                                    <option value="High">High</option>
+                                    <option value="Standard">Standard</option>
+                                    <option value="Low">Low</option>
+                                </Select>
+                            </div>
+                            <div>
+                                <label className="block text-sm font-medium text-slate-600 mb-1">Fulfillment Channel</label>
+                                <Select value={formData.fulfillmentChannel} onChange={e => setFormData(p=>({...p, fulfillmentChannel: e.target.value}))} disabled={!canEdit}>
+                                    <option value="">Not specified</option>
+                                    <option value="In-House">In-House</option>
+                                    <option value="Dropship">Dropship</option>
+                                    <option value="Third-Party">Third-Party</option>
+                                    <option value="Pickup">Customer Pickup</option>
+                                </Select>
+                            </div>
+                            <Input label="Customer Reference" placeholder="Optional PO, campaign, or reference" value={formData.customerReference} onChange={e => setFormData(p=>({...p, customerReference: e.target.value}))} disabled={!canEdit} />
+                            <TagsEditor
+                                tags={formData.tags}
+                                onChange={(nextTags) => setFormData(prev => ({ ...prev, tags: nextTags }))}
+                                disabled={!canEdit}
+                            />
+                        </div>
+                    </div>
                     {!isDraft && (<div className="bg-white p-6 rounded-lg shadow-sm border border-slate-200"><h2 className="text-xl font-semibold text-slate-700 mb-4">Update Status</h2><div className="space-y-2"><button onClick={() => handleStatusChange('Paid')} disabled={formData.status !== 'Sent'} className="w-full text-center px-4 py-2 bg-blue-500 text-white font-semibold rounded-md hover:bg-blue-600 disabled:bg-slate-300 disabled:cursor-not-allowed">Mark as Paid</button><button onClick={() => handleStatusChange('Shipped')} disabled={formData.status !== 'Paid'} className="w-full text-center px-4 py-2 bg-green-500 text-white font-semibold rounded-md hover:bg-green-600 disabled:bg-slate-300 disabled:cursor-not-allowed">Mark as Shipped</button></div></div>)}
                     <div className="bg-white p-6 rounded-lg shadow-sm border border-slate-200">
                         <h2 className="text-xl font-semibold text-slate-700 mb-3 border-b pb-3">Signature</h2>
@@ -3597,6 +4068,8 @@ const App = () => {
         invoice_brand_color: "#f97316",
         invoice_logo_data_url: "",
     });
+    const [orderPreferences, setOrderPreferences] = useState(() => createDefaultViewPreferences());
+    const [preferencesReady, setPreferencesReady] = useState(false);
 
     const updateBrowserUrl = useCallback((updater) => {
         if (typeof window === 'undefined') {
@@ -3636,16 +4109,31 @@ const App = () => {
         }
     };
 
+    const persistOrderPreferences = useCallback(async (nextPreferences) => {
+        const normalized = normalizeViewPreferences(nextPreferences || {});
+        setOrderPreferences(normalized);
+        try {
+            await fetch('/api/orders/preferences', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(normalized)
+            });
+        } catch (error) {
+            console.error('Failed to save order view preferences:', error);
+        }
+    }, []);
+
     useEffect(() => {
         const fetchData = async () => {
             setIsLoading(true);
             try {
-            const [ordersRes, contactsRes, itemsRes, packagesRes, settingsRes] = await Promise.all([
+            const [ordersRes, contactsRes, itemsRes, packagesRes, settingsRes, preferencesRes] = await Promise.all([
                 fetch('/api/orders'),
                 fetch('/api/contacts'),
                 fetch('/api/items'),
                 fetch('/api/packages'),
-                fetch('/api/settings') // Fetch settings
+                fetch('/api/settings'),
+                fetch('/api/orders/preferences')
             ]);
 
             const ordersData   = await ordersRes.json();
@@ -3655,6 +4143,16 @@ const App = () => {
             const contactsData  = await contactsRes.json();
             const itemsDataArray    = await itemsRes.json(); // Renamed to itemsDataArray
             const packagesData = await packagesRes.json();
+            let preferencesData = createDefaultViewPreferences();
+            if (preferencesRes.ok) {
+                try {
+                    const rawPreferences = await preferencesRes.json();
+                    preferencesData = normalizeViewPreferences(rawPreferences);
+                } catch (prefsError) {
+                    console.error('Failed to parse order preferences:', prefsError);
+                }
+            }
+            setOrderPreferences(preferencesData);
 
             // Transform itemsDataArray to an object keyed by item_code
             const itemsDataById = itemsDataArray.reduce((acc, item) => {
@@ -3763,6 +4261,7 @@ const App = () => {
             console.error("Failed to fetch data:", error);
             } finally {
             setIsLoading(false);
+            setPreferencesReady(true);
             }
         };
         fetchData();
@@ -3901,7 +4400,7 @@ const App = () => {
                 return <OrderForm order={activeOrder} navigateTo={navigateTo} saveOrder={saveOrder} deleteOrder={deleteOrder} allContacts={allContacts} allSelectableItems={allSelectableItems} itemData={itemData} packageData={packageData} fetchAndUpdateContacts={fetchAndUpdateContacts} setOrderForEmailModal={setOrderForEmailModal} startInEditMode={startInEditMode} branding={appSettings} />;
             case 'dashboard':
             default:
-                return <Dashboard orders={orders} navigateTo={navigateTo} viewOrder={viewOrder} allContacts={allContacts} allSelectableItems={allSelectableItems} setOrderForEmailModal={setOrderForEmailModal} branding={appSettings} />;
+                return <Dashboard orders={orders} navigateTo={navigateTo} viewOrder={viewOrder} allContacts={allContacts} allSelectableItems={allSelectableItems} setOrderForEmailModal={setOrderForEmailModal} branding={appSettings} orderPreferences={orderPreferences} onPreferencesChange={persistOrderPreferences} preferencesReady={preferencesReady} />;
         }
     }
 

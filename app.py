@@ -650,6 +650,61 @@ NAV_SHORTCUT_CATALOG = [
 NAV_SHORTCUT_REGISTRY = {key: dict(value, id=key) for key, value in NAV_SHORTCUT_CATALOG}
 DEFAULT_NAV_SHORTCUT_IDS = ['orders', 'contacts', 'analytics', 'tasks', 'reminders', 'calendar', 'passwords']
 
+ORDER_VIEW_DEFAULT_COLUMNS = ['order', 'customer', 'date', 'total', 'status', 'actions']
+
+
+def _sanitize_order_column_order(candidate: Any) -> List[str]:
+    allowed = list(ORDER_VIEW_DEFAULT_COLUMNS)
+    allowed_set = set(allowed)
+    ordered: List[str] = []
+    if isinstance(candidate, (list, tuple)):
+        for value in candidate:
+            normalized = str(value)
+            if normalized in allowed_set and normalized not in ordered:
+                ordered.append(normalized)
+    for fallback in allowed:
+        if fallback not in ordered:
+            ordered.append(fallback)
+    return ordered
+
+
+def _sanitize_hidden_order_columns(candidate: Any) -> List[str]:
+    allowed_set = set(ORDER_VIEW_DEFAULT_COLUMNS)
+    hidden: List[str] = []
+    if isinstance(candidate, (list, tuple)):
+        for value in candidate:
+            normalized = str(value)
+            if normalized in allowed_set and normalized not in hidden:
+                hidden.append(normalized)
+    return hidden
+
+
+def _sanitize_search_pills(candidate: Any) -> List[str]:
+    pills: List[str] = []
+    if isinstance(candidate, (list, tuple)):
+        for value in candidate:
+            if value is None:
+                continue
+            pill = str(value).strip()
+            if pill:
+                pills.append(pill)
+    return pills
+
+
+def _normalize_order_view_preferences(payload: Optional[Dict[str, Any]]) -> Dict[str, Any]:
+    payload = payload or {}
+    normalized: Dict[str, Any] = {
+        'columnOrder': _sanitize_order_column_order(payload.get('columnOrder')),
+        'hiddenColumns': _sanitize_hidden_order_columns(payload.get('hiddenColumns')),
+        'searchPills': _sanitize_search_pills(payload.get('searchPills')),
+        'searchInput': str(payload.get('searchInput') or ''),
+    }
+    return normalized
+
+
+def _default_order_view_preferences() -> Dict[str, Any]:
+    return _normalize_order_view_preferences({})
+
 DEVICE_STATUS_PENDING = 'pending'
 DEVICE_STATUS_TRUSTED = 'trusted'
 DEVICE_STATUS_BLOCKED = 'blocked'
@@ -3834,6 +3889,17 @@ def serialize_order(cursor, order_row, user_timezone, include_logs=False):
     ]
 
     cursor.execute(
+        "SELECT tag FROM order_tags WHERE order_id = ? ORDER BY LOWER(tag) ASC",
+        (order_id,),
+    )
+    tag_rows = cursor.fetchall()
+    order_dict['tags'] = [
+        row['tag'] if isinstance(row, sqlite3.Row) else row[0]
+        for row in tag_rows
+        if (row['tag'] if isinstance(row, sqlite3.Row) else row[0])
+    ]
+
+    cursor.execute(
         "SELECT status, status_date FROM order_status_history WHERE order_id = ? ORDER BY status_date ASC",
         (order_id,)
     )
@@ -4217,6 +4283,57 @@ def refresh_order_contact_links(cursor, order_id, primary_contact_id=None):
 DATA_DIR.mkdir(parents=True, exist_ok=True)
 if not SETTINGS_FILE.exists():
     write_json_file(SETTINGS_FILE, {"company_name": "Your Company Name", "default_shipping_zip_code": "00000"})
+
+
+@app.route('/api/orders/preferences', methods=['GET', 'POST'])
+def order_view_preferences_endpoint():
+    device_token = _get_session_device_token()
+    defaults = _default_order_view_preferences()
+    if not device_token:
+        return jsonify(defaults)
+
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    try:
+        if request.method == 'GET':
+            cursor.execute(
+                "SELECT preferences_json FROM user_view_preferences WHERE device_token = ? AND page = 'orders'",
+                (device_token,),
+            )
+            row = cursor.fetchone()
+            if not row:
+                return jsonify(defaults)
+            raw_blob = row['preferences_json'] if isinstance(row, sqlite3.Row) else row[0]
+            if not raw_blob:
+                return jsonify(defaults)
+            try:
+                parsed = json.loads(raw_blob)
+            except json.JSONDecodeError:
+                app.logger.warning('Failed to parse stored order view preferences for device %s', device_token)
+                return jsonify(defaults)
+            return jsonify(_normalize_order_view_preferences(parsed))
+
+        payload = request.json or {}
+        normalized = _normalize_order_view_preferences(payload)
+        cursor.execute(
+            """
+            INSERT INTO user_view_preferences (device_token, page, preferences_json, updated_at)
+            VALUES (?, 'orders', ?, CURRENT_TIMESTAMP)
+            ON CONFLICT(device_token, page) DO UPDATE SET
+                preferences_json = excluded.preferences_json,
+                updated_at = CURRENT_TIMESTAMP
+            """,
+            (device_token, json.dumps(normalized)),
+        )
+        conn.commit()
+        return jsonify(normalized)
+    except sqlite3.Error as exc:
+        app.logger.error('Failed to persist order view preferences: %s', exc)
+        conn.rollback()
+        return jsonify({'message': 'Unable to save preferences'}), 500
+    finally:
+        conn.close()
+
 
 @app.route('/api/orders', methods=['GET'])
 def get_orders():
@@ -4665,8 +4782,10 @@ def save_order():
     new_order_payload = request.json
     if not new_order_payload:
         return jsonify({"status": "error", "message": "Request must be JSON"}), 400
+    device_token = _get_session_device_token()
     conn_main = None
-    processed_order_id = new_order_payload.get('id', 'NEW_ORDER_PENDING_ID') 
+    processed_order_id = new_order_payload.get('id', 'NEW_ORDER_PENDING_ID')
+    sanitized_tags: List[str] = []
 
     try:
         conn_main = get_db_connection()
@@ -4764,6 +4883,23 @@ def save_order():
             sanitized_line_items.append(sanitized_item)
 
         new_order_payload['lineItems'] = sanitized_line_items
+
+        raw_tags = new_order_payload.get('tags')
+        sanitized_tags = []
+        seen_tag_keys: Set[str] = set()
+        if isinstance(raw_tags, (list, tuple)):
+            for tag_candidate in raw_tags:
+                if tag_candidate is None:
+                    continue
+                normalized = str(tag_candidate).strip()
+                if not normalized:
+                    continue
+                key = normalized.lower()
+                if key in seen_tag_keys:
+                    continue
+                seen_tag_keys.add(key)
+                sanitized_tags.append(normalized)
+        new_order_payload['tags'] = sanitized_tags
 
         estimated_shipping_cost_dollars = max(0.0, _safe_parse_float(new_order_payload.get('estimatedShipping', 0.0)))
         tax_amount_dollars = max(0.0, _safe_parse_float(new_order_payload.get('taxAmount', 0.0)))
@@ -4928,6 +5064,14 @@ def save_order():
             cursor.execute("INSERT INTO order_status_history (order_id, status, status_date) VALUES (?,?,?)", (processed_order_id, hist.get('status'), hist.get('date')))
         if not any(h['status'] == new_order_payload.get('status') for h in new_order_payload.get('statusHistory',[])):
             cursor.execute("INSERT INTO order_status_history (order_id, status, status_date) VALUES (?,?,?)", (processed_order_id, new_order_payload.get('status'), datetime.now(timezone.utc).isoformat()+"Z"))
+
+        cursor.execute("DELETE FROM order_tags WHERE order_id = ?", (processed_order_id,))
+        created_by_value = device_token if _is_valid_device_token(device_token) else None
+        for tag_value in sanitized_tags:
+            cursor.execute(
+                "INSERT OR IGNORE INTO order_tags (order_id, tag, created_by) VALUES (?, ?, ?)",
+                (processed_order_id, tag_value, created_by_value),
+            )
 
         notes_text = new_order_payload.get('notes')
         handles_from_notes = extract_mentions(notes_text)

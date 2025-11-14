@@ -465,6 +465,22 @@ def init_db():
     if 'billing_zip_code' not in order_columns:
         cursor.execute("ALTER TABLE orders ADD COLUMN billing_zip_code TEXT")
     cursor.execute("CREATE TRIGGER IF NOT EXISTS update_orders_updated_at AFTER UPDATE ON orders FOR EACH ROW BEGIN UPDATE orders SET updated_at = CURRENT_TIMESTAMP WHERE order_id = OLD.order_id; END;")
+    cursor.execute(
+        """
+        CREATE TABLE IF NOT EXISTS order_tags (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            order_id TEXT NOT NULL,
+            tag TEXT NOT NULL,
+            created_by TEXT,
+            created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE(order_id, tag),
+            FOREIGN KEY (order_id) REFERENCES orders (order_id) ON DELETE CASCADE
+        );
+        """
+    )
+    cursor.execute(
+        "CREATE INDEX IF NOT EXISTS idx_order_tags_order ON order_tags(order_id)"
+    )
     cursor.execute("PRAGMA table_info(order_line_items)")
     order_line_item_columns = [row[1] for row in cursor.fetchall()]
     needs_order_line_item_migration = False
@@ -771,6 +787,21 @@ def init_db():
     )
     cursor.execute(
         "CREATE INDEX IF NOT EXISTS idx_firecoast_chat_reactions_message ON firecoast_chat_reactions(message_id)"
+    )
+    cursor.execute(
+        """
+        CREATE TABLE IF NOT EXISTS user_view_preferences (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            device_token TEXT NOT NULL,
+            page TEXT NOT NULL,
+            preferences_json TEXT,
+            updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE(device_token, page)
+        );
+        """
+    )
+    cursor.execute(
+        "CREATE INDEX IF NOT EXISTS idx_user_view_preferences_page ON user_view_preferences(page)"
     )
 
     cursor.execute("PRAGMA table_info('firecoast_chat_messages')")
