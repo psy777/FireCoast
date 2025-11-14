@@ -648,6 +648,41 @@ def _sanitize_order_view_settings(candidate: Any) -> Dict[str, Any]:
     return sanitized
 
 
+def _coerce_order_view_by_device_map(candidate: Any) -> Dict[str, Dict[str, Any]]:
+    if not isinstance(candidate, dict):
+        return {}
+    scoped: Dict[str, Dict[str, Any]] = {}
+    for raw_key, raw_value in candidate.items():
+        if isinstance(raw_key, str):
+            key = raw_key.strip()
+        else:
+            key = str(raw_key).strip()
+        if not key:
+            continue
+        if isinstance(raw_value, dict):
+            scoped[key] = dict(raw_value)
+        else:
+            scoped[key] = {}
+    return scoped
+
+
+def _resolve_order_view_settings_for_device(
+    settings: Dict[str, Any],
+    *,
+    create_if_missing: bool = False,
+) -> Tuple[Optional[str], Dict[str, Dict[str, Any]], Dict[str, Any]]:
+    device_token = _get_session_device_token()
+    order_view_by_device = _coerce_order_view_by_device_map(settings.get('order_view_by_device'))
+    if device_token and device_token in order_view_by_device:
+        order_view = _sanitize_order_view_settings(order_view_by_device[device_token])
+    else:
+        fallback = settings.get('order_view', {})
+        order_view = _sanitize_order_view_settings(fallback)
+        if create_if_missing and device_token:
+            order_view_by_device[device_token] = order_view
+    return device_token, order_view_by_device, order_view
+
+
 def _serialize_order_view_settings(order_view_settings: Dict[str, Any]) -> Dict[str, Any]:
     palette_payload = []
     for entry in order_view_settings.get('status_palette', []):
@@ -7309,7 +7344,7 @@ def update_invoice_settings():
 @app.route('/api/order-view-settings', methods=['GET'])
 def get_order_view_settings():
     settings = _load_settings_dict()
-    order_view = _sanitize_order_view_settings(settings.get('order_view', {}))
+    _, _, order_view = _resolve_order_view_settings_for_device(settings, create_if_missing=False)
     return jsonify(_serialize_order_view_settings(order_view))
 
 
@@ -7320,7 +7355,10 @@ def update_order_view_settings():
         return jsonify({'message': 'Invalid payload.'}), 400
 
     settings = _load_settings_dict()
-    order_view = _sanitize_order_view_settings(settings.get('order_view', {}))
+    device_token, order_view_by_device, order_view = _resolve_order_view_settings_for_device(
+        settings,
+        create_if_missing=True,
+    )
 
     remember_key = 'remember_last_view' if 'remember_last_view' in payload else 'rememberLastView' if 'rememberLastView' in payload else None
     if remember_key is not None:
@@ -7334,7 +7372,14 @@ def update_order_view_settings():
     if view_state_key is not None:
         order_view['last_view_state'] = _sanitize_last_view_state(payload.get(view_state_key))
 
-    settings['order_view'] = order_view
+    if device_token:
+        order_view_by_device[device_token] = order_view
+
+    if order_view_by_device:
+        settings['order_view_by_device'] = order_view_by_device
+    else:
+        settings.pop('order_view_by_device', None)
+
     write_json_file(SETTINGS_FILE, settings)
     return jsonify(_serialize_order_view_settings(order_view))
 

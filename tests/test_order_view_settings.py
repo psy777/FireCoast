@@ -52,8 +52,16 @@ def order_view_client(tmp_path, monkeypatch):
     firecoast_app._db_bootstrapped = False
 
 
+def _set_device_token(client, token):
+    with client.session_transaction() as session_state:
+        session_state[firecoast_app.DEVICE_TOKEN_SESSION_KEY] = token
+        session_state[firecoast_app.PENDING_DEVICE_TOKEN_SESSION_KEY] = token
+
+
 def test_order_view_settings_default_payload(order_view_client):
     client, _ = order_view_client
+
+    _set_device_token(client, 'device-default')
 
     response = client.get('/api/order-view-settings')
     assert response.status_code == 200
@@ -66,6 +74,9 @@ def test_order_view_settings_default_payload(order_view_client):
 
 def test_order_view_settings_persist_updates(order_view_client):
     client, settings_file = order_view_client
+
+    device_token = 'device-alpha'
+    _set_device_token(client, device_token)
 
     update_payload = {
         'rememberLastView': False,
@@ -89,11 +100,70 @@ def test_order_view_settings_persist_updates(order_view_client):
     assert updated['statusPalette'][0]['textColor'] in {'#0F172A', '#FFFFFF'}
 
     persisted = json.loads(settings_file.read_text())
-    assert persisted['order_view']['remember_last_view'] is False
-    assert persisted['order_view']['last_view_state']['search_input'] == 'urgent'
+    scoped = persisted.get('order_view_by_device', {})
+    assert scoped[device_token]['remember_last_view'] is False
+    assert scoped[device_token]['last_view_state']['search_input'] == 'urgent'
 
     follow_up = client.get('/api/order-view-settings')
     follow_payload = follow_up.get_json()
     assert follow_payload['rememberLastView'] is False
     assert follow_payload['lastViewState']['searchInput'] == 'urgent'
     assert follow_payload['statusPalette'][0]['value'] == 'Shipping'
+
+
+def test_order_view_settings_are_scoped_per_device(order_view_client):
+    client, settings_file = order_view_client
+
+    first_device = 'device-one'
+    second_device = 'device-two'
+
+    _set_device_token(client, first_device)
+    first_payload = {
+        'rememberLastView': False,
+        'statusPalette': [
+            {'value': 'FirstOnly', 'label': 'FirstOnly', 'color': '#FFAA00', 'shimmer': False},
+        ],
+        'lastViewState': {
+            'searchInput': 'first',
+            'searchPills': ['alpha'],
+            'statusSelections': ['FirstOnly'],
+        },
+    }
+    assert client.post('/api/order-view-settings', json=first_payload).status_code == 200
+
+    _set_device_token(client, second_device)
+    second_default = client.get('/api/order-view-settings').get_json()
+    assert second_default['rememberLastView'] is True
+    assert second_default['statusPalette'][0]['value'] == 'Draft'
+    assert second_default['lastViewState']['searchInput'] == ''
+
+    second_payload = {
+        'rememberLastView': True,
+        'statusPalette': [
+            {'value': 'SecondOnly', 'label': 'SecondOnly', 'color': '#0088FF', 'shimmer': True},
+        ],
+        'lastViewState': {
+            'searchInput': 'second',
+            'searchPills': ['beta'],
+            'statusSelections': ['SecondOnly'],
+        },
+    }
+    assert client.post('/api/order-view-settings', json=second_payload).status_code == 200
+
+    _set_device_token(client, first_device)
+    first_view = client.get('/api/order-view-settings').get_json()
+    assert first_view['rememberLastView'] is False
+    assert first_view['statusPalette'][0]['value'] == 'FirstOnly'
+    assert first_view['lastViewState']['searchInput'] == 'first'
+
+    _set_device_token(client, second_device)
+    second_view = client.get('/api/order-view-settings').get_json()
+    assert second_view['rememberLastView'] is True
+    assert second_view['statusPalette'][0]['value'] == 'SecondOnly'
+    assert second_view['lastViewState']['searchInput'] == 'second'
+
+    persisted = json.loads(settings_file.read_text())
+    scoped = persisted.get('order_view_by_device', {})
+    assert first_device in scoped and second_device in scoped
+    assert scoped[first_device]['last_view_state']['search_input'] == 'first'
+    assert scoped[second_device]['last_view_state']['search_input'] == 'second'

@@ -1663,6 +1663,10 @@ const Dashboard = ({ orders, navigateTo, viewOrder, allContacts, allSelectableIt
     const [activeSearchQuery, setActiveSearchQuery] = useState('');
     const viewStateHydratedRef = useRef(false);
     const nextFilterIdRef = useRef(1);
+    const [filtersMenuOpen, setFiltersMenuOpen] = useState(false);
+    const filtersMenuRef = useRef(null);
+    const filtersButtonRef = useRef(null);
+    const filtersPanelId = 'orders-filters-popover';
 
     useEffect(() => {
         return () => {
@@ -1705,6 +1709,37 @@ const Dashboard = ({ orders, navigateTo, viewOrder, allContacts, allSelectableIt
         setActiveSearchQuery(snapshot.searchQuery || '');
         viewStateHydratedRef.current = true;
     }, [initialViewState]);
+
+    const closeFiltersMenu = useCallback(() => setFiltersMenuOpen(false), []);
+    const toggleFiltersMenu = useCallback(() => setFiltersMenuOpen(prev => !prev), []);
+
+    useEffect(() => {
+        if (!filtersMenuOpen) {
+            return undefined;
+        }
+        const handleOutsideInteraction = (event) => {
+            const menuNode = filtersMenuRef.current;
+            const buttonNode = filtersButtonRef.current;
+            if (menuNode && menuNode.contains(event.target)) {
+                return;
+            }
+            if (buttonNode && buttonNode.contains(event.target)) {
+                return;
+            }
+            closeFiltersMenu();
+        };
+        const handleEscapeKey = (event) => {
+            if (event.key === 'Escape') {
+                closeFiltersMenu();
+            }
+        };
+        document.addEventListener('mousedown', handleOutsideInteraction);
+        document.addEventListener('keydown', handleEscapeKey);
+        return () => {
+            document.removeEventListener('mousedown', handleOutsideInteraction);
+            document.removeEventListener('keydown', handleEscapeKey);
+        };
+    }, [filtersMenuOpen, closeFiltersMenu]);
 
     useEffect(() => {
         if (!activeSearchQuery) {
@@ -2100,7 +2135,7 @@ const Dashboard = ({ orders, navigateTo, viewOrder, allContacts, allSelectableIt
         return statusPaletteMap.get(key);
     };
 
-    const statusFilterDisabled = advancedFilters.length === 0 && statusSelections.length === 0;
+    const statusFilterDisabled = statusSelections.length === 0;
 
     const formatCurrency = (amountInDollars) => {
         const numericAmount = typeof amountInDollars === 'number' ? amountInDollars : parseFloat(amountInDollars) || 0;
@@ -2113,6 +2148,8 @@ const Dashboard = ({ orders, navigateTo, viewOrder, allContacts, allSelectableIt
     };
 
     const noFiltersApplied = advancedFilters.length === 0 && statusSelections.length === 0;
+    const activeFilterCount = advancedFilters.length + statusSelections.length;
+    const hasActiveFilters = !noFiltersApplied;
 
     return (
         <React.Fragment>
@@ -2136,36 +2173,217 @@ const Dashboard = ({ orders, navigateTo, viewOrder, allContacts, allSelectableIt
                 <div className="space-y-4">
                     <div className="py-3 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
                         <h2 className="text-xl font-semibold text-slate-700">All Orders</h2>
-                        <div className="w-full sm:max-w-sm lg:max-w-xs">
-                            <div
-                                className="relative"
-                                onClick={() => searchInputRef.current && searchInputRef.current.focus()}
-                            >
-                                <input
-                                    id="orders-search-input"
-                                    ref={searchInputRef}
-                                    type="search"
-                                    value={inputValue}
-                                    onChange={handleInputChange}
-                                    onKeyDown={handleKeyDown}
-                                    onBlur={() => {
-                                        parseInputToPills(inputValue);
-                                        setTimeout(() => {
-                                            if (!document.activeElement.closest('.calendar-container')) {
-                                                setShowCalendar(false);
-                                            }
-                                        }, 150);
-                                    }}
-                                    placeholder="Search Orders"
-                                    className="block w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-orange-500 focus:border-orange-500"
-                                />
-                                {isSearching && (
-                                    <span className="absolute inset-y-0 right-3 flex items-center">
-                                        <svg className="h-4 w-4 animate-spin text-slate-400" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"></path>
-                                        </svg>
-                                    </span>
+                        <div className="w-full sm:max-w-xl">
+                            <div className="relative">
+                                <div className="flex flex-col gap-3 sm:flex-row sm:items-stretch">
+                                    <div
+                                        className="flex-1"
+                                        onClick={() => searchInputRef.current && searchInputRef.current.focus()}
+                                    >
+                                        <div className="relative">
+                                            <input
+                                                id="orders-search-input"
+                                                ref={searchInputRef}
+                                                type="search"
+                                                value={inputValue}
+                                                onChange={handleInputChange}
+                                                onKeyDown={handleKeyDown}
+                                                onBlur={() => {
+                                                    parseInputToPills(inputValue);
+                                                    setTimeout(() => {
+                                                        if (!document.activeElement.closest('.calendar-container')) {
+                                                            setShowCalendar(false);
+                                                        }
+                                                    }, 150);
+                                                }}
+                                                placeholder="Search Orders"
+                                                className="block w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-orange-500 focus:border-orange-500"
+                                            />
+                                            {isSearching && (
+                                                <span className="absolute inset-y-0 right-3 flex items-center">
+                                                    <svg className="h-4 w-4 animate-spin text-slate-400" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                                                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"></path>
+                                                    </svg>
+                                                </span>
+                                            )}
+                                        </div>
+                                    </div>
+                                    <button
+                                        type="button"
+                                        ref={filtersButtonRef}
+                                        onClick={toggleFiltersMenu}
+                                        aria-haspopup="dialog"
+                                        aria-expanded={filtersMenuOpen ? 'true' : 'false'}
+                                        aria-controls={filtersPanelId}
+                                        className={`inline-flex items-center justify-center rounded-md border px-4 py-2 text-sm font-semibold transition ${
+                                            filtersMenuOpen || hasActiveFilters
+                                                ? 'border-orange-300 bg-orange-50 text-orange-700 shadow-sm'
+                                                : 'border-slate-300 text-slate-600 hover:bg-slate-50'
+                                        }`}
+                                    >
+                                        <span className="flex items-center gap-2">
+                                            <svg className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+                                                <path d="M3 4h14v2l-5 6v4l-4 2v-6L3 6V4z" />
+                                            </svg>
+                                            Filters
+                                        </span>
+                                        {hasActiveFilters && (
+                                            <span className="ml-2 inline-flex min-w-[1.75rem] items-center justify-center rounded-full bg-orange-100 px-2 text-xs font-semibold text-orange-700">
+                                                {activeFilterCount}
+                                            </span>
+                                        )}
+                                    </button>
+                                </div>
+                                {filtersMenuOpen && (
+                                    <div
+                                        ref={filtersMenuRef}
+                                        id={filtersPanelId}
+                                        role="dialog"
+                                        aria-modal="false"
+                                        className="absolute right-0 z-40 mt-2 w-full sm:w-[32rem]"
+                                    >
+                                        <div className="rounded-2xl border border-slate-200 bg-white shadow-2xl">
+                                            <div className="p-5 space-y-5">
+                                                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                                                    <div>
+                                                        <p className="text-base font-semibold text-slate-800">Filters</p>
+                                                        <p className="text-xs text-slate-500">Combine advanced filters with the search bar for table-like precision.</p>
+                                                    </div>
+                                                    <div className="flex flex-wrap gap-2">
+                                                        <button
+                                                            type="button"
+                                                            onClick={addFilterRule}
+                                                            disabled={advancedFilters.length >= 10}
+                                                            className="inline-flex items-center rounded-md border border-slate-300 px-3 py-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-100 transition disabled:opacity-40 disabled:cursor-not-allowed"
+                                                        >
+                                                            Add Filter
+                                                        </button>
+                                                        <button
+                                                            type="button"
+                                                            onClick={clearAllFilters}
+                                                            disabled={noFiltersApplied}
+                                                            className="inline-flex items-center rounded-md border border-slate-300 px-3 py-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-100 transition disabled:opacity-40 disabled:cursor-not-allowed"
+                                                        >
+                                                            Clear All
+                                                        </button>
+                                                        <button
+                                                            type="button"
+                                                            onClick={clearSearch}
+                                                            className="inline-flex items-center rounded-md border border-slate-300 px-3 py-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-100 transition"
+                                                        >
+                                                            Reset Search
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                                <div className="space-y-4 max-h-[45vh] overflow-y-auto pr-1">
+                                                    {advancedFilters.length === 0 ? (
+                                                        <p className="text-sm text-slate-500">No advanced filters applied.</p>
+                                                    ) : (
+                                                        advancedFilters.map((rule) => {
+                                                            const fieldConfig = FILTER_FIELDS.find((field) => field.id === rule.field) || FILTER_FIELDS[0];
+                                                            const operators = FILTER_OPERATORS[fieldConfig.type] || FILTER_OPERATORS.text;
+                                                            return (
+                                                                <div key={rule.id} className="rounded-lg bg-slate-50 border border-slate-200 p-3 flex flex-col gap-3 md:flex-row md:items-center md:gap-4">
+                                                                    <div className="flex-1 w-full">
+                                                                        <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide">Field</label>
+                                                                        <select
+                                                                            value={rule.field}
+                                                                            onChange={(e) => updateFilterField(rule.id, e.target.value)}
+                                                                            className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-orange-500 focus:outline-none focus:ring-1 focus:ring-orange-500"
+                                                                        >
+                                                                            {FILTER_FIELDS.map((field) => (
+                                                                                <option key={field.id} value={field.id}>{field.label}</option>
+                                                                            ))}
+                                                                        </select>
+                                                                    </div>
+                                                                    <div className="w-full md:w-48">
+                                                                        <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide">Operator</label>
+                                                                        <select
+                                                                            value={rule.operator}
+                                                                            onChange={(e) => updateFilterOperator(rule.id, e.target.value)}
+                                                                            className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-orange-500 focus:outline-none focus:ring-1 focus:ring-orange-500"
+                                                                        >
+                                                                            {operators.map((option) => (
+                                                                                <option key={option.value} value={option.value}>{option.label}</option>
+                                                                            ))}
+                                                                        </select>
+                                                                    </div>
+                                                                    <div className="flex-1 w-full">
+                                                                        <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide">Value</label>
+                                                                        {renderFilterValueInput(rule)}
+                                                                    </div>
+                                                                    <button
+                                                                        type="button"
+                                                                        onClick={() => removeFilterRule(rule.id)}
+                                                                        className="self-start rounded-md border border-red-200 px-3 py-2 text-xs font-semibold text-red-600 hover:bg-red-50 transition"
+                                                                    >
+                                                                        Remove
+                                                                    </button>
+                                                                </div>
+                                                            );
+                                                        })
+                                                    )}
+                                                </div>
+                                                <div className="border-t border-slate-200 pt-4 space-y-3">
+                                                    <div className="flex flex-wrap items-center justify-between gap-3">
+                                                        <div>
+                                                            <p className="text-sm font-semibold text-slate-700">Statuses</p>
+                                                            <p className="text-xs text-slate-500">Toggle statuses to fine-tune the list.</p>
+                                                        </div>
+                                                        <button
+                                                            type="button"
+                                                            onClick={clearStatusFilters}
+                                                            disabled={statusFilterDisabled}
+                                                            className="inline-flex items-center rounded-md border border-slate-300 px-3 py-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-100 transition disabled:opacity-40 disabled:cursor-not-allowed"
+                                                        >
+                                                            Clear Status Filters
+                                                        </button>
+                                                    </div>
+                                                    <div className="flex flex-wrap gap-2">
+                                                        <button
+                                                            type="button"
+                                                            onClick={clearStatusFilters}
+                                                            className={`rounded-full border px-3 py-1 text-xs font-semibold transition ${statusSelections.length === 0 ? 'bg-orange-50 text-orange-700 border-orange-300' : 'bg-white text-slate-600 border-slate-300'}`}
+                                                        >
+                                                            All statuses
+                                                        </button>
+                                                        {statusPalette.map((entry) => {
+                                                            const value = entry.value || entry.label || '';
+                                                            const normalizedValue = value.toLowerCase();
+                                                            if (!normalizedValue) {
+                                                                return null;
+                                                            }
+                                                            const isActive = normalizedStatusSet.has(normalizedValue);
+                                                            return (
+                                                                <button
+                                                                    key={value}
+                                                                    type="button"
+                                                                    onClick={() => toggleStatusSelection(value)}
+                                                                    className={`rounded-full border px-3 py-1 text-xs font-semibold transition ${isActive ? 'ring-2 ring-offset-1 ring-orange-500' : ''}`}
+                                                                    style={{ backgroundColor: entry.color || '#E2E8F0', color: entry.textColor || '#0F172A', borderColor: darkenHexColor(entry.color || '#E2E8F0', 0.2) }}
+                                                                >
+                                                                    {entry.label || value}
+                                                                </button>
+                                                            );
+                                                        })}
+                                                        {statusPalette.length === 0 && (
+                                                            <p className="text-sm text-slate-500">No statuses defined yet.</p>
+                                                        )}
+                                                    </div>
+                                                </div>
+                                                <div className="flex justify-end border-t border-slate-100 pt-4">
+                                                    <button
+                                                        type="button"
+                                                        onClick={closeFiltersMenu}
+                                                        className="rounded-md border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+                                                    >
+                                                        Close
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
                                 )}
                             </div>
                         </div>
@@ -2183,121 +2401,10 @@ const Dashboard = ({ orders, navigateTo, viewOrder, allContacts, allSelectableIt
                         </div>
                     )}
                     {searchError && <p className="text-xs text-red-600">{searchError}</p>}
-                    <div className="border-t border-slate-200 pt-4 space-y-4">
-                        <div className="bg-slate-50 border border-slate-200 rounded-lg p-4 space-y-4">
-                            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                                <div>
-                                    <p className="text-sm font-semibold text-slate-700">Filters</p>
-                                    <p className="text-xs text-slate-500">Combine advanced filters with the search bar for table-like precision.</p>
-                                </div>
-                                <div className="flex flex-wrap gap-2">
-                                    <button
-                                        type="button"
-                                        onClick={addFilterRule}
-                                        disabled={advancedFilters.length >= 10}
-                                        className="inline-flex items-center rounded-md border border-slate-300 px-3 py-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-100 transition disabled:opacity-40 disabled:cursor-not-allowed"
-                                    >
-                                        Add Filter
-                                    </button>
-                                    <button
-                                        type="button"
-                                        onClick={clearAllFilters}
-                                        disabled={noFiltersApplied}
-                                        className="inline-flex items-center rounded-md border border-slate-300 px-3 py-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-100 transition disabled:opacity-40 disabled:cursor-not-allowed"
-                                    >
-                                        Clear Filters
-                                    </button>
-                                    <button
-                                        type="button"
-                                        onClick={clearSearch}
-                                        className="inline-flex items-center rounded-md border border-slate-300 px-3 py-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-100 transition"
-                                    >
-                                        Reset Search
-                                    </button>
-                                </div>
-                            </div>
-                            <div>
-                                <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Statuses</p>
-                                <div className="mt-2 flex flex-wrap gap-2">
-                                    <button
-                                        type="button"
-                                        onClick={clearStatusFilters}
-                                        disabled={statusSelections.length === 0}
-                                        className={`rounded-full border px-3 py-1 text-xs font-semibold transition ${statusSelections.length === 0 ? 'bg-white text-slate-700 border-orange-500' : 'bg-white text-slate-600 border-slate-300'}`}
-                                    >
-                                        All statuses
-                                    </button>
-                                    {statusPalette.map((entry) => {
-                                        const value = entry.value || entry.label || '';
-                                        const isActive = normalizedStatusSet.has(value.toLowerCase());
-                                        return (
-                                            <button
-                                                key={value}
-                                                type="button"
-                                                onClick={() => toggleStatusSelection(value)}
-                                                className={`rounded-full border px-3 py-1 text-xs font-semibold transition ${isActive ? 'ring-2 ring-offset-1 ring-orange-500' : ''}`}
-                                                style={{ backgroundColor: entry.color || '#E2E8F0', color: entry.textColor || '#0F172A', borderColor: darkenHexColor(entry.color || '#E2E8F0', 0.2) }}
-                                            >
-                                                {entry.label || value}
-                                            </button>
-                                        );
-                                    })}
-                                </div>
-                            </div>
-                            <div className="space-y-3">
-                                {advancedFilters.length === 0 ? (
-                                    <p className="text-sm text-slate-500">No advanced filters applied.</p>
-                                ) : (
-                                    advancedFilters.map((rule) => {
-                                        const fieldConfig = FILTER_FIELDS.find((field) => field.id === rule.field) || FILTER_FIELDS[0];
-                                        const operators = FILTER_OPERATORS[fieldConfig.type] || FILTER_OPERATORS.text;
-                                        return (
-                                            <div key={rule.id} className="rounded-lg bg-white border border-slate-200 p-3 flex flex-col gap-3 md:flex-row md:items-center md:gap-4">
-                                                <div className="flex-1 w-full">
-                                                    <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide">Field</label>
-                                                    <select
-                                                        value={rule.field}
-                                                        onChange={(e) => updateFilterField(rule.id, e.target.value)}
-                                                        className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-orange-500 focus:outline-none focus:ring-1 focus:ring-orange-500"
-                                                    >
-                                                        {FILTER_FIELDS.map((field) => (
-                                                            <option key={field.id} value={field.id}>{field.label}</option>
-                                                        ))}
-                                                    </select>
-                                                </div>
-                                                <div className="w-full md:w-48">
-                                                    <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide">Operator</label>
-                                                    <select
-                                                        value={rule.operator}
-                                                        onChange={(e) => updateFilterOperator(rule.id, e.target.value)}
-                                                        className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-orange-500 focus:outline-none focus:ring-1 focus:ring-orange-500"
-                                                    >
-                                                        {operators.map((option) => (
-                                                            <option key={option.value} value={option.value}>{option.label}</option>
-                                                        ))}
-                                                    </select>
-                                                </div>
-                                                <div className="flex-1 w-full">
-                                                    <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide">Value</label>
-                                                    {renderFilterValueInput(rule)}
-                                                </div>
-                                                <button
-                                                    type="button"
-                                                    onClick={() => removeFilterRule(rule.id)}
-                                                    className="self-start rounded-md border border-red-200 px-3 py-2 text-xs font-semibold text-red-600 hover:bg-red-50 transition"
-                                                >
-                                                    Remove
-                                                </button>
-                                            </div>
-                                        );
-                                    })
-                                )}
-                            </div>
-                        </div>
-                    </div>
                 </div>
-                <div className="overflow-x-auto">
-                    <table className="w-full text-sm text-left text-slate-500">
+                <div className="pt-4 border-t border-slate-200">
+                    <div className="overflow-x-auto">
+                        <table className="w-full text-sm text-left text-slate-500">
                         <thead className="text-xs text-slate-700 uppercase bg-slate-100">
                             <tr>
                                 <th className="px-4 py-3">Order</th>
@@ -2354,6 +2461,7 @@ const Dashboard = ({ orders, navigateTo, viewOrder, allContacts, allSelectableIt
                     </table>
                 </div>
             </div>
+        </div>
         </React.Fragment>
     );
 };
