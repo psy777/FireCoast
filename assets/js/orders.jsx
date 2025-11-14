@@ -66,6 +66,16 @@ const DEFAULT_STATUS_PALETTE = [
 
 const ORDER_COLUMN_IDS = ['order', 'customer', 'date', 'total', 'status', 'actions'];
 const DEFAULT_SORT_STATE = { columnId: null, direction: 'asc' };
+const DEFAULT_COLUMN_WIDTHS = {
+    order: 260,
+    customer: 220,
+    date: 180,
+    total: 160,
+    status: 160,
+    actions: 140,
+};
+const COLUMN_WIDTH_MIN = 120;
+const COLUMN_WIDTH_MAX = 480;
 
 const createDefaultOrderViewState = () => ({
     searchInput: '',
@@ -75,6 +85,7 @@ const createDefaultOrderViewState = () => ({
     statusSelections: [],
     columnOrder: [...ORDER_COLUMN_IDS],
     sortState: { ...DEFAULT_SORT_STATE },
+    columnWidths: { ...DEFAULT_COLUMN_WIDTHS },
 });
 
 const sanitizeColumnOrderPreference = (candidate) => {
@@ -120,6 +131,38 @@ const sanitizeSortPreference = (candidate) => {
     return { ...DEFAULT_SORT_STATE };
 };
 
+const clampColumnWidth = (value) => {
+    if (typeof value !== 'number' || Number.isNaN(value) || !Number.isFinite(value)) {
+        return null;
+    }
+    return Math.min(COLUMN_WIDTH_MAX, Math.max(COLUMN_WIDTH_MIN, Math.round(value)));
+};
+
+const sanitizeColumnWidthPreference = (candidate) => {
+    const base = { ...DEFAULT_COLUMN_WIDTHS };
+    if (!candidate || typeof candidate !== 'object') {
+        return base;
+    }
+    ORDER_COLUMN_IDS.forEach((columnId) => {
+        const rawValue = candidate[columnId];
+        if (typeof rawValue === 'number') {
+            const clamped = clampColumnWidth(rawValue);
+            if (clamped !== null) {
+                base[columnId] = clamped;
+            }
+            return;
+        }
+        if (typeof rawValue === 'string') {
+            const parsed = parseFloat(rawValue);
+            const clamped = clampColumnWidth(parsed);
+            if (clamped !== null) {
+                base[columnId] = clamped;
+            }
+        }
+    });
+    return base;
+};
+
 const sanitizeOrderViewStateSnapshot = (candidate) => {
     const base = createDefaultOrderViewState();
     if (!candidate || typeof candidate !== 'object') {
@@ -145,6 +188,9 @@ const sanitizeOrderViewStateSnapshot = (candidate) => {
     }
     if (candidate.sortState) {
         base.sortState = sanitizeSortPreference(candidate.sortState);
+    }
+    if (candidate.columnWidths || candidate.column_widths) {
+        base.columnWidths = sanitizeColumnWidthPreference(candidate.columnWidths || candidate.column_widths);
     }
     return base;
 };
@@ -1806,10 +1852,21 @@ const Dashboard = ({ orders, navigateTo, viewOrder, allContacts, allSelectableIt
     const filtersPanelId = 'orders-filters-popover';
     const [columnOrder, setColumnOrder] = useState(() => sanitizeColumnOrderPreference(initialViewState?.columnOrder));
     const [sortState, setSortState] = useState(() => sanitizeSortPreference(initialViewState?.sortState));
+    const [columnWidths, setColumnWidths] = useState(() => sanitizeColumnWidthPreference(initialViewState?.columnWidths));
     const columnDragIdRef = useRef(null);
+    const [draggingColumnId, setDraggingColumnId] = useState(null);
+    const [dragOverColumnId, setDragOverColumnId] = useState(null);
+    const columnResizeStateRef = useRef(null);
+    const [activeResizingColumn, setActiveResizingColumn] = useState(null);
+    const latestColumnWidthsRef = useRef(columnWidths);
+    useEffect(() => {
+        latestColumnWidthsRef.current = columnWidths;
+    }, [columnWidths]);
     const stopRowClick = useCallback((event) => event.stopPropagation(), []);
     const handleColumnDragStart = useCallback((event, columnId) => {
         columnDragIdRef.current = columnId;
+        setDraggingColumnId(columnId);
+        setDragOverColumnId(null);
         if (event.dataTransfer) {
             event.dataTransfer.effectAllowed = 'move';
             event.dataTransfer.setData('text/plain', columnId);
@@ -1818,18 +1875,27 @@ const Dashboard = ({ orders, navigateTo, viewOrder, allContacts, allSelectableIt
     }, []);
     const handleColumnDragEnd = useCallback(() => {
         columnDragIdRef.current = null;
+        setDraggingColumnId(null);
+        setDragOverColumnId(null);
     }, []);
-    const handleColumnDragOver = useCallback((event) => {
+    const handleColumnDragOver = useCallback((event, targetColumnId) => {
         event.preventDefault();
         if (event.dataTransfer) {
             event.dataTransfer.dropEffect = 'move';
         }
+        if (!columnDragIdRef.current || columnDragIdRef.current === targetColumnId) {
+            setDragOverColumnId(null);
+            return;
+        }
+        setDragOverColumnId(targetColumnId || null);
     }, []);
     const handleColumnDrop = useCallback((event, targetColumnId) => {
         event.preventDefault();
         event.stopPropagation();
         const sourceColumnId = columnDragIdRef.current;
         columnDragIdRef.current = null;
+        setDraggingColumnId(null);
+        setDragOverColumnId(null);
         if (!sourceColumnId || !targetColumnId || sourceColumnId === targetColumnId) {
             return;
         }
@@ -1855,6 +1921,61 @@ const Dashboard = ({ orders, navigateTo, viewOrder, allContacts, allSelectableIt
             }
             return { columnId: null, direction: 'asc' };
         });
+    }, []);
+    const handleHeaderClick = useCallback((column) => {
+        if (!column?.sortable) {
+            return;
+        }
+        if (columnDragIdRef.current || columnResizeStateRef.current) {
+            return;
+        }
+        toggleColumnSort(column.id);
+    }, [toggleColumnSort]);
+    const startColumnResize = useCallback((event, columnId) => {
+        event.preventDefault();
+        event.stopPropagation();
+        const widths = sanitizeColumnWidthPreference(latestColumnWidthsRef.current || {});
+        const startingWidth = widths[columnId] || DEFAULT_COLUMN_WIDTHS[columnId] || COLUMN_WIDTH_MIN;
+        columnResizeStateRef.current = {
+            columnId,
+            startX: event.clientX,
+            startWidth: startingWidth,
+        };
+        setActiveResizingColumn(columnId);
+    }, []);
+
+    useEffect(() => {
+        const handleMouseMove = (event) => {
+            const resizeState = columnResizeStateRef.current;
+            if (!resizeState) {
+                return;
+            }
+            event.preventDefault();
+            const delta = event.clientX - resizeState.startX;
+            const nextWidth = clampColumnWidth(resizeState.startWidth + delta);
+            if (nextWidth === null) {
+                return;
+            }
+            setColumnWidths((prev) => {
+                const normalized = sanitizeColumnWidthPreference(prev);
+                if (normalized[resizeState.columnId] === nextWidth) {
+                    return prev;
+                }
+                return { ...normalized, [resizeState.columnId]: nextWidth };
+            });
+        };
+        const handleMouseUp = () => {
+            if (columnResizeStateRef.current) {
+                columnResizeStateRef.current = null;
+                setActiveResizingColumn(null);
+            }
+        };
+        document.addEventListener('mousemove', handleMouseMove);
+        document.addEventListener('mouseup', handleMouseUp);
+        return () => {
+            document.removeEventListener('mousemove', handleMouseMove);
+            document.removeEventListener('mouseup', handleMouseUp);
+        };
     }, []);
 
     useEffect(() => {
@@ -1898,6 +2019,7 @@ const Dashboard = ({ orders, navigateTo, viewOrder, allContacts, allSelectableIt
         setActiveSearchQuery(snapshot.searchQuery || '');
         setColumnOrder(sanitizeColumnOrderPreference(snapshot.columnOrder));
         setSortState(sanitizeSortPreference(snapshot.sortState));
+        setColumnWidths(sanitizeColumnWidthPreference(snapshot.columnWidths));
         viewStateHydratedRef.current = true;
     }, [initialViewState]);
 
@@ -2243,9 +2365,20 @@ const Dashboard = ({ orders, navigateTo, viewOrder, allContacts, allSelectableIt
                 statusSelections,
                 columnOrder,
                 sortState,
+                columnWidths,
             });
         }
-    }, [inputValue, searchPills, activeSearchQuery, advancedFilters, statusSelections, columnOrder, sortState, onViewStateChange]);
+    }, [
+        inputValue,
+        searchPills,
+        activeSearchQuery,
+        advancedFilters,
+        statusSelections,
+        columnOrder,
+        sortState,
+        columnWidths,
+        onViewStateChange,
+    ]);
 
     const addFilterRule = () => {
         setAdvancedFilters((prev) => {
@@ -2463,9 +2596,21 @@ const Dashboard = ({ orders, navigateTo, viewOrder, allContacts, allSelectableIt
         };
     }, [allSelectableItems, branding, formatCurrency, paletteForStatus, stopRowClick, setOrderForEmailModal]);
     const normalizedColumnOrder = useMemo(() => sanitizeColumnOrderPreference(columnOrder), [columnOrder]);
+    const normalizedColumnWidths = useMemo(
+        () => sanitizeColumnWidthPreference(columnWidths),
+        [columnWidths]
+    );
     const orderedColumns = useMemo(
-        () => normalizedColumnOrder.map((columnId) => columnDefinitions[columnId]).filter(Boolean),
-        [normalizedColumnOrder, columnDefinitions]
+        () => normalizedColumnOrder
+            .map((columnId) => {
+                const definition = columnDefinitions[columnId];
+                if (!definition) {
+                    return null;
+                }
+                return { ...definition, width: normalizedColumnWidths[columnId] };
+            })
+            .filter(Boolean),
+        [normalizedColumnOrder, columnDefinitions, normalizedColumnWidths]
     );
 
     return (
@@ -2733,14 +2878,31 @@ const Dashboard = ({ orders, navigateTo, viewOrder, allContacts, allSelectableIt
                                                     : 'descending'
                                                 : 'none'
                                             : undefined;
+                                        const isDragTarget = draggingColumnId && dragOverColumnId === column.id && draggingColumnId !== column.id;
+                                        const headerBaseClass = column.headerClassName || 'px-4 py-3 text-left';
+                                        const dragClass = draggingColumnId === column.id
+                                            ? 'bg-orange-50 ring-2 ring-orange-300'
+                                            : isDragTarget
+                                                ? 'ring-2 ring-orange-400'
+                                                : '';
+                                        const headerClassName = `${headerBaseClass} relative group select-none whitespace-nowrap font-semibold text-slate-600 ${dragClass}`;
+                                        const columnWidthStyle = column.width
+                                            ? { width: `${column.width}px`, minWidth: `${column.width}px` }
+                                            : undefined;
                                         return (
                                             <th
                                                 key={column.id}
-                                                className={column.headerClassName || 'px-4 py-3 text-left'}
+                                                className={headerClassName}
                                                 aria-sort={ariaSort}
-                                                onClick={column.sortable ? () => toggleColumnSort(column.id) : undefined}
-                                                onDragOver={handleColumnDragOver}
+                                                draggable
+                                                aria-grabbed={draggingColumnId === column.id ? 'true' : 'false'}
+                                                onClick={() => handleHeaderClick(column)}
+                                                onDragStart={(event) => handleColumnDragStart(event, column.id)}
+                                                onDragEnd={handleColumnDragEnd}
+                                                onDragOver={(event) => handleColumnDragOver(event, column.id)}
+                                                onDragEnter={(event) => handleColumnDragOver(event, column.id)}
                                                 onDrop={(event) => handleColumnDrop(event, column.id)}
+                                                style={columnWidthStyle}
                                             >
                                                 <div className="flex items-center gap-2">
                                                     <span>{column.label}</span>
@@ -2749,18 +2911,12 @@ const Dashboard = ({ orders, navigateTo, viewOrder, allContacts, allSelectableIt
                                                             {isSorted ? (sortState.direction === 'asc' ? '▲' : '▼') : '↕'}
                                                         </span>
                                                     )}
-                                                    <button
-                                                        type="button"
-                                                        className="ml-auto text-slate-300 hover:text-slate-500 cursor-grab"
-                                                        draggable
-                                                        onDragStart={(event) => handleColumnDragStart(event, column.id)}
-                                                        onDragEnd={handleColumnDragEnd}
-                                                        onClick={(event) => event.stopPropagation()}
-                                                        aria-label={`Reorder ${column.label} column`}
-                                                    >
-                                                        ⠿
-                                                    </button>
                                                 </div>
+                                                <div
+                                                    role="presentation"
+                                                    className={`absolute top-0 right-0 h-full w-1.5 cursor-col-resize rounded ${activeResizingColumn === column.id ? 'bg-orange-400 opacity-90' : 'bg-transparent group-hover:bg-slate-300/80'}`}
+                                                    onMouseDown={(event) => startColumnResize(event, column.id)}
+                                                />
                                             </th>
                                         );
                                     })}
@@ -2777,10 +2933,14 @@ const Dashboard = ({ orders, navigateTo, viewOrder, allContacts, allSelectableIt
                                             const cellProps = typeof column.cellProps === 'function'
                                                 ? column.cellProps(order)
                                                 : (column.cellProps || {});
+                                            const cellStyle = column.width
+                                                ? { width: `${column.width}px`, minWidth: `${column.width}px` }
+                                                : undefined;
                                             return (
                                                 <td
                                                     key={`${order.id}-${column.id}`}
                                                     className={column.cellClassName || 'px-4 py-3'}
+                                                    style={cellStyle}
                                                     {...cellProps}
                                                 >
                                                     {column.renderCell(order)}
@@ -2800,7 +2960,8 @@ const Dashboard = ({ orders, navigateTo, viewOrder, allContacts, allSelectableIt
                                     </tr>
                                 )}
                             </tbody>
-                    </table>
+                        </table>
+                    </div>
                 </div>
             </div>
         </div>

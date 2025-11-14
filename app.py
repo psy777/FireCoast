@@ -26,6 +26,7 @@ import csv
 import pytz
 import secrets
 import hashlib
+import math
 from typing import Any, Dict, List, Optional, Set, Tuple
 import ipaddress
 
@@ -471,6 +472,16 @@ DEFAULT_STATUS_PALETTE = (
 )
 
 ORDER_COLUMN_IDS = ('order', 'customer', 'date', 'total', 'status', 'actions')
+ORDER_COLUMN_DEFAULT_WIDTHS = {
+    'order': 260,
+    'customer': 220,
+    'date': 180,
+    'total': 160,
+    'status': 160,
+    'actions': 140,
+}
+COLUMN_WIDTH_MIN = 120
+COLUMN_WIDTH_MAX = 480
 
 
 def _default_status_palette() -> List[Dict[str, Any]]:
@@ -495,6 +506,7 @@ def _default_order_view_state() -> Dict[str, Any]:
         'status_selections': [],
         'column_order': list(ORDER_COLUMN_IDS),
         'sort_state': {'column_id': None, 'direction': 'asc'},
+        'column_widths': dict(ORDER_COLUMN_DEFAULT_WIDTHS),
     }
 
 
@@ -531,6 +543,25 @@ def _sanitize_sort_state(candidate: Any) -> Dict[str, Any]:
     if isinstance(raw_direction, str) and raw_direction.strip().lower() == 'desc':
         base['direction'] = 'desc'
     return base
+
+
+def _sanitize_column_widths(candidate: Any) -> Dict[str, int]:
+    widths: Dict[str, int] = dict(ORDER_COLUMN_DEFAULT_WIDTHS)
+    if not isinstance(candidate, dict):
+        return widths
+    for column_id in ORDER_COLUMN_IDS:
+        raw_value = candidate.get(column_id)
+        if raw_value is None:
+            continue
+        try:
+            numeric = float(raw_value)
+        except (TypeError, ValueError):
+            continue
+        if not math.isfinite(numeric):
+            continue
+        clamped = max(COLUMN_WIDTH_MIN, min(COLUMN_WIDTH_MAX, numeric))
+        widths[column_id] = int(round(clamped))
+    return widths
 
 
 def _sanitize_hex_color(candidate: Any, fallback: str = '#E2E8F0') -> str:
@@ -675,6 +706,7 @@ def _sanitize_last_view_state(candidate: Any) -> Dict[str, Any]:
     )
     base['column_order'] = _sanitize_column_order(_pick('column_order', 'columnOrder'))
     base['sort_state'] = _sanitize_sort_state(_pick('sort_state', 'sortState'))
+    base['column_widths'] = _sanitize_column_widths(_pick('column_widths', 'columnWidths'))
     return base
 
 
@@ -783,6 +815,7 @@ def _serialize_order_view_settings(
     last_view_state = order_view_settings.get('last_view_state', _default_order_view_state())
     column_order = _sanitize_column_order(last_view_state.get('column_order'))
     sort_state = _sanitize_sort_state(last_view_state.get('sort_state'))
+    column_widths = _sanitize_column_widths(last_view_state.get('column_widths'))
     return {
         'rememberLastView': bool(order_view_settings.get('remember_last_view', True)),
         'statusPalette': palette_payload,
@@ -797,6 +830,7 @@ def _serialize_order_view_settings(
                 'columnId': sort_state.get('column_id'),
                 'direction': sort_state.get('direction', 'asc'),
             },
+            'columnWidths': column_widths,
         },
     }
 

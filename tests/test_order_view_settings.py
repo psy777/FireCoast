@@ -72,6 +72,7 @@ def test_order_view_settings_default_payload(order_view_client):
     assert payload['statusPalette'][0]['value'] == 'Draft'
     assert payload['lastViewState']['columnOrder'][0] == 'order'
     assert payload['lastViewState']['sortState'] == {'columnId': None, 'direction': 'asc'}
+    assert payload['lastViewState']['columnWidths']['order'] == 260
 
 
 def test_order_view_settings_persist_updates(order_view_client):
@@ -91,6 +92,7 @@ def test_order_view_settings_persist_updates(order_view_client):
             'statusSelections': ['Shipping'],
             'columnOrder': ['total', 'order', 'customer', 'date', 'status', 'actions', 'bogus'],
             'sortState': {'columnId': 'total', 'direction': 'desc'},
+            'columnWidths': {'order': 312.8, 'total': 90, 'actions': 900},
         },
     }
 
@@ -105,6 +107,9 @@ def test_order_view_settings_persist_updates(order_view_client):
     assert updated['lastViewState']['columnOrder'][0] == 'total'
     assert 'bogus' not in updated['lastViewState']['columnOrder']
     assert updated['lastViewState']['sortState'] == {'columnId': 'total', 'direction': 'desc'}
+    assert updated['lastViewState']['columnWidths']['order'] == 313
+    assert updated['lastViewState']['columnWidths']['total'] == 120
+    assert updated['lastViewState']['columnWidths']['actions'] == 480
 
     persisted = json.loads(settings_file.read_text())
     scoped = persisted.get('order_view_by_device', {})
@@ -114,6 +119,9 @@ def test_order_view_settings_persist_updates(order_view_client):
     assert 'bogus' not in scoped[device_token]['last_view_state']['column_order']
     assert scoped[device_token]['last_view_state']['sort_state']['column_id'] == 'total'
     assert scoped[device_token]['last_view_state']['sort_state']['direction'] == 'desc'
+    assert scoped[device_token]['last_view_state']['column_widths']['order'] == 313
+    assert scoped[device_token]['last_view_state']['column_widths']['total'] == 120
+    assert scoped[device_token]['last_view_state']['column_widths']['actions'] == 480
     assert 'status_palette' not in scoped[device_token]
     assert persisted['order_status_palette'][0]['value'] == 'Shipping'
 
@@ -124,6 +132,7 @@ def test_order_view_settings_persist_updates(order_view_client):
     assert follow_payload['statusPalette'][0]['value'] == 'Shipping'
     assert follow_payload['lastViewState']['columnOrder'][0] == 'total'
     assert follow_payload['lastViewState']['sortState'] == {'columnId': 'total', 'direction': 'desc'}
+    assert follow_payload['lastViewState']['columnWidths']['order'] == 313
 
 
 def test_order_view_settings_share_status_palette_but_scope_view_state(order_view_client):
@@ -144,6 +153,7 @@ def test_order_view_settings_share_status_palette_but_scope_view_state(order_vie
             'statusSelections': ['FirstOnly'],
             'columnOrder': ['status', 'order', 'customer', 'total', 'date', 'actions'],
             'sortState': {'columnId': 'status', 'direction': 'desc'},
+            'columnWidths': {'order': 330},
         },
     }
     assert client.post('/api/order-view-settings', json=first_payload).status_code == 200
@@ -165,6 +175,7 @@ def test_order_view_settings_share_status_palette_but_scope_view_state(order_vie
             'statusSelections': ['SecondOnly'],
             'columnOrder': ['customer', 'order', 'total', 'date', 'status', 'actions'],
             'sortState': {'columnId': 'customer', 'direction': 'asc'},
+            'columnWidths': {'customer': 350},
         },
     }
     assert client.post('/api/order-view-settings', json=second_payload).status_code == 200
@@ -176,6 +187,7 @@ def test_order_view_settings_share_status_palette_but_scope_view_state(order_vie
     assert first_view['lastViewState']['searchInput'] == 'first'
     assert first_view['lastViewState']['columnOrder'][0] == 'status'
     assert first_view['lastViewState']['sortState'] == {'columnId': 'status', 'direction': 'desc'}
+    assert first_view['lastViewState']['columnWidths']['order'] == 330
 
     _set_device_token(client, second_device)
     second_view = client.get('/api/order-view-settings').get_json()
@@ -184,6 +196,7 @@ def test_order_view_settings_share_status_palette_but_scope_view_state(order_vie
     assert second_view['lastViewState']['searchInput'] == 'second'
     assert second_view['lastViewState']['columnOrder'][0] == 'customer'
     assert second_view['lastViewState']['sortState'] == {'columnId': 'customer', 'direction': 'asc'}
+    assert second_view['lastViewState']['columnWidths']['customer'] == 350
 
     persisted = json.loads(settings_file.read_text())
     assert persisted['order_status_palette'][0]['value'] == 'SecondOnly'
@@ -195,5 +208,7 @@ def test_order_view_settings_share_status_palette_but_scope_view_state(order_vie
     assert scoped[second_device]['last_view_state']['column_order'][0] == 'customer'
     assert scoped[first_device]['last_view_state']['sort_state']['column_id'] == 'status'
     assert scoped[second_device]['last_view_state']['sort_state']['column_id'] == 'customer'
+    assert scoped[first_device]['last_view_state']['column_widths']['order'] == 330
+    assert scoped[second_device]['last_view_state']['column_widths']['customer'] == 350
     assert 'status_palette' not in scoped[first_device]
     assert 'status_palette' not in scoped[second_device]
