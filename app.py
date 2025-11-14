@@ -463,6 +463,207 @@ DATA_DIR = DATA_ROOT
 SETTINGS_FILE = DATA_DIR / 'settings.json'
 PASSWORDS_FILE = DATA_DIR / 'passwords.json'
 
+DEFAULT_STATUS_PALETTE = (
+    {'value': 'Draft', 'label': 'Draft', 'color': '#E2E8F0', 'shimmer': False},
+    {'value': 'Sent', 'label': 'Sent', 'color': '#BFDBFE', 'shimmer': False},
+    {'value': 'Paid', 'label': 'Paid', 'color': '#BBF7D0', 'shimmer': False},
+    {'value': 'Shipped', 'label': 'Shipped', 'color': '#FDE047', 'shimmer': True},
+)
+
+
+def _default_status_palette() -> List[Dict[str, Any]]:
+    entries: List[Dict[str, Any]] = []
+    for index, entry in enumerate(DEFAULT_STATUS_PALETTE):
+        entries.append({
+            'value': entry['value'],
+            'label': entry.get('label') or entry['value'],
+            'color': entry.get('color') or '#E2E8F0',
+            'shimmer': bool(entry.get('shimmer')),
+            'position': index,
+        })
+    return entries
+
+
+def _default_order_view_state() -> Dict[str, Any]:
+    return {
+        'search_input': '',
+        'search_pills': [],
+        'search_query': '',
+        'advanced_filters': [],
+        'status_selections': [],
+    }
+
+
+def _sanitize_hex_color(candidate: Any, fallback: str = '#E2E8F0') -> str:
+    if isinstance(candidate, str):
+        normalized = candidate.strip()
+        if re.match(r'^#([0-9a-fA-F]{6})$', normalized):
+            return normalized.upper()
+    return fallback
+
+
+def _hex_to_rgb_tuple(value: str) -> Optional[Tuple[int, int, int]]:
+    if not isinstance(value, str):
+        return None
+    normalized = value.strip().lstrip('#')
+    if len(normalized) != 6:
+        return None
+    try:
+        r = int(normalized[0:2], 16)
+        g = int(normalized[2:4], 16)
+        b = int(normalized[4:6], 16)
+    except ValueError:
+        return None
+    return (r, g, b)
+
+
+def _pick_text_color(hex_color: str) -> str:
+    rgb = _hex_to_rgb_tuple(hex_color)
+    if not rgb:
+        return '#0F172A'
+    luminance = (0.299 * rgb[0] + 0.587 * rgb[1] + 0.114 * rgb[2]) / 255
+    return '#0F172A' if luminance > 0.6 else '#FFFFFF'
+
+
+def _coerce_short_string(value: Any, max_length: int = 256) -> str:
+    if isinstance(value, (int, float)):
+        candidate = str(value)
+    elif isinstance(value, str):
+        candidate = value
+    else:
+        return ''
+    normalized = candidate.strip()
+    if not normalized:
+        return ''
+    return normalized[:max_length]
+
+
+def _coerce_string_list(candidate: Any, limit: int = 20, max_length: int = 128) -> List[str]:
+    if not isinstance(candidate, list):
+        return []
+    items: List[str] = []
+    for raw_value in candidate:
+        value = _coerce_short_string(raw_value, max_length=max_length)
+        if not value:
+            continue
+        items.append(value)
+        if len(items) >= limit:
+            break
+    return items
+
+
+def _sanitize_advanced_filters(candidate: Any) -> List[Dict[str, Any]]:
+    if not isinstance(candidate, list):
+        return []
+    sanitized: List[Dict[str, Any]] = []
+    for index, entry in enumerate(candidate):
+        if not isinstance(entry, dict):
+            continue
+        field = _coerce_short_string(entry.get('field'), max_length=64)
+        operator = _coerce_short_string(entry.get('operator'), max_length=64)
+        if not field or not operator:
+            continue
+        rule_id = _coerce_short_string(entry.get('id'), max_length=64) or f'rule-{index}'
+        rule: Dict[str, Any] = {
+            'id': rule_id,
+            'field': field,
+            'operator': operator,
+        }
+        for key in ('value', 'valueB'):
+            raw_value = entry.get(key)
+            if isinstance(raw_value, (int, float)):
+                rule[key] = raw_value
+            elif isinstance(raw_value, str):
+                rule[key] = raw_value[:256]
+        sanitized.append(rule)
+        if len(sanitized) >= 20:
+            break
+    return sanitized
+
+
+def _sanitize_status_palette(candidate: Any) -> List[Dict[str, Any]]:
+    entries = candidate if isinstance(candidate, list) else []
+    sanitized: List[Dict[str, Any]] = []
+    seen: Set[str] = set()
+    for index, entry in enumerate(entries):
+        if not isinstance(entry, dict):
+            continue
+        value = _coerce_short_string(entry.get('value') or entry.get('label'), max_length=64)
+        if not value:
+            continue
+        normalized = value.lower()
+        if normalized in seen:
+            continue
+        label = _coerce_short_string(entry.get('label'), max_length=64) or value
+        color = _sanitize_hex_color(entry.get('color'), fallback='#E2E8F0')
+        shimmer = bool(entry.get('shimmer'))
+        position_raw = entry.get('position')
+        try:
+            position = int(position_raw)
+        except (TypeError, ValueError):
+            position = len(sanitized)
+        sanitized.append({
+            'value': value,
+            'label': label,
+            'color': color,
+            'shimmer': shimmer,
+            'position': position,
+        })
+        seen.add(normalized)
+        if len(sanitized) >= 24:
+            break
+    if not sanitized:
+        return _default_status_palette()
+    return sorted(sanitized, key=lambda entry: entry.get('position', 0))
+
+
+def _sanitize_last_view_state(candidate: Any) -> Dict[str, Any]:
+    base = _default_order_view_state()
+    if not isinstance(candidate, dict):
+        return base
+    base['search_input'] = _coerce_short_string(candidate.get('search_input'), max_length=256) or ''
+    base['search_query'] = _coerce_short_string(candidate.get('search_query'), max_length=512) or ''
+    base['search_pills'] = _coerce_string_list(candidate.get('search_pills'), limit=30, max_length=128)
+    base['advanced_filters'] = _sanitize_advanced_filters(candidate.get('advanced_filters'))
+    base['status_selections'] = _coerce_string_list(candidate.get('status_selections'), limit=20, max_length=64)
+    return base
+
+
+def _sanitize_order_view_settings(candidate: Any) -> Dict[str, Any]:
+    if not isinstance(candidate, dict):
+        candidate = {}
+    sanitized = {
+        'remember_last_view': bool(candidate.get('remember_last_view', True)),
+        'status_palette': _sanitize_status_palette(candidate.get('status_palette')),
+        'last_view_state': _sanitize_last_view_state(candidate.get('last_view_state')),
+    }
+    return sanitized
+
+
+def _serialize_order_view_settings(order_view_settings: Dict[str, Any]) -> Dict[str, Any]:
+    palette_payload = []
+    for entry in order_view_settings.get('status_palette', []):
+        palette_payload.append({
+            'value': entry.get('value'),
+            'label': entry.get('label'),
+            'color': entry.get('color'),
+            'shimmer': bool(entry.get('shimmer')),
+            'position': entry.get('position', 0),
+            'textColor': _pick_text_color(entry.get('color', '#E2E8F0')),
+        })
+    last_view_state = order_view_settings.get('last_view_state', _default_order_view_state())
+    return {
+        'rememberLastView': bool(order_view_settings.get('remember_last_view', True)),
+        'statusPalette': palette_payload,
+        'lastViewState': {
+            'searchInput': last_view_state.get('search_input', ''),
+            'searchPills': last_view_state.get('search_pills', []),
+            'searchQuery': last_view_state.get('search_query', ''),
+            'advancedFilters': last_view_state.get('advanced_filters', []),
+            'statusSelections': last_view_state.get('status_selections', []),
+        },
+    }
+
 
 @app.before_request
 def _enforce_device_access_gate():
@@ -7095,6 +7296,39 @@ def update_invoice_settings():
 
     write_json_file(SETTINGS_FILE, existing_settings)
     return jsonify({"message": "Invoice appearance updated.", "settings": existing_settings}), 200
+
+
+@app.route('/api/order-view-settings', methods=['GET'])
+def get_order_view_settings():
+    settings = _load_settings_dict()
+    order_view = _sanitize_order_view_settings(settings.get('order_view', {}))
+    return jsonify(_serialize_order_view_settings(order_view))
+
+
+@app.route('/api/order-view-settings', methods=['POST'])
+def update_order_view_settings():
+    payload = request.get_json(silent=True) or {}
+    if not isinstance(payload, dict):
+        return jsonify({'message': 'Invalid payload.'}), 400
+
+    settings = _load_settings_dict()
+    order_view = _sanitize_order_view_settings(settings.get('order_view', {}))
+
+    remember_key = 'remember_last_view' if 'remember_last_view' in payload else 'rememberLastView' if 'rememberLastView' in payload else None
+    if remember_key is not None:
+        order_view['remember_last_view'] = bool(payload.get(remember_key))
+
+    palette_key = 'status_palette' if 'status_palette' in payload else 'statusPalette' if 'statusPalette' in payload else None
+    if palette_key is not None:
+        order_view['status_palette'] = _sanitize_status_palette(payload.get(palette_key))
+
+    view_state_key = 'last_view_state' if 'last_view_state' in payload else 'lastViewState' if 'lastViewState' in payload else None
+    if view_state_key is not None:
+        order_view['last_view_state'] = _sanitize_last_view_state(payload.get(view_state_key))
+
+    settings['order_view'] = order_view
+    write_json_file(SETTINGS_FILE, settings)
+    return jsonify(_serialize_order_view_settings(order_view))
 
 
 @app.route('/api/system/upgrade', methods=['POST'])

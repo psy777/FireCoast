@@ -64,6 +64,73 @@ const isRgbColorDark = (rgb) => {
     return luminance < 0.6;
 };
 
+const adjustHexColor = (hex, percent = 0) => {
+    const rgb = hexToRgb(hex);
+    if (!rgb) {
+        return hex;
+    }
+    const clamp = (value) => Math.max(0, Math.min(255, value));
+    const adjust = (channel) => clamp(Math.round(channel + 255 * percent));
+    const r = adjust(rgb.r);
+    const g = adjust(rgb.g);
+    const b = adjust(rgb.b);
+    const toHex = (value) => value.toString(16).padStart(2, '0');
+    return `#${toHex(r)}${toHex(g)}${toHex(b)}`.toUpperCase();
+};
+
+const lightenHexColor = (hex, percent = 0.1) => adjustHexColor(hex, Math.abs(percent));
+const darkenHexColor = (hex, percent = 0.1) => adjustHexColor(hex, -Math.abs(percent));
+
+const DEFAULT_STATUS_PALETTE = [
+    { value: 'Draft', label: 'Draft', color: '#E2E8F0', textColor: '#0F172A', shimmer: false },
+    { value: 'Sent', label: 'Sent', color: '#BFDBFE', textColor: '#0F172A', shimmer: false },
+    { value: 'Paid', label: 'Paid', color: '#BBF7D0', textColor: '#0F172A', shimmer: false },
+    { value: 'Shipped', label: 'Shipped', color: '#FDE047', textColor: '#78350F', shimmer: true },
+];
+
+const DEFAULT_ORDER_VIEW_STATE = {
+    searchInput: '',
+    searchPills: [],
+    searchQuery: '',
+    advancedFilters: [],
+    statusSelections: [],
+};
+
+const FILTER_FIELDS = [
+    { id: 'customer', label: 'Customer', type: 'text' },
+    { id: 'title', label: 'Title', type: 'text' },
+    { id: 'displayId', label: 'Reference ID', type: 'text' },
+    { id: 'notes', label: 'Notes', type: 'text' },
+    { id: 'total', label: 'Total Amount', type: 'number' },
+    { id: 'date', label: 'Order Date', type: 'date' },
+];
+
+const FILTER_OPERATORS = {
+    text: [
+        { value: 'contains', label: 'contains' },
+        { value: 'not_contains', label: 'does not contain' },
+        { value: 'equals', label: 'is exactly' },
+        { value: 'not_equals', label: 'is not' },
+        { value: 'starts_with', label: 'starts with' },
+        { value: 'ends_with', label: 'ends with' },
+    ],
+    number: [
+        { value: 'equals', label: 'is equal to' },
+        { value: 'not_equals', label: 'is not equal to' },
+        { value: 'greater_than', label: 'is greater than' },
+        { value: 'greater_or_equal', label: 'is greater or equal' },
+        { value: 'less_than', label: 'is less than' },
+        { value: 'less_or_equal', label: 'is less or equal' },
+        { value: 'between', label: 'is between' },
+    ],
+    date: [
+        { value: 'on', label: 'is on' },
+        { value: 'before', label: 'is before' },
+        { value: 'after', label: 'is after' },
+        { value: 'between', label: 'is between' },
+    ],
+};
+
 const normalizePhoneDigits = (value = '') => (value || '').replace(/\D/g, '').slice(0, 10);
 
 const formatPhoneNumber = (value = '') => {
@@ -1437,67 +1504,67 @@ const Calendar = ({ onSelectDate, position, onClose }) => {
     );
 };
 
-const ShippedStatusBadge = ({ statusText }) => {
-    const { useState, useRef, useEffect } = React;
-    const [glintStyle, setGlintStyle] = useState({});
+const StatusBadge = ({ statusText, appearance }) => {
+    const { useState, useRef, useEffect, useMemo } = React;
+    const shimmerEnabled = Boolean(appearance?.shimmer);
+    const backgroundColor = appearance?.color || '#E2E8F0';
+    const textColor = appearance?.textColor || (isRgbColorDark(hexToRgb(backgroundColor)) ? '#FFFFFF' : '#0F172A');
+    const borderColor = darkenHexColor(backgroundColor, 0.2);
     const badgeRef = useRef(null);
-    const proximityThreshold = 75; // Pixels around the badge to trigger the effect
-
-    const baseStyle = {
-        background: `linear-gradient(135deg, #FDE047, #FBBF24, #F59E0B)`, // amber-300, amber-400, amber-500
-    };
+    const proximityThreshold = 75;
+    const baseGradient = useMemo(() => `linear-gradient(135deg, ${lightenHexColor(backgroundColor, 0.2)}, ${backgroundColor}, ${darkenHexColor(backgroundColor, 0.1)})`, [backgroundColor]);
+    const [glintStyle, setGlintStyle] = useState(shimmerEnabled ? { background: baseGradient } : {});
 
     useEffect(() => {
-        setGlintStyle(baseStyle); // Set initial background
-
+        if (!shimmerEnabled) {
+            return undefined;
+        }
+        setGlintStyle({ background: baseGradient });
         const handleGlobalMouseMove = (e) => {
             if (!badgeRef.current) return;
-
             const rect = badgeRef.current.getBoundingClientRect();
             const badgeCenterX = rect.left + rect.width / 2;
             const badgeCenterY = rect.top + rect.height / 2;
-
             const cursorX = e.clientX;
             const cursorY = e.clientY;
-
             const distanceX = cursorX - badgeCenterX;
             const distanceY = cursorY - badgeCenterY;
             const distance = Math.sqrt(distanceX * distanceX + distanceY * distanceY);
-
-            if (distance < proximityThreshold + rect.width / 2) { // Add half width/height for smoother edge detection
-                // Calculate glare position relative to the badge, even if cursor is outside
-                // Normalize cursor position relative to the badge's top-left corner
-                const xInBadge = cursorX - rect.left;
-                const yInBadge = cursorY - rect.top;
-
-                const glareX = (xInBadge / rect.width) * 100;
-                const glareY = (yInBadge / rect.height) * 100;
-                
-                // Clamp glareX and glareY to prevent extreme gradients if cursor is far but within threshold
-                const clampedGlareX = Math.max(-50, Math.min(150, glareX)); // Allow some overflow for effect
+            if (distance < proximityThreshold + rect.width / 2) {
+                const glareX = ((cursorX - rect.left) / rect.width) * 100;
+                const glareY = ((cursorY - rect.top) / rect.height) * 100;
+                const clampedGlareX = Math.max(-50, Math.min(150, glareX));
                 const clampedGlareY = Math.max(-50, Math.min(150, glareY));
-
-
                 setGlintStyle({
-                    background: `radial-gradient(circle at ${clampedGlareX}% ${clampedGlareY}%, rgba(255,255,255,0.75) 0%, rgba(255,255,255,0) 50%), linear-gradient(135deg, #FDE047, #FBBF24, #F59E0B)`,
-                    transition: 'background 0.05s linear' // Faster transition for responsiveness
+                    background: `radial-gradient(circle at ${clampedGlareX}% ${clampedGlareY}%, rgba(255,255,255,0.75) 0%, rgba(255,255,255,0) 50%), ${baseGradient}`,
+                    transition: 'background 0.05s linear',
                 });
             } else {
-                setGlintStyle({...baseStyle, transition: 'background 0.3s ease-out'}); // Slower transition when resetting
+                setGlintStyle({ background: baseGradient, transition: 'background 0.3s ease-out' });
             }
         };
-
         document.addEventListener('mousemove', handleGlobalMouseMove);
         return () => {
             document.removeEventListener('mousemove', handleGlobalMouseMove);
         };
-    }, []); // Empty dependency array means this effect runs once on mount and cleans up on unmount
+    }, [shimmerEnabled, baseGradient]);
+
+    if (!shimmerEnabled) {
+        return (
+            <span
+                className="px-2 py-1 text-xs font-semibold rounded-full border shadow-sm inline-flex items-center justify-center"
+                style={{ backgroundColor, color: textColor, borderColor }}
+            >
+                {statusText}
+            </span>
+        );
+    }
 
     return (
         <span
             ref={badgeRef}
-            className="px-2 py-1 text-xs font-semibold rounded-full text-amber-800 border-2 border-amber-500 shadow-md"
-            style={{...glintStyle, display: 'inline-block', position: 'relative', overflow: 'hidden' }} // Added overflow hidden for cleaner gradient edges
+            className="px-2 py-1 text-xs font-semibold rounded-full border shadow-md inline-flex items-center justify-center"
+            style={{ ...glintStyle, color: textColor, borderColor, display: 'inline-flex', overflow: 'hidden' }}
         >
             {statusText}
         </span>
@@ -1601,8 +1668,9 @@ const ContactSummaryCard = ({ contact, shippingFallback, billingFallback }) => {
 };
 
 // --- COMPONENTS ---
-const Dashboard = ({ orders, navigateTo, viewOrder, allContacts, allSelectableItems, setOrderForEmailModal, branding }) => {
-    const { useState, useEffect, useMemo, useRef } = React;
+const Dashboard = ({ orders, navigateTo, viewOrder, allContacts, allSelectableItems, setOrderForEmailModal, branding, orderViewSettings, initialViewState, onViewStateChange }) => {
+    const { useState, useEffect, useMemo, useRef, useCallback } = React;
+    const [searchScopeOrders, setSearchScopeOrders] = useState(orders);
     const [filteredOrders, setFilteredOrders] = useState(orders);
     const [searchPills, setSearchPills] = useState([]);
     const [inputValue, setInputValue] = useState('');
@@ -1614,6 +1682,11 @@ const Dashboard = ({ orders, navigateTo, viewOrder, allContacts, allSelectableIt
     const [dateKeyword, setDateKeyword] = useState('');
     const [isSearching, setIsSearching] = useState(false);
     const [searchError, setSearchError] = useState(null);
+    const [advancedFilters, setAdvancedFilters] = useState([]);
+    const [statusSelections, setStatusSelections] = useState([]);
+    const [activeSearchQuery, setActiveSearchQuery] = useState('');
+    const viewStateHydratedRef = useRef(false);
+    const nextFilterIdRef = useRef(1);
 
     useEffect(() => {
         return () => {
@@ -1623,18 +1696,54 @@ const Dashboard = ({ orders, navigateTo, viewOrder, allContacts, allSelectableIt
         };
     }, []);
 
+    const statusPalette = useMemo(() => (
+        Array.isArray(orderViewSettings?.statusPalette) && orderViewSettings.statusPalette.length
+            ? orderViewSettings.statusPalette
+            : DEFAULT_STATUS_PALETTE
+    ), [orderViewSettings]);
+    const statusPaletteMap = useMemo(() => {
+        const entries = new Map();
+        statusPalette.forEach((entry) => {
+            const key = (entry.value || entry.label || '').toLowerCase();
+            if (!key) {
+                return;
+            }
+            entries.set(key, entry);
+        });
+        return entries;
+    }, [statusPalette]);
+    const normalizedStatusSet = useMemo(
+        () => new Set(statusSelections.map((value) => (value || '').toLowerCase())),
+        [statusSelections]
+    );
+
+    useEffect(() => {
+        if (viewStateHydratedRef.current) {
+            return;
+        }
+        const snapshot = initialViewState || DEFAULT_ORDER_VIEW_STATE;
+        setSearchPills(Array.isArray(snapshot.searchPills) ? snapshot.searchPills : []);
+        setInputValue(snapshot.searchInput || '');
+        setAdvancedFilters(Array.isArray(snapshot.advancedFilters) ? snapshot.advancedFilters : []);
+        setStatusSelections(Array.isArray(snapshot.statusSelections) ? snapshot.statusSelections : []);
+        setActiveSearchQuery(snapshot.searchQuery || '');
+        viewStateHydratedRef.current = true;
+    }, [initialViewState]);
+
+    useEffect(() => {
+        if (!activeSearchQuery) {
+            setSearchScopeOrders(orders);
+        }
+    }, [orders, activeSearchQuery]);
+
     const handleDateSelect = (date) => {
         const dateString = date.toISOString().split('T')[0];
         const newPill = `${dateKeyword}${dateString}`;
-        
-        // Remove the keyword and any partial date from the input value
         const newInputValue = inputValue.replace(new RegExp(`${dateKeyword}\\S*`), '').trim();
-
         setInputValue(newInputValue);
         setSearchPills(prev => [...prev, newPill]);
         setShowCalendar(false);
         setDateKeyword('');
-
         requestAnimationFrame(() => {
             if (searchInputRef.current) {
                 searchInputRef.current.focus();
@@ -1646,10 +1755,8 @@ const Dashboard = ({ orders, navigateTo, viewOrder, allContacts, allSelectableIt
         const keywords = ['from', 'contact', 'customer', 'status', 'item', 'note', 'log', 'before', 'after', 'during'];
         const keywordPattern = `(?:${keywords.join('|')}):`;
         const structuredPattern = new RegExp(`(\\b(?:${keywordPattern})(?:"[^"]+"|\S+))|(\\btotal\\s*(?:>=|<=|<>|!=|=|<|>)\\s*\\d+\\.?\\d*)`, 'g');
-        
         const newPills = value.match(structuredPattern) || [];
         const remainingText = value.replace(structuredPattern, '').trim();
-        
         if (newPills.length > 0) {
             setSearchPills(prev => [...prev, ...newPills]);
         }
@@ -1659,7 +1766,6 @@ const Dashboard = ({ orders, navigateTo, viewOrder, allContacts, allSelectableIt
     const handleInputChange = (e) => {
         const { value } = e.target;
         const keywordMatch = value.match(/(?:^|\s)(before|after|during):([^\s]*)$/i);
-
         if (keywordMatch && keywordMatch[2] === '') {
             const keyword = `${keywordMatch[1].toLowerCase()}:`;
             setDateKeyword(keyword);
@@ -1672,10 +1778,9 @@ const Dashboard = ({ orders, navigateTo, viewOrder, allContacts, allSelectableIt
             setShowCalendar(false);
             setDateKeyword('');
         }
-
         setInputValue(value);
     };
-    
+
     const handleKeyDown = (e) => {
         if (e.key === 'Enter') {
             e.preventDefault();
@@ -1685,15 +1790,22 @@ const Dashboard = ({ orders, navigateTo, viewOrder, allContacts, allSelectableIt
             setSearchPills(searchPills.slice(0, -1));
         }
     };
-    
+
     const removePill = (indexToRemove) => {
         setSearchPills(searchPills.filter((_, index) => index !== indexToRemove));
     };
 
     const clearSearch = () => {
+        if (searchAbortRef.current) {
+            searchAbortRef.current.abort();
+            searchAbortRef.current = null;
+        }
         setSearchPills([]);
         setInputValue('');
         setSearchError(null);
+        setIsSearching(false);
+        setActiveSearchQuery('');
+        setSearchScopeOrders(orders);
     };
 
     const buildSearchQuery = () => {
@@ -1706,24 +1818,21 @@ const Dashboard = ({ orders, navigateTo, viewOrder, allContacts, allSelectableIt
 
     useEffect(() => {
         const query = buildSearchQuery();
-
         if (searchAbortRef.current) {
             searchAbortRef.current.abort();
             searchAbortRef.current = null;
         }
-
         if (!query) {
-            setFilteredOrders(orders);
+            setActiveSearchQuery('');
+            setSearchScopeOrders(orders);
             setIsSearching(false);
             setSearchError(null);
             return;
         }
-
         const controller = new AbortController();
         searchAbortRef.current = controller;
         setIsSearching(true);
         setSearchError(null);
-
         const timeoutId = setTimeout(async () => {
             try {
                 const response = await fetch(`/api/search-orders?query=${encodeURIComponent(query)}`, { signal: controller.signal });
@@ -1731,25 +1840,161 @@ const Dashboard = ({ orders, navigateTo, viewOrder, allContacts, allSelectableIt
                     throw new Error('Search request failed');
                 }
                 const data = await response.json();
-                setFilteredOrders(Array.isArray(data) ? data : []);
+                setActiveSearchQuery(query);
+                setSearchScopeOrders(Array.isArray(data) ? data : []);
                 setSearchError(null);
             } catch (error) {
                 if (error.name === 'AbortError') {
                     return;
                 }
-                console.error("Failed to fetch search results:", error);
+                console.error('Failed to fetch search results:', error);
                 setSearchError('Search failed. Showing all orders.');
-                setFilteredOrders(orders);
+                setSearchScopeOrders(orders);
+                setActiveSearchQuery('');
             } finally {
                 setIsSearching(false);
             }
         }, 200);
-
         return () => {
             controller.abort();
             clearTimeout(timeoutId);
         };
     }, [searchPills, inputValue, orders]);
+
+    const evaluateRule = useCallback((order, rule) => {
+        if (!rule || !rule.field || !rule.operator) {
+            return true;
+        }
+        const fieldConfig = FILTER_FIELDS.find((field) => field.id === rule.field) || FILTER_FIELDS[0];
+        const fieldId = fieldConfig.id;
+        if (fieldConfig.type === 'text') {
+            const targetValue = (() => {
+                if (fieldId === 'customer') {
+                    return getContactDisplayName(order.primaryContact || order.contactInfo || {});
+                }
+                if (fieldId === 'title') {
+                    return order.title || '';
+                }
+                if (fieldId === 'displayId') {
+                    return order.display_id || '';
+                }
+                if (fieldId === 'notes') {
+                    return order.notes || '';
+                }
+                return '';
+            })();
+            const candidate = (targetValue || '').toString().toLowerCase();
+            const testValue = (rule.value || '').toString().toLowerCase();
+            if (!testValue) {
+                return true;
+            }
+            switch (rule.operator) {
+                case 'contains':
+                    return candidate.includes(testValue);
+                case 'not_contains':
+                    return !candidate.includes(testValue);
+                case 'equals':
+                    return candidate === testValue;
+                case 'not_equals':
+                    return candidate !== testValue;
+                case 'starts_with':
+                    return candidate.startsWith(testValue);
+                case 'ends_with':
+                    return candidate.endsWith(testValue);
+                default:
+                    return true;
+            }
+        }
+        if (fieldConfig.type === 'number') {
+            const targetRaw = typeof order.total === 'number' ? order.total : parseFloat(order.total || 0);
+            const targetNumber = Number.isFinite(targetRaw) ? targetRaw : null;
+            if (targetNumber === null) {
+                return true;
+            }
+            const first = parseFloat(rule.value);
+            const second = parseFloat(rule.valueB);
+            switch (rule.operator) {
+                case 'equals':
+                    return Number.isFinite(first) ? targetNumber === first : true;
+                case 'not_equals':
+                    return Number.isFinite(first) ? targetNumber !== first : true;
+                case 'greater_than':
+                    return Number.isFinite(first) ? targetNumber > first : true;
+                case 'greater_or_equal':
+                    return Number.isFinite(first) ? targetNumber >= first : true;
+                case 'less_than':
+                    return Number.isFinite(first) ? targetNumber < first : true;
+                case 'less_or_equal':
+                    return Number.isFinite(first) ? targetNumber <= first : true;
+                case 'between':
+                    if (!Number.isFinite(first) || !Number.isFinite(second)) {
+                        return true;
+                    }
+                    const min = Math.min(first, second);
+                    const max = Math.max(first, second);
+                    return targetNumber >= min && targetNumber <= max;
+                default:
+                    return true;
+            }
+        }
+        if (fieldConfig.type === 'date') {
+            const targetDate = order.date ? new Date(order.date) : null;
+            if (!targetDate || Number.isNaN(targetDate.getTime())) {
+                return true;
+            }
+            const parseDateValue = (value) => {
+                if (!value) {
+                    return null;
+                }
+                const parsed = new Date(value);
+                return Number.isNaN(parsed.getTime()) ? null : parsed;
+            };
+            const firstDate = parseDateValue(rule.value);
+            const secondDate = parseDateValue(rule.valueB);
+            switch (rule.operator) {
+                case 'on':
+                    return firstDate ? targetDate.toDateString() === firstDate.toDateString() : true;
+                case 'before':
+                    return firstDate ? targetDate < firstDate : true;
+                case 'after':
+                    return firstDate ? targetDate > firstDate : true;
+                case 'between':
+                    if (!firstDate || !secondDate) {
+                        return true;
+                    }
+                    const start = firstDate < secondDate ? firstDate : secondDate;
+                    const end = firstDate < secondDate ? secondDate : firstDate;
+                    return targetDate >= start && targetDate <= end;
+                default:
+                    return true;
+            }
+        }
+        return true;
+    }, []);
+
+    const applyAllFilters = useCallback((sourceOrders) => {
+        if (!Array.isArray(sourceOrders)) {
+            return [];
+        }
+        return sourceOrders.filter((order) => {
+            if (normalizedStatusSet.size > 0) {
+                const statusKey = (order.status || '').toLowerCase();
+                if (!normalizedStatusSet.has(statusKey)) {
+                    return false;
+                }
+            }
+            for (const rule of advancedFilters) {
+                if (!evaluateRule(order, rule)) {
+                    return false;
+                }
+            }
+            return true;
+        });
+    }, [advancedFilters, evaluateRule, normalizedStatusSet]);
+
+    useEffect(() => {
+        setFilteredOrders(applyAllFilters(searchScopeOrders));
+    }, [searchScopeOrders, applyAllFilters]);
 
     useEffect(() => {
         const fetchDashboardStats = async () => {
@@ -1758,25 +2003,143 @@ const Dashboard = ({ orders, navigateTo, viewOrder, allContacts, allSelectableIt
                 const data = await response.json();
                 setDashboardStats(data);
             } catch (error) {
-                console.error("Failed to fetch dashboard stats:", error);
-                // Set default or error values if needed
+                console.error('Failed to fetch dashboard stats:', error);
                 setDashboardStats({ totalRevenue: 0, averageOrderRevenue: 0, totalOrders: orders.length });
             }
         };
         fetchDashboardStats();
     }, [orders]);
 
-    // This function now expects amountInDollars
-    const formatCurrency = (amountInDollars) => { 
-        // Ensure amountInDollars is a number, default to 0 if not
+    useEffect(() => {
+        if (!viewStateHydratedRef.current) {
+            return;
+        }
+        if (typeof onViewStateChange === 'function') {
+            onViewStateChange({
+                searchInput: inputValue,
+                searchPills,
+                searchQuery: activeSearchQuery,
+                advancedFilters,
+                statusSelections,
+            });
+        }
+    }, [inputValue, searchPills, activeSearchQuery, advancedFilters, statusSelections, onViewStateChange]);
+
+    const addFilterRule = () => {
+        setAdvancedFilters((prev) => {
+            if (prev.length >= 10) {
+                return prev;
+            }
+            const defaultField = FILTER_FIELDS[0];
+            const defaultOperator = FILTER_OPERATORS[defaultField.type][0].value;
+            const ruleId = `filter-${nextFilterIdRef.current++}`;
+            return [...prev, { id: ruleId, field: defaultField.id, operator: defaultOperator, value: '' }];
+        });
+    };
+
+    const updateFilterField = (ruleId, nextFieldId) => {
+        setAdvancedFilters((prev) => prev.map((rule) => {
+            if (rule.id !== ruleId) {
+                return rule;
+            }
+            const fieldConfig = FILTER_FIELDS.find((field) => field.id === nextFieldId) || FILTER_FIELDS[0];
+            const defaultOperator = FILTER_OPERATORS[fieldConfig.type][0].value;
+            return { id: rule.id, field: fieldConfig.id, operator: defaultOperator, value: '', valueB: '' };
+        }));
+    };
+
+    const updateFilterOperator = (ruleId, operator) => {
+        setAdvancedFilters((prev) => prev.map((rule) => (rule.id === ruleId ? { ...rule, operator } : rule)));
+    };
+
+    const updateFilterValue = (ruleId, key, value) => {
+        setAdvancedFilters((prev) => prev.map((rule) => (rule.id === ruleId ? { ...rule, [key]: value } : rule)));
+    };
+
+    const removeFilterRule = (ruleId) => {
+        setAdvancedFilters((prev) => prev.filter((rule) => rule.id !== ruleId));
+    };
+
+    const clearAllFilters = () => {
+        setAdvancedFilters([]);
+        setStatusSelections([]);
+    };
+
+    const toggleStatusSelection = (value) => {
+        const normalized = (value || '').toLowerCase();
+        if (!normalized) {
+            return;
+        }
+        setStatusSelections((prev) => {
+            const exists = prev.some((entry) => entry.toLowerCase() === normalized);
+            if (exists) {
+                return prev.filter((entry) => entry.toLowerCase() !== normalized);
+            }
+            return [...prev, value];
+        });
+    };
+
+    const clearStatusFilters = () => {
+        setStatusSelections([]);
+    };
+
+    const renderFilterValueInput = (rule) => {
+        const fieldConfig = FILTER_FIELDS.find((field) => field.id === rule.field) || FILTER_FIELDS[0];
+        const baseClass = 'mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-orange-500 focus:outline-none focus:ring-1 focus:ring-orange-500';
+        if (fieldConfig.type === 'number') {
+            if (rule.operator === 'between') {
+                return (
+                    <div className="mt-1 flex items-center gap-2">
+                        <input type="number" step="0.01" value={rule.value ?? ''} onChange={(e) => updateFilterValue(rule.id, 'value', e.target.value)} className={`${baseClass} flex-1`} />
+                        <span className="text-xs text-slate-500">and</span>
+                        <input type="number" step="0.01" value={rule.valueB ?? ''} onChange={(e) => updateFilterValue(rule.id, 'valueB', e.target.value)} className={`${baseClass} flex-1`} />
+                    </div>
+                );
+            }
+            return (
+                <input type="number" step="0.01" value={rule.value ?? ''} onChange={(e) => updateFilterValue(rule.id, 'value', e.target.value)} className={baseClass} />
+            );
+        }
+        if (fieldConfig.type === 'date') {
+            if (rule.operator === 'between') {
+                return (
+                    <div className="mt-1 flex items-center gap-2">
+                        <input type="date" value={rule.value ?? ''} onChange={(e) => updateFilterValue(rule.id, 'value', e.target.value)} className={`${baseClass} flex-1`} />
+                        <span className="text-xs text-slate-500">and</span>
+                        <input type="date" value={rule.valueB ?? ''} onChange={(e) => updateFilterValue(rule.id, 'valueB', e.target.value)} className={`${baseClass} flex-1`} />
+                    </div>
+                );
+            }
+            return (
+                <input type="date" value={rule.value ?? ''} onChange={(e) => updateFilterValue(rule.id, 'value', e.target.value)} className={baseClass} />
+            );
+        }
+        return (
+            <input type="text" value={rule.value ?? ''} onChange={(e) => updateFilterValue(rule.id, 'value', e.target.value)} className={baseClass} />
+        );
+    };
+
+    const paletteForStatus = (status) => {
+        const key = (status || '').toLowerCase();
+        return statusPaletteMap.get(key);
+    };
+
+    const statusFilterDisabled = advancedFilters.length === 0 && statusSelections.length === 0;
+
+    return (
+        <React.Fragment>
+            ...
+    const formatCurrency = (amountInDollars) => {
         const numericAmount = typeof amountInDollars === 'number' ? amountInDollars : parseFloat(amountInDollars) || 0;
         return numericAmount.toLocaleString('en-US', {
             style: 'currency',
             currency: 'USD',
             minimumFractionDigits: 2,
-            maximumFractionDigits: 2
+            maximumFractionDigits: 2,
         });
     };
+
+    const noFiltersApplied = advancedFilters.length === 0 && statusSelections.length === 0;
 
     return (
         <React.Fragment>
@@ -1787,7 +2150,6 @@ const Dashboard = ({ orders, navigateTo, viewOrder, allContacts, allSelectableIt
                     onClose={() => { setShowCalendar(false); setDateKeyword(''); }}
                 />
             )}
-            {/* EmailModal is now handled globally or by OrderForm, so removed from here directly */}
             <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between mb-8">
                 <h1 className="text-3xl font-bold text-slate-800">Orders</h1>
                 <button
@@ -1848,52 +2210,176 @@ const Dashboard = ({ orders, navigateTo, viewOrder, allContacts, allSelectableIt
                         </div>
                     )}
                     {searchError && <p className="text-xs text-red-600">{searchError}</p>}
+                    <div className="border-t border-slate-200 pt-4 space-y-4">
+                        <div className="bg-slate-50 border border-slate-200 rounded-lg p-4 space-y-4">
+                            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                                <div>
+                                    <p className="text-sm font-semibold text-slate-700">Filters</p>
+                                    <p className="text-xs text-slate-500">Combine advanced filters with the search bar for table-like precision.</p>
+                                </div>
+                                <div className="flex flex-wrap gap-2">
+                                    <button
+                                        type="button"
+                                        onClick={addFilterRule}
+                                        disabled={advancedFilters.length >= 10}
+                                        className="inline-flex items-center rounded-md border border-slate-300 px-3 py-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-100 transition disabled:opacity-40 disabled:cursor-not-allowed"
+                                    >
+                                        Add Filter
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={clearAllFilters}
+                                        disabled={noFiltersApplied}
+                                        className="inline-flex items-center rounded-md border border-slate-300 px-3 py-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-100 transition disabled:opacity-40 disabled:cursor-not-allowed"
+                                    >
+                                        Clear Filters
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={clearSearch}
+                                        className="inline-flex items-center rounded-md border border-slate-300 px-3 py-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-100 transition"
+                                    >
+                                        Reset Search
+                                    </button>
+                                </div>
+                            </div>
+                            <div>
+                                <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Statuses</p>
+                                <div className="mt-2 flex flex-wrap gap-2">
+                                    <button
+                                        type="button"
+                                        onClick={clearStatusFilters}
+                                        disabled={statusSelections.length === 0}
+                                        className={`rounded-full border px-3 py-1 text-xs font-semibold transition ${statusSelections.length === 0 ? 'bg-white text-slate-700 border-orange-500' : 'bg-white text-slate-600 border-slate-300'}`}
+                                    >
+                                        All statuses
+                                    </button>
+                                    {statusPalette.map((entry) => {
+                                        const value = entry.value || entry.label || '';
+                                        const isActive = normalizedStatusSet.has(value.toLowerCase());
+                                        return (
+                                            <button
+                                                key={value}
+                                                type="button"
+                                                onClick={() => toggleStatusSelection(value)}
+                                                className={`rounded-full border px-3 py-1 text-xs font-semibold transition ${isActive ? 'ring-2 ring-offset-1 ring-orange-500' : ''}`}
+                                                style={{ backgroundColor: entry.color || '#E2E8F0', color: entry.textColor || '#0F172A', borderColor: darkenHexColor(entry.color || '#E2E8F0', 0.2) }}
+                                            >
+                                                {entry.label || value}
+                                            </button>
+                                        );
+                                    })}
+                                </div>
+                            </div>
+                            <div className="space-y-3">
+                                {advancedFilters.length === 0 ? (
+                                    <p className="text-sm text-slate-500">No advanced filters applied.</p>
+                                ) : (
+                                    advancedFilters.map((rule) => {
+                                        const fieldConfig = FILTER_FIELDS.find((field) => field.id === rule.field) || FILTER_FIELDS[0];
+                                        const operators = FILTER_OPERATORS[fieldConfig.type] || FILTER_OPERATORS.text;
+                                        return (
+                                            <div key={rule.id} className="rounded-lg bg-white border border-slate-200 p-3 flex flex-col gap-3 md:flex-row md:items-center md:gap-4">
+                                                <div className="flex-1 w-full">
+                                                    <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide">Field</label>
+                                                    <select
+                                                        value={rule.field}
+                                                        onChange={(e) => updateFilterField(rule.id, e.target.value)}
+                                                        className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-orange-500 focus:outline-none focus:ring-1 focus:ring-orange-500"
+                                                    >
+                                                        {FILTER_FIELDS.map((field) => (
+                                                            <option key={field.id} value={field.id}>{field.label}</option>
+                                                        ))}
+                                                    </select>
+                                                </div>
+                                                <div className="w-full md:w-48">
+                                                    <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide">Operator</label>
+                                                    <select
+                                                        value={rule.operator}
+                                                        onChange={(e) => updateFilterOperator(rule.id, e.target.value)}
+                                                        className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-orange-500 focus:outline-none focus:ring-1 focus:ring-orange-500"
+                                                    >
+                                                        {operators.map((option) => (
+                                                            <option key={option.value} value={option.value}>{option.label}</option>
+                                                        ))}
+                                                    </select>
+                                                </div>
+                                                <div className="flex-1 w-full">
+                                                    <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide">Value</label>
+                                                    {renderFilterValueInput(rule)}
+                                                </div>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => removeFilterRule(rule.id)}
+                                                    className="self-start rounded-md border border-red-200 px-3 py-2 text-xs font-semibold text-red-600 hover:bg-red-50 transition"
+                                                >
+                                                    Remove
+                                                </button>
+                                            </div>
+                                        );
+                                    })
+                                )}
+                            </div>
+                        </div>
+                    </div>
                 </div>
-                <div className="overflow-x-auto"><table className="w-full text-sm text-left text-slate-500"><thead className="text-xs text-slate-700 uppercase bg-slate-100"><tr><th className="px-4 py-3">Order</th><th className="px-4 py-3">Customer</th><th className="px-4 py-3">Date</th><th className="px-4 py-3">Total</th><th className="px-4 py-3">Status</th><th className="px-4 py-3 text-center">Actions</th></tr></thead>
-                    <tbody>{filteredOrders.map(order => {
-                        const timeZone = "America/Chicago";
-                        const dateOptions = { year: 'numeric', month: 'long', day: 'numeric' };
-                        const orderTitle = (order.title || '').trim();
-                        const displayIdValue = typeof order.display_id === 'string' ? order.display_id : '';
-                        const trimmedDisplayId = displayIdValue.trim();
-                        const hasDisplayId = Boolean(trimmedDisplayId);
-                        const primaryLabel = orderTitle || 'Untitled Order';
-                        const shortId = order.id ? (order.id.length > 12 ? `${order.id.slice(0, 8)}…` : order.id) : '';
-                        const secondaryTags = [];
-                        if (hasDisplayId) {
-                            secondaryTags.push(`Ref: ${trimmedDisplayId}`);
-                        }
-                        if (order.id && (!hasDisplayId || trimmedDisplayId !== order.id)) {
-                            secondaryTags.push(`ID: ${shortId}`);
-                        }
-                        const idLabel = secondaryTags.join(' • ');
-                        return (<tr key={order.id} onClick={() => viewOrder(order)} className="bg-white border-b hover:bg-slate-50 cursor-pointer">
-                        <td className="px-4 py-3 align-top">
-                            <div className="flex flex-col">
-                                <span className="font-medium text-slate-800">{primaryLabel}</span>
-                                {idLabel && <span className="text-xs text-slate-500" title={order.id}>{idLabel}</span>}
-                            </div>
-                        </td><td className="px-4 py-3">{getContactDisplayName(order.primaryContact || order.contactInfo)}</td>
-                        <td className="px-4 py-3">{formatInTimeZone(order.date, timeZone, dateOptions)}</td><td className="px-4 py-3">${parseFloat(order.total || 0).toFixed(2)}</td>
-                        <td className="px-4 py-3">
-                            {order.status === 'Shipped' ? (
-                                <ShippedStatusBadge statusText={order.status} />
-                            ) : (
-                                <span className={`px-2 py-1 text-xs font-semibold rounded-full ${
-                                    order.status === 'Paid' ? 'bg-green-100 text-green-800' :
-                                    order.status === 'Sent' ? 'bg-blue-100 text-blue-800' :
-                                    'bg-slate-100 text-slate-800' // Draft or other
-                                }`}>{order.status}</span>
-                            )}
-                        </td>
-                        <td className="px-4 py-3 text-center" onClick={e => e.stopPropagation()}>
-                            <div className="flex items-center justify-center space-x-2">
-                                <button onClick={() => generateInvoicePdf(order, allSelectableItems, 'preview', branding)} className="p-1 text-slate-500 hover:text-orange-600"><PdfIcon /></button>
-                                <button onClick={() => setOrderForEmailModal(order)} className="p-1 text-slate-500 hover:text-orange-600"><EmailIcon /></button>
-                            </div>
-                        </td>
-                    </tr>)})}</tbody>
-                </table></div>
+                <div className="overflow-x-auto">
+                    <table className="w-full text-sm text-left text-slate-500">
+                        <thead className="text-xs text-slate-700 uppercase bg-slate-100">
+                            <tr>
+                                <th className="px-4 py-3">Order</th>
+                                <th className="px-4 py-3">Customer</th>
+                                <th className="px-4 py-3">Date</th>
+                                <th className="px-4 py-3">Total</th>
+                                <th className="px-4 py-3">Status</th>
+                                <th className="px-4 py-3 text-center">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {filteredOrders.map((order) => {
+                                const timeZone = 'America/Chicago';
+                                const dateOptions = { year: 'numeric', month: 'long', day: 'numeric' };
+                                const orderTitle = (order.title || '').trim();
+                                const displayIdValue = typeof order.display_id === 'string' ? order.display_id : '';
+                                const trimmedDisplayId = displayIdValue.trim();
+                                const hasDisplayId = Boolean(trimmedDisplayId);
+                                const primaryLabel = orderTitle || 'Untitled Order';
+                                const shortId = order.id ? (order.id.length > 12 ? `${order.id.slice(0, 8)}…` : order.id) : '';
+                                const secondaryTags = [];
+                                if (hasDisplayId) {
+                                    secondaryTags.push(`Ref: ${trimmedDisplayId}`);
+                                }
+                                if (order.id && (!hasDisplayId || trimmedDisplayId !== order.id)) {
+                                    secondaryTags.push(`ID: ${shortId}`);
+                                }
+                                const idLabel = secondaryTags.join(' • ');
+                                const paletteEntry = paletteForStatus(order.status);
+                                return (
+                                    <tr key={order.id} onClick={() => viewOrder(order)} className="bg-white border-b hover:bg-slate-50 cursor-pointer">
+                                        <td className="px-4 py-3 align-top">
+                                            <div className="flex flex-col">
+                                                <span className="font-medium text-slate-800">{primaryLabel}</span>
+                                                {idLabel && <span className="text-xs text-slate-500" title={order.id}>{idLabel}</span>}
+                                            </div>
+                                        </td>
+                                        <td className="px-4 py-3">{getContactDisplayName(order.primaryContact || order.contactInfo)}</td>
+                                        <td className="px-4 py-3">{formatInTimeZone(order.date, timeZone, dateOptions)}</td>
+                                        <td className="px-4 py-3">{formatCurrency(order.total)}</td>
+                                        <td className="px-4 py-3">
+                                            <StatusBadge statusText={order.status || 'Unknown'} appearance={paletteEntry} />
+                                        </td>
+                                        <td className="px-4 py-3 text-center" onClick={(e) => e.stopPropagation()}>
+                                            <div className="flex items-center justify-center space-x-2">
+                                                <button onClick={() => generateInvoicePdf(order, allSelectableItems, 'preview', branding)} className="p-1 text-slate-500 hover:text-orange-600"><PdfIcon /></button>
+                                                <button onClick={() => setOrderForEmailModal(order)} className="p-1 text-slate-500 hover:text-orange-600"><EmailIcon /></button>
+                                            </div>
+                                        </td>
+                                    </tr>
+                                );
+                            })}
+                        </tbody>
+                    </table>
+                </div>
             </div>
         </React.Fragment>
     );
@@ -3578,7 +4064,7 @@ const unpackPackage = (id, pkgCode) => {
 
 // --- MAIN APP COMPONENT (Router) ---
 const App = () => {
-    const { useState, useEffect, useCallback } = React;
+    const { useState, useEffect, useCallback, useRef } = React;
     const [page, setPage] = useState('dashboard');
     const [orders, setOrders] = useState([]);
     const [activeOrder, setActiveOrder] = useState(null);
@@ -3597,6 +4083,10 @@ const App = () => {
         invoice_brand_color: "#f97316",
         invoice_logo_data_url: "",
     });
+    const [orderViewSettings, setOrderViewSettings] = useState({ rememberLastView: true, statusPalette: DEFAULT_STATUS_PALETTE });
+    const [orderViewState, setOrderViewState] = useState(DEFAULT_ORDER_VIEW_STATE);
+    const orderViewSaveTimeoutRef = useRef(null);
+    const latestOrderViewStateRef = useRef(DEFAULT_ORDER_VIEW_STATE);
 
     const updateBrowserUrl = useCallback((updater) => {
         if (typeof window === 'undefined') {
@@ -3610,6 +4100,14 @@ const App = () => {
         if (next !== current) {
             window.history.replaceState({}, '', next);
         }
+    }, []);
+
+    useEffect(() => {
+        return () => {
+            if (orderViewSaveTimeoutRef.current) {
+                clearTimeout(orderViewSaveTimeoutRef.current);
+            }
+        };
     }, []);
 
     const handleOrderUpdate = (updatedOrderFromServer) => { // Added this function
@@ -3640,18 +4138,36 @@ const App = () => {
         const fetchData = async () => {
             setIsLoading(true);
             try {
-            const [ordersRes, contactsRes, itemsRes, packagesRes, settingsRes] = await Promise.all([
+            const [ordersRes, contactsRes, itemsRes, packagesRes, settingsRes, orderViewRes] = await Promise.all([
                 fetch('/api/orders'),
                 fetch('/api/contacts'),
                 fetch('/api/items'),
                 fetch('/api/packages'),
-                fetch('/api/settings') // Fetch settings
+                fetch('/api/settings'), // Fetch settings
+                fetch('/api/order-view-settings')
             ]);
 
             const ordersData   = await ordersRes.json();
             const settingsData = await settingsRes.json(); // Get settings data
             setAppSettings(settingsData); // Set app settings
             window.fireCoastBranding = settingsData;
+            let orderViewData = {};
+            if (orderViewRes.ok) {
+                orderViewData = await orderViewRes.json().catch(() => ({}));
+            }
+            const sanitizedPalette = Array.isArray(orderViewData.statusPalette) && orderViewData.statusPalette.length
+                ? orderViewData.statusPalette
+                : DEFAULT_STATUS_PALETTE;
+            const hydratedViewState = {
+                ...DEFAULT_ORDER_VIEW_STATE,
+                ...(orderViewData.lastViewState || {}),
+            };
+            setOrderViewSettings({
+                rememberLastView: orderViewData.rememberLastView !== false,
+                statusPalette: sanitizedPalette,
+            });
+            setOrderViewState(hydratedViewState);
+            latestOrderViewStateRef.current = hydratedViewState;
             const contactsData  = await contactsRes.json();
             const itemsDataArray    = await itemsRes.json(); // Renamed to itemsDataArray
             const packagesData = await packagesRes.json();
@@ -3761,12 +4277,49 @@ const App = () => {
 
             } catch (error) {
             console.error("Failed to fetch data:", error);
+            setOrderViewSettings({ rememberLastView: true, statusPalette: DEFAULT_STATUS_PALETTE });
+            setOrderViewState(DEFAULT_ORDER_VIEW_STATE);
+            latestOrderViewStateRef.current = DEFAULT_ORDER_VIEW_STATE;
             } finally {
             setIsLoading(false);
             }
         };
         fetchData();
     }, []);
+
+    const persistOrderViewState = useCallback((nextState) => {
+        if (!nextState || typeof nextState !== 'object') {
+            return;
+        }
+        const snapshot = {
+            ...DEFAULT_ORDER_VIEW_STATE,
+            ...nextState,
+            searchInput: typeof nextState.searchInput === 'string' ? nextState.searchInput : '',
+            searchQuery: typeof nextState.searchQuery === 'string' ? nextState.searchQuery : '',
+            searchPills: Array.isArray(nextState.searchPills) ? nextState.searchPills : [],
+            advancedFilters: Array.isArray(nextState.advancedFilters) ? nextState.advancedFilters : [],
+            statusSelections: Array.isArray(nextState.statusSelections) ? nextState.statusSelections : [],
+        };
+        setOrderViewState(snapshot);
+        latestOrderViewStateRef.current = snapshot;
+        if (orderViewSettings.rememberLastView === false) {
+            return;
+        }
+        if (orderViewSaveTimeoutRef.current) {
+            clearTimeout(orderViewSaveTimeoutRef.current);
+        }
+        orderViewSaveTimeoutRef.current = setTimeout(async () => {
+            try {
+                await fetch('/api/order-view-settings', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ last_view_state: snapshot }),
+                });
+            } catch (error) {
+                console.error('Failed to persist order view state', error);
+            }
+        }, 500);
+    }, [orderViewSettings.rememberLastView]);
 
     
     const navigateTo = useCallback((pageName, options = {}) => {
@@ -3901,7 +4454,7 @@ const App = () => {
                 return <OrderForm order={activeOrder} navigateTo={navigateTo} saveOrder={saveOrder} deleteOrder={deleteOrder} allContacts={allContacts} allSelectableItems={allSelectableItems} itemData={itemData} packageData={packageData} fetchAndUpdateContacts={fetchAndUpdateContacts} setOrderForEmailModal={setOrderForEmailModal} startInEditMode={startInEditMode} branding={appSettings} />;
             case 'dashboard':
             default:
-                return <Dashboard orders={orders} navigateTo={navigateTo} viewOrder={viewOrder} allContacts={allContacts} allSelectableItems={allSelectableItems} setOrderForEmailModal={setOrderForEmailModal} branding={appSettings} />;
+                return <Dashboard orders={orders} navigateTo={navigateTo} viewOrder={viewOrder} allContacts={allContacts} allSelectableItems={allSelectableItems} setOrderForEmailModal={setOrderForEmailModal} branding={appSettings} orderViewSettings={orderViewSettings} initialViewState={orderViewState} onViewStateChange={persistOrderViewState} />;
         }
     }
 
