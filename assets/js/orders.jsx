@@ -1,0 +1,4509 @@
+// --- FORMATTERS ---
+const formatInTimeZone = (dateString, timeZone, options = {}) => {
+    try {
+        const date = new Date(dateString);
+        return date.toLocaleString('en-US', { ...options, timeZone });
+    } catch (e) {
+        console.error("Error formatting date:", e);
+        return "Invalid Date";
+    }
+};
+
+const hexToRgb = (hex) => {
+    if (typeof hex !== 'string') return null;
+    let normalized = hex.trim();
+    if (!/^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/.test(normalized)) return null;
+    normalized = normalized.slice(1);
+    if (normalized.length === 3) {
+        normalized = normalized.split('').map(char => char + char).join('');
+    }
+    const intVal = parseInt(normalized, 16);
+    return {
+        r: (intVal >> 16) & 255,
+        g: (intVal >> 8) & 255,
+        b: intVal & 255,
+    };
+};
+
+const getRgbLuminance = (rgb) => {
+    if (!rgb || typeof rgb.r !== 'number' || typeof rgb.g !== 'number' || typeof rgb.b !== 'number') {
+        return null;
+    }
+    return (0.299 * rgb.r + 0.587 * rgb.g + 0.114 * rgb.b) / 255;
+};
+
+const isRgbColorDark = (rgb) => {
+    const luminance = getRgbLuminance(rgb);
+    if (luminance === null) {
+        return false;
+    }
+    return luminance < 0.6;
+};
+
+const adjustHexColor = (hex, percent = 0) => {
+    const rgb = hexToRgb(hex);
+    if (!rgb) {
+        return hex;
+    }
+    const clamp = (value) => Math.max(0, Math.min(255, value));
+    const adjust = (channel) => clamp(Math.round(channel + 255 * percent));
+    const r = adjust(rgb.r);
+    const g = adjust(rgb.g);
+    const b = adjust(rgb.b);
+    const toHex = (value) => value.toString(16).padStart(2, '0');
+    return `#${toHex(r)}${toHex(g)}${toHex(b)}`.toUpperCase();
+};
+
+const lightenHexColor = (hex, percent = 0.1) => adjustHexColor(hex, Math.abs(percent));
+const darkenHexColor = (hex, percent = 0.1) => adjustHexColor(hex, -Math.abs(percent));
+
+const DEFAULT_STATUS_PALETTE = [
+    { value: 'Draft', label: 'Draft', color: '#E2E8F0', textColor: '#0F172A', shimmer: false },
+    { value: 'Sent', label: 'Sent', color: '#BFDBFE', textColor: '#0F172A', shimmer: false },
+    { value: 'Paid', label: 'Paid', color: '#BBF7D0', textColor: '#0F172A', shimmer: false },
+    { value: 'Shipped', label: 'Shipped', color: '#FDE047', textColor: '#78350F', shimmer: true },
+];
+
+const DEFAULT_ORDER_VIEW_STATE = {
+    searchInput: '',
+    searchPills: [],
+    searchQuery: '',
+    advancedFilters: [],
+    statusSelections: [],
+};
+
+const FILTER_FIELDS = [
+    { id: 'customer', label: 'Customer', type: 'text' },
+    { id: 'title', label: 'Title', type: 'text' },
+    { id: 'displayId', label: 'Reference ID', type: 'text' },
+    { id: 'notes', label: 'Notes', type: 'text' },
+    { id: 'total', label: 'Total Amount', type: 'number' },
+    { id: 'date', label: 'Order Date', type: 'date' },
+];
+
+const FILTER_OPERATORS = {
+    text: [
+        { value: 'contains', label: 'contains' },
+        { value: 'not_contains', label: 'does not contain' },
+        { value: 'equals', label: 'is exactly' },
+        { value: 'not_equals', label: 'is not' },
+        { value: 'starts_with', label: 'starts with' },
+        { value: 'ends_with', label: 'ends with' },
+    ],
+    number: [
+        { value: 'equals', label: 'is equal to' },
+        { value: 'not_equals', label: 'is not equal to' },
+        { value: 'greater_than', label: 'is greater than' },
+        { value: 'greater_or_equal', label: 'is greater or equal' },
+        { value: 'less_than', label: 'is less than' },
+        { value: 'less_or_equal', label: 'is less or equal' },
+        { value: 'between', label: 'is between' },
+    ],
+    date: [
+        { value: 'on', label: 'is on' },
+        { value: 'before', label: 'is before' },
+        { value: 'after', label: 'is after' },
+        { value: 'between', label: 'is between' },
+    ],
+};
+
+const normalizePhoneDigits = (value = '') => (value || '').replace(/\D/g, '').slice(0, 10);
+
+const formatPhoneNumber = (value = '') => {
+    const digits = normalizePhoneDigits(value);
+    if (!digits) return '';
+    if (digits.length < 4) {
+        const closing = digits.length === 3 ? ')' : '';
+        return `(${digits}${closing}`;
+    }
+    if (digits.length < 7) {
+        return `(${digits.slice(0, 3)}) ${digits.slice(3)}`;
+    }
+    return `(${digits.slice(0, 3)}) ${digits.slice(3, 6)} ${digits.slice(6)}`;
+};
+
+const safeText = (value) => (typeof value === 'string' ? value.trim() : '');
+
+const normalizeDetailsAddress = (address = {}) => {
+    const kindRaw = safeText(address.kind).toLowerCase();
+    const kind = ['shipping', 'billing', 'other'].includes(kindRaw) ? kindRaw : 'other';
+    return {
+        kind,
+        street: safeText(address.street || address.address || address.addressLine1),
+        city: safeText(address.city),
+        state: safeText(address.state),
+        postalCode: safeText(address.postalCode || address.zip || address.zipCode),
+    };
+};
+
+const hasAddressFields = (entry) => {
+    if (!entry) return false;
+    return [entry.street, entry.city, entry.state, entry.postalCode].some(value => safeText(value));
+};
+
+const addressesAreEqual = (left, right) => {
+    const keys = ['street', 'city', 'state', 'postalCode'];
+    return keys.every(key => safeText(left?.[key]) === safeText(right?.[key]));
+};
+
+const pickContactAddress = (contact, preferredKind) => {
+    const empty = { kind: preferredKind, street: '', city: '', state: '', postalCode: '' };
+    if (!contact) {
+        return empty;
+    }
+    const detailsList = Array.isArray(contact?.contactDetails?.addresses)
+        ? contact.contactDetails.addresses.map(normalizeDetailsAddress).filter(hasAddressFields)
+        : [];
+    const byKind = detailsList.find(address => address.kind === preferredKind && hasAddressFields(address));
+    if (byKind) {
+        return byKind;
+    }
+    if (detailsList.length > 0) {
+        return { ...detailsList[0], kind: preferredKind };
+    }
+    const prefix = preferredKind === 'billing' ? 'billing' : 'shipping';
+    const legacy = {
+        kind: preferredKind,
+        street: safeText(contact[`${prefix}Address`]),
+        city: safeText(contact[`${prefix}City`]),
+        state: safeText(contact[`${prefix}State`]),
+        postalCode: safeText(contact[`${prefix}ZipCode`]),
+    };
+    if (hasAddressFields(legacy)) {
+        return legacy;
+    }
+    const altPrefix = prefix === 'shipping' ? 'billing' : 'shipping';
+    const altLegacy = {
+        kind: preferredKind,
+        street: safeText(contact[`${altPrefix}Address`]),
+        city: safeText(contact[`${altPrefix}City`]),
+        state: safeText(contact[`${altPrefix}State`]),
+        postalCode: safeText(contact[`${altPrefix}ZipCode`]),
+    };
+    if (hasAddressFields(altLegacy)) {
+        return altLegacy;
+    }
+    return empty;
+};
+
+const contactHasSavedAddresses = (contact) => {
+    if (!contact) {
+        return false;
+    }
+    if (Array.isArray(contact?.contactDetails?.addresses)) {
+        if (contact.contactDetails.addresses.some(address => hasAddressFields(normalizeDetailsAddress(address)))) {
+            return true;
+        }
+    }
+    const legacyFields = [
+        'shippingAddress', 'shippingCity', 'shippingState', 'shippingZipCode',
+        'billingAddress', 'billingCity', 'billingState', 'billingZipCode',
+    ];
+    return legacyFields.some(field => safeText(contact[field]));
+};
+
+const orderAddressesMatchContact = (contact, state) => {
+    if (!contactHasSavedAddresses(contact)) {
+        return false;
+    }
+
+    const shippingFromContact = pickContactAddress(contact, 'shipping');
+    const billingFromContact = pickContactAddress(contact, 'billing');
+    const orderShipping = extractAddressFields(state, 'shipping');
+    const orderBilling = extractAddressFields(state, 'billing');
+
+    const shippingMatches = hasAddressFields(shippingFromContact)
+        ? addressesAreEqual(orderShipping, shippingFromContact)
+        : !hasAddressFields(orderShipping);
+
+    const billingMatches = hasAddressFields(billingFromContact)
+        ? addressesAreEqual(orderBilling, billingFromContact)
+        : addressesAreEqual(orderBilling, orderShipping);
+
+    return shippingMatches && billingMatches;
+};
+
+const extractAddressFields = (state, prefix) => ({
+    street: safeText(state[`${prefix}Address`]),
+    city: safeText(state[`${prefix}City`]),
+    state: safeText(state[`${prefix}State`]),
+    postalCode: safeText(state[`${prefix}ZipCode`]),
+});
+
+const createEmptyLineItem = (id) => ({
+    id: String(id),
+    catalogItemId: null,
+    name: '',
+    description: '',
+    quantity: 1,
+    price: 0,
+    packageId: null,
+});
+
+const normalizeLineItemsForSave = (items) => {
+    if (!Array.isArray(items)) {
+        return [];
+    }
+
+    return items.map(item => {
+        const safeItem = item || {};
+        const trimmedName = (safeItem.name || '').trim();
+        const description = (safeItem.description || '').trim();
+        const quantityRaw = Number(safeItem.quantity);
+        const quantity = Number.isFinite(quantityRaw) ? Math.max(0, Math.round(quantityRaw)) : 0;
+        const priceRaw = Number(safeItem.price);
+        const price = Number.isFinite(priceRaw) ? Math.round(priceRaw) : 0;
+        return {
+            id: safeItem.id != null ? String(safeItem.id) : null,
+            catalogItemId: safeItem.catalogItemId || null,
+            name: trimmedName,
+            description,
+            quantity: quantity,
+            price,
+            packageId: safeItem.packageId || null,
+        };
+    }).filter(item => item.name && item.quantity > 0);
+};
+
+const parseCurrencyToNumber = (value) => {
+    if (typeof value === 'number' && Number.isFinite(value)) {
+        return value;
+    }
+    if (typeof value === 'string') {
+        const cleaned = value.replace(/[^0-9.-]/g, '');
+        const parsed = parseFloat(cleaned);
+        return Number.isFinite(parsed) ? parsed : 0;
+    }
+    return 0;
+};
+
+const centsToCurrency = (cents) => {
+    return (Math.round(cents) / 100).toFixed(2);
+};
+
+const normalizeDiscountsForTotals = (discounts, lineItems) => {
+    const lineItemTotals = new Map();
+    const orderedKeys = [];
+    (Array.isArray(lineItems) ? lineItems : []).forEach((item) => {
+        const key = item && item.id != null ? String(item.id) : null;
+        if (!key || lineItemTotals.has(key)) {
+            return;
+        }
+        const quantity = Number(item.quantity) || 0;
+        const price = Number(item.price) || 0;
+        const total = Math.max(0, quantity) * Math.max(0, price);
+        lineItemTotals.set(key, total);
+        orderedKeys.push(key);
+    });
+
+    const normalized = [];
+    if (!Array.isArray(discounts)) {
+        return normalized;
+    }
+
+    discounts.forEach((entry, index) => {
+        const originalId = entry && entry.id != null ? entry.id : `discount-${index + 1}`;
+        const id = String(originalId);
+        const label = typeof entry?.label === 'string' ? entry.label.trim() : '';
+        const type = entry?.type === 'percentage' ? 'percentage' : 'fixed';
+        const rawValue = entry?.value ?? '';
+
+        const appliesRaw = Array.isArray(entry?.appliesTo) ? entry.appliesTo : [];
+        const appliesSanitized = [];
+        const appliesKeys = [];
+        appliesRaw.forEach((candidate) => {
+            const key = String(candidate);
+            if (lineItemTotals.has(key) && !appliesKeys.includes(key)) {
+                appliesKeys.push(key);
+                appliesSanitized.push(String(candidate));
+            }
+        });
+
+        const baseKeys = appliesKeys.length ? appliesKeys : orderedKeys;
+        const baseAmountCents = baseKeys.reduce((sum, key) => sum + (lineItemTotals.get(key) || 0), 0);
+        let amountCents = 0;
+        let normalizedValue = 0;
+
+        if (type === 'percentage') {
+            normalizedValue = parseFloat(rawValue);
+            if (!Number.isFinite(normalizedValue) || normalizedValue < 0) {
+                normalizedValue = 0;
+            }
+            amountCents = Math.round(baseAmountCents * (normalizedValue / 100));
+        } else {
+            normalizedValue = parseCurrencyToNumber(rawValue);
+            if (!Number.isFinite(normalizedValue) || normalizedValue < 0) {
+                normalizedValue = 0;
+            }
+            const fixedCents = Math.round(normalizedValue * 100);
+            amountCents = Math.min(fixedCents, baseAmountCents);
+        }
+
+        amountCents = Math.max(0, amountCents);
+
+        normalized.push({
+            id,
+            label,
+            type,
+            value: rawValue,
+            appliesTo: appliesSanitized,
+            appliesToAll: appliesKeys.length === 0,
+            amountCents,
+            baseAmountCents,
+        });
+    });
+
+    return normalized;
+};
+
+const sanitizePlaceholderValue = (value) => {
+    if (!value) return '';
+    const trimmed = value.toString().trim();
+    if (!trimmed) return '';
+    const lowered = trimmed.toLowerCase();
+    if (lowered === '[no contact found]' || lowered === 'no contact found' || lowered === '[contact not found]' || lowered === 'contact not found') {
+        return '';
+    }
+    return trimmed;
+};
+
+// --- SHARED HELPER COMPONENTS & ICONS ---
+const Input = ({ label, placeholder, value, onChange, type = "text", disabled = false, onFocus, onBlur }) => (
+    <div><label className="block text-sm font-medium text-slate-600">{label}</label><input type={type} placeholder={placeholder} value={value} onChange={onChange} disabled={disabled} onFocus={onFocus} onBlur={onBlur} className="mt-1 block w-full px-3 py-2 bg-white border border-slate-300 rounded-md shadow-sm placeholder-slate-400 focus:outline-none focus:ring-orange-500 focus:border-orange-500 sm:text-sm disabled:bg-slate-100 disabled:text-slate-500" /></div>
+);
+const Select = ({ value, onChange, disabled = false, children }) => (
+    <select value={value} onChange={onChange} disabled={disabled} className="w-full px-3 py-2 bg-white border border-slate-300 rounded-md shadow-sm focus:outline-none focus:ring-orange-500 focus:border-orange-500 sm:text-sm disabled:bg-slate-100 disabled:text-slate-500">{children}</select>
+);
+const Textarea = ({ label, placeholder, value, onChange, disabled = false, rows = 3, onFocus, onBlur }) => (
+    <div><label className="block text-sm font-medium text-slate-600">{label}</label><textarea rows={rows} placeholder={placeholder} value={value} onChange={onChange} disabled={disabled} onFocus={onFocus} onBlur={onBlur} className="mt-1 block w-full text-sm px-3 py-2 bg-white border border-slate-300 rounded-md shadow-sm placeholder-slate-400 focus:outline-none focus:ring-orange-500 focus:border-orange-500 disabled:bg-slate-100 disabled:text-slate-500"></textarea></div>
+);
+
+const mentionComponents = window.RecordMentionComponents || {};
+const MentionText = mentionComponents.RecordMentionText;
+const ContactMentionTextarea = (props) => {
+    const Component = mentionComponents.RecordMentionTextarea;
+    if (!Component) {
+        return (
+            <textarea
+                rows={props.rows || 3}
+                value={props.value}
+                onChange={event => props.onChange(event.target.value)}
+                disabled={props.disabled}
+                placeholder={props.placeholder}
+                className="mt-1 block w-full rounded-md border border-slate-300 px-3 py-2 text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-orange-500"
+            />
+        );
+    }
+    const { entityTypes, ...rest } = props;
+    const resolvedTypes = entityTypes || ['contact'];
+    return <Component {...rest} entityTypes={resolvedTypes} />;
+};
+
+const TrashIcon = () => (<svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M9 2a1 1 0 00-.894.553L7.382 4H4a1 1 0 000 2v10a2 2 0 002 2h8a2 2 0 002-2V6a1 1 0 100-2h-3.382l-.724-1.447A1 1 0 0011 2H9zM7 8a1 1 0 012 0v6a1 1 0 11-2 0V8zm4 0a1 1 0 012 0v6a1 1 0 11-2 0V8z" clipRule="evenodd" /></svg>);
+const DollarSignIcon = () => (<svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8v1m0 8v1m-4-4h8m-4-4a8 8 0 100 16 8 8 0 000-16z" /></svg>);
+const ViewIcon = () => (<svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" /></svg>);
+const PdfIcon = () => (<svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>);
+const EmailIcon = () => (<svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" /></svg>);
+
+const OrderLogsSection = ({ orderId, canEdit, allContacts = [], onContactsChanged }) => {
+    if (!orderId) return null;
+
+    const { useState, useEffect, useRef } = React;
+    const [logs, setLogs] = useState([]);
+    const [isModalOpen, setIsModalOpen] = useState(false);
+    const [action, setAction] = useState('Manual Entry');
+    const [details, setDetails] = useState('');
+    const [attachments, setAttachments] = useState([]);
+    const [isSubmitting, setIsSubmitting] = useState(false);
+    const [errorMessage, setErrorMessage] = useState(null);
+    const fileInputRef = useRef(null);
+
+    const resetModalState = () => {
+        setAction('Manual Entry');
+        setDetails('');
+        setAttachments([]);
+        setIsSubmitting(false);
+        setErrorMessage(null);
+        if (fileInputRef.current) {
+            fileInputRef.current.value = '';
+        }
+    };
+
+    const fetchLogs = async () => {
+        try {
+            const response = await fetch(`/api/orders/${orderId}/logs`);
+            const data = await response.json();
+            setLogs(Array.isArray(data) ? data : []);
+        } catch (error) {
+            console.error("Failed to fetch logs:", error);
+        }
+    };
+
+    useEffect(() => {
+        fetchLogs();
+    }, [orderId]);
+
+    const handleSubmit = async (event) => {
+        event.preventDefault();
+        setIsSubmitting(true);
+        setErrorMessage(null);
+
+        const formData = new FormData();
+        formData.append('action', action);
+        formData.append('details', details);
+        if (attachments.length > 0) {
+            attachments.forEach(file => {
+                if (file) {
+                    formData.append('attachments', file);
+                }
+            });
+        }
+
+        try {
+            const response = await fetch(`/api/orders/${orderId}/logs`, { method: 'POST', body: formData });
+            if (!response.ok) {
+                const result = await response.json().catch(() => ({ message: 'Failed to add log entry.' }));
+                throw new Error(result.message || 'Failed to add log entry.');
+            }
+            await fetchLogs();
+            if (typeof onContactsChanged === 'function') {
+                try { await onContactsChanged(); } catch (error) { console.error('Failed to refresh mentioned contacts:', error); }
+            }
+            setIsModalOpen(false);
+            resetModalState();
+        } catch (error) {
+            console.error('Error adding log entry:', error);
+            setErrorMessage(error.message || 'An unexpected error occurred while saving the log.');
+        } finally {
+            setIsSubmitting(false);
+        }
+    };
+
+    const handleDelete = async (logId) => {
+        if (!confirm('Are you sure you want to delete this log entry?')) {
+            return;
+        }
+        try {
+            const response = await fetch(`/api/orders/${orderId}/logs/${logId}`, { method: 'DELETE' });
+            if (!response.ok) {
+                const result = await response.json().catch(() => ({ message: 'Failed to delete log entry.' }));
+                throw new Error(result.message || 'Failed to delete log entry.');
+            }
+            await fetchLogs();
+            if (typeof onContactsChanged === 'function') {
+                try { await onContactsChanged(); } catch (error) { console.error('Failed to refresh mentioned contacts:', error); }
+            }
+        } catch (error) {
+            console.error('Error deleting log:', error);
+            alert(error.message || 'An unexpected error occurred while deleting the log.');
+        }
+    };
+
+    return (
+        <>
+            {isModalOpen && (
+                <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 px-4">
+                    <div className="bg-white rounded-lg shadow-xl w-full max-w-lg p-6">
+                        <h2 className="text-xl font-bold text-slate-800 mb-4">Add Order Log</h2>
+                        <form onSubmit={handleSubmit} className="space-y-4">
+                            <div>
+                                <label className="block text-sm font-medium text-slate-700">Action</label>
+                                <select value={action} onChange={e => setAction(e.target.value)} className="mt-1 block w-full px-3 py-2 bg-white border border-slate-300 rounded-md shadow-sm focus:outline-none focus:ring-orange-500 focus:border-orange-500">
+                                    <option value="Manual Entry">Manual Entry</option>
+                                    <option value="Status Update">Status Update</option>
+                                    <option value="Phone Call">Phone Call</option>
+                                    <option value="Email">Email</option>
+                                    <option value="Internal Note">Internal Note</option>
+                                </select>
+                            </div>
+                            <ContactMentionTextarea
+                                label="Details"
+                                placeholder="Share updates and mention teammates or clients with @handle"
+                                value={details}
+                                onChange={setDetails}
+                                entityTypes={['contact', 'order', 'note', 'calendar_event', 'reminder']}
+                                rows={4}
+                            />
+                            <div>
+                                <label className="block text-sm font-medium text-slate-700">Attachment</label>
+                                <input
+                                    ref={fileInputRef}
+                                    type="file"
+                                    multiple
+                                    onChange={event => {
+                                        const files = Array.from(event.target.files || []);
+                                        setAttachments(files);
+                                    }}
+                                    className="mt-1 block w-full text-sm text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:text-sm file:font-semibold file:bg-orange-50 file:text-orange-700 hover:file:bg-orange-100"
+                                />
+                                {attachments.length > 0 && (
+                                    <ul className="mt-2 space-y-1 text-sm text-slate-600">
+                                        {attachments.map((file, index) => (
+                                            <li key={`${file.name}-${index}`} className="flex items-center gap-2">
+                                                <span className="inline-flex items-center rounded-full bg-orange-100 px-2 py-0.5 text-xs font-medium text-orange-700">{index + 1}</span>
+                                                <span className="truncate">{file.name}</span>
+                                            </li>
+                                        ))}
+                                    </ul>
+                                )}
+                            </div>
+                            {errorMessage && <p className="text-sm text-red-600">{errorMessage}</p>}
+                            <div className="flex justify-end gap-3 pt-2">
+                                <button type="button" onClick={() => { setIsModalOpen(false); resetModalState(); }} className="px-4 py-2 rounded-md bg-slate-200 text-slate-700 font-medium hover:bg-slate-300">Cancel</button>
+                                <button type="submit" disabled={isSubmitting} className="px-4 py-2 rounded-md bg-orange-600 text-white font-semibold hover:bg-orange-700 disabled:bg-orange-300">
+                                    {isSubmitting ? 'Saving...' : 'Add Log'}
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            )}
+            <div className="bg-white rounded-lg shadow-sm border border-slate-200">
+                <div className="p-6 flex items-center justify-between gap-4 border-b border-slate-200">
+                    <div>
+                        <h2 className="text-xl font-semibold text-slate-700">Order Logs</h2>
+                        <p className="text-sm text-slate-500">Track the latest activity, conversations, and file drops.</p>
+                    </div>
+                    {canEdit && (
+                        <button onClick={() => setIsModalOpen(true)} className="inline-flex items-center px-3 py-2 text-sm font-semibold rounded-md bg-orange-600 text-white hover:bg-orange-700 shadow">
+                            Add Log
+                        </button>
+                    )}
+                </div>
+                <div className="p-6">
+                    <div className="overflow-x-auto">
+                        <table className="w-full text-sm text-left text-slate-500">
+                            <thead className="text-xs text-slate-700 uppercase bg-slate-100">
+                                <tr>
+                                    <th className="px-4 py-3">Timestamp</th>
+                                    <th className="px-4 py-3">Action</th>
+                                    <th className="px-4 py-3">Details</th>
+                                    <th className="px-4 py-3">Attachments</th>
+                                    {canEdit && <th className="px-4 py-3"><span className="sr-only">Actions</span></th>}
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {logs.map(log => (
+                                    <tr key={log.log_id} className="bg-white border-b last:border-b-0 hover:bg-slate-50">
+                                        <td className="px-4 py-3 font-medium text-slate-800">{log.timestamp ? new Date(log.timestamp).toLocaleString() : '—'}</td>
+                                        <td className="px-4 py-3">{log.action || '—'}</td>
+                                        <td className="px-4 py-3">
+                                            {MentionText ? (
+                                                <MentionText
+                                                    text={log.details || log.note || ''}
+                                                    entityTypes={['contact', 'order', 'note', 'calendar_event', 'reminder']}
+                                                    className="block whitespace-pre-wrap"
+                                                />
+                                            ) : (
+                                                <span className="whitespace-pre-wrap">{log.details || log.note || ''}</span>
+                                            )}
+                                        </td>
+                                        <td className="px-4 py-3">
+                                            {log.attachments && log.attachments.length > 0 ? (
+                                                <ul className="space-y-1">
+                                                    {log.attachments.map((attachment, index) => (
+                                                        <li key={attachment.id || `${attachment.path}-${index}`}>
+                                                            <a
+                                                                href={`/data/${attachment.path}`}
+                                                                target="_blank"
+                                                                rel="noopener noreferrer"
+                                                                className="text-orange-600 hover:underline"
+                                                            >
+                                                                {attachment.name || 'Download'}
+                                                            </a>
+                                                        </li>
+                                                    ))}
+                                                </ul>
+                                            ) : (
+                                                <span className="text-slate-400">—</span>
+                                            )}
+                                        </td>
+                                        {canEdit && (
+                                            <td className="px-4 py-3 text-right">
+                                                <button onClick={() => handleDelete(log.log_id)} className="text-sm font-medium text-red-600 hover:text-red-700">Delete</button>
+                                            </td>
+                                        )}
+                                    </tr>
+                                ))}
+                                {logs.length === 0 && (
+                                    <tr>
+                                        <td colSpan={canEdit ? 5 : 4} className="px-4 py-6 text-center text-slate-500">No log entries for this order yet.</td>
+                                    </tr>
+                                )}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </>
+    );
+};
+
+
+const PriceInput = ({ value, onChange, disabled = false, ariaLabel }) => {
+    const handleChange = (e) => { const digits = e.target.value.replace(/\D/g, ''); onChange(Number(digits)); };
+    const formattedValue = (value / 100).toFixed(2);
+    return (
+        <input
+            type="text"
+            value={`$${formattedValue}`}
+            onChange={handleChange}
+            disabled={disabled}
+            aria-label={ariaLabel}
+            className="w-24 sm:w-28 text-right bg-white border border-slate-300 rounded-md shadow-sm focus:outline-none focus:ring-orange-500 focus:border-orange-500 sm:text-sm p-2 disabled:bg-slate-100 disabled:text-slate-500"
+        />
+    );
+};
+
+const generateInvoicePdf = (order, allItems, action = 'save', brandingOverride = {}) => {
+    if (!order) return;
+    const { jsPDF } = window.jspdf;
+    const doc = new jsPDF();
+    const safeItems = allItems || {};
+    const safeOrder = order || {};
+    const rawDisplayId = typeof safeOrder.display_id === 'string' ? safeOrder.display_id : '';
+    const displayId = rawDisplayId.trim();
+    const orderTitle = (safeOrder.title || '').trim();
+    const orderIdentifier = displayId || orderTitle || '';
+    const baseFileLabel = orderIdentifier || 'Order';
+    const sanitizedFileLabel = baseFileLabel.replace(/[^a-z0-9-_]+/gi, '_') || 'Order';
+    const timeZone = "America/Chicago";
+    const dateOptions = { year: 'numeric', month: 'long', day: 'numeric' };
+    const formattedDate = safeOrder.date ? formatInTimeZone(safeOrder.date, timeZone, dateOptions) : '—';
+
+    const mergedBranding = {
+        ...(window.fireCoastBranding || {}),
+        ...(brandingOverride || {}),
+    };
+    const accentHex = (mergedBranding.invoice_brand_color || '').trim();
+    const accentRgb = hexToRgb(accentHex) || { r: 249, g: 115, b: 22 };
+    const accentFillColor = [accentRgb.r, accentRgb.g, accentRgb.b];
+    const headerTextColor = isRgbColorDark(accentRgb) ? [255, 255, 255] : [17, 24, 39];
+    const tableBorderColor = [226, 232, 240];
+    const zebraFillColor = [248, 250, 252];
+    const businessName = (mergedBranding.invoice_business_name || '').trim();
+    const businessDetails = (mergedBranding.invoice_business_details || '').trim();
+    const invoiceFooter = (mergedBranding.invoice_footer || '').trim();
+    const logoDataUrl = (mergedBranding.invoice_logo_data_url || '').trim();
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(10);
+    const businessDetailLines = businessDetails
+        ? doc.splitTextToSize(businessDetails, 90)
+        : [];
+    const invoiceInfoLines = [
+        `Order #: ${orderIdentifier || '—'}`,
+        displayId && orderTitle ? `Title: ${orderTitle}` : null,
+        `Date: ${formattedDate}`,
+    ].filter(Boolean);
+    const logoHeight = logoDataUrl ? 24 : 0;
+    const nameHeight = businessName ? 7 : 0;
+    const detailHeight = businessDetailLines.length * 4;
+    const invoiceInfoHeight = 10 + (invoiceInfoLines.length * 5);
+    const topSectionContentHeight = Math.max(logoHeight, nameHeight + detailHeight, invoiceInfoHeight) || 0;
+    const backgroundTop = 14;
+    const backgroundHeight = topSectionContentHeight + 16;
+    doc.setDrawColor(226, 232, 240);
+    doc.setFillColor(248, 250, 252);
+    doc.roundedRect(12, backgroundTop, 186, Math.max(backgroundHeight, 28), 4, 4, 'FD');
+
+    const contentLeft = 14;
+    const contentTop = backgroundTop + 12;
+    let leftTextX = contentLeft;
+    let leftTextY = contentTop;
+    if (logoDataUrl) {
+        try {
+            doc.addImage(logoDataUrl, 'PNG', leftTextX, contentTop - 6, 32, 24);
+            leftTextX += 36;
+        } catch (error) {
+            console.error('Unable to render invoice logo:', error);
+        }
+    }
+    if (businessName) {
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(14);
+        doc.text(businessName, leftTextX, leftTextY);
+        leftTextY += 7;
+    }
+    if (businessDetailLines.length) {
+        doc.setFont('helvetica', 'normal');
+        doc.setFontSize(10);
+        businessDetailLines.forEach((line) => {
+            doc.text(line, leftTextX, leftTextY);
+            leftTextY += 4;
+        });
+    }
+
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(18);
+    doc.setTextColor(15, 23, 42);
+    doc.text('Invoice', 196, contentTop, { align: 'right' });
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(10);
+    doc.setTextColor(0, 0, 0);
+    let invoiceLineY = contentTop + 6;
+    invoiceInfoLines.forEach((line) => {
+        doc.text(line, 196, invoiceLineY, { align: 'right' });
+        invoiceLineY += 5;
+    });
+
+    const topSectionBottom = backgroundTop + Math.max(backgroundHeight, 28);
+
+    const baseContact = safeOrder.contactInfo || {};
+    const contactInfo = {
+        companyName: '',
+        contactName: '',
+        email: '',
+        phone: '',
+        billingAddress: '',
+        billingCity: '',
+        billingState: '',
+        billingZipCode: '',
+        shippingAddress: '',
+        shippingCity: '',
+        shippingState: '',
+        shippingZipCode: '',
+        ...baseContact
+    };
+    const preferAddressValue = (primary, ...fallbacks) => {
+        const candidates = [primary, ...fallbacks];
+        for (const candidate of candidates) {
+            if (candidate == null) continue;
+            const value = String(candidate).trim();
+            if (value) {
+                return value;
+            }
+        }
+        return '';
+    };
+    const shippingFallback = {
+        address: preferAddressValue(contactInfo.shippingAddress, safeOrder.shippingAddress),
+        city: preferAddressValue(contactInfo.shippingCity, safeOrder.shippingCity),
+        state: preferAddressValue(contactInfo.shippingState, safeOrder.shippingState),
+        zip: preferAddressValue(contactInfo.shippingZipCode, safeOrder.shippingZipCode),
+    };
+    const billingFallbackSource = {
+        address: preferAddressValue(contactInfo.billingAddress, safeOrder.billingAddress),
+        city: preferAddressValue(contactInfo.billingCity, safeOrder.billingCity),
+        state: preferAddressValue(contactInfo.billingState, safeOrder.billingState),
+        zip: preferAddressValue(contactInfo.billingZipCode, safeOrder.billingZipCode),
+    };
+    const hasBillingFallback = Object.values(billingFallbackSource).some(value => value && String(value).trim());
+    const billingFallback = hasBillingFallback ? billingFallbackSource : shippingFallback;
+    const resolvedContactInfo = {
+        ...contactInfo,
+        shippingAddress: shippingFallback.address,
+        shippingCity: shippingFallback.city,
+        shippingState: shippingFallback.state,
+        shippingZipCode: shippingFallback.zip,
+        billingAddress: billingFallback.address,
+        billingCity: billingFallback.city,
+        billingState: billingFallback.state,
+        billingZipCode: billingFallback.zip,
+    };
+
+    const renderBlock = (label, lines, x, y, wrapWidth = null) => {
+        doc.setFontSize(12);
+        doc.text(label, x, y);
+        y += 6;
+        doc.setFontSize(10);
+        if (!lines.length) {
+            doc.text('—', x, y);
+            return y + 7;
+        }
+        if (wrapWidth) {
+            const wrapped = doc.splitTextToSize(lines.join('\n'), wrapWidth);
+            doc.text(wrapped, x, y);
+            return y + (wrapped.length * 4) + 2;
+        }
+        lines.forEach((line) => {
+            doc.text(line, x, y);
+            y += 5;
+        });
+        return y + 2;
+    };
+
+    const buildAddressLines = (address, city, state, zip) => {
+        const lines = [];
+        if (address) lines.push(address);
+        const locality = [city, state].filter(Boolean).join(', ');
+        const postalLine = [locality, zip].filter(Boolean).join(' ');
+        if (postalLine.trim()) lines.push(postalLine.trim());
+        return lines;
+    };
+
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(12);
+    doc.setDrawColor(0, 0, 0);
+    doc.setLineWidth(0.2);
+
+    let leftColumnY = topSectionBottom + 10;
+    let rightColumnY = topSectionBottom + 10;
+    const leftColumnX = 14;
+    const rightColumnX = 105;
+
+    const customerPhone = formatPhoneNumber(resolvedContactInfo.phone);
+    const customerLines = [
+        resolvedContactInfo.companyName,
+        resolvedContactInfo.contactName,
+        resolvedContactInfo.email,
+        customerPhone
+    ].filter(Boolean);
+    leftColumnY = renderBlock("Bill To", customerLines, leftColumnX, leftColumnY);
+
+    const billingLines = buildAddressLines(
+        resolvedContactInfo.billingAddress,
+        resolvedContactInfo.billingCity,
+        resolvedContactInfo.billingState,
+        resolvedContactInfo.billingZipCode
+    );
+    if (billingLines.length) {
+        rightColumnY = renderBlock("Billing Address", billingLines, rightColumnX, rightColumnY, 90);
+    }
+
+    const shippingLines = buildAddressLines(
+        resolvedContactInfo.shippingAddress,
+        resolvedContactInfo.shippingCity,
+        resolvedContactInfo.shippingState,
+        resolvedContactInfo.shippingZipCode
+    );
+    if (shippingLines.length) {
+        rightColumnY = renderBlock("Shipping Address", shippingLines, rightColumnX, rightColumnY, 90);
+    }
+
+    let tableStartY = Math.max(leftColumnY, rightColumnY, topSectionBottom + 20) + 5;
+
+    const safeLineItems = Array.isArray(safeOrder.lineItems) ? safeOrder.lineItems : [];
+const tableHead = ["Name", "Description", "Units", "Unit Price", "Total"];
+    const tableBody = safeLineItems.map((item) => {
+        const catalogItem = item?.catalogItemId ? safeItems[item.catalogItemId] : null;
+        const displayName = (item?.name && item.name.trim()) || catalogItem?.name || 'Item';
+        const description = (item?.description && item.description.trim()) || catalogItem?.description || '';
+        const quantity = Number(item?.quantity) || 0;
+        const unitPriceCents = Number(item?.price) || 0;
+        const lineTotalCents = quantity * unitPriceCents;
+        return [
+            displayName,
+            description || '—',
+            `${quantity}`,
+            `$${(unitPriceCents / 100).toFixed(2)}`,
+            `$${(lineTotalCents / 100).toFixed(2)}`
+        ];
+    });
+
+    doc.autoTable({
+        head: [tableHead],
+        body: tableBody,
+        startY: tableStartY,
+        styles: { cellPadding: 3, fontSize: 10, textColor: [71, 85, 105] },
+        headStyles: {
+            fillColor: accentFillColor,
+            textColor: headerTextColor,
+            fontStyle: 'bold',
+            lineWidth: 0.2,
+            lineColor: tableBorderColor,
+        },
+        bodyStyles: {
+            lineWidth: 0.2,
+            lineColor: tableBorderColor,
+        },
+        alternateRowStyles: {
+            fillColor: zebraFillColor,
+        },
+        tableLineColor: tableBorderColor,
+        tableLineWidth: 0.2,
+    });
+
+    const subtotalCents = safeLineItems.reduce((acc, item) => {
+        const quantity = Number(item?.quantity) || 0;
+        const unitPriceCents = Number(item?.price) || 0;
+        return acc + (quantity * unitPriceCents);
+    }, 0);
+    const shippingCents = Math.max(0, Math.round(parseCurrencyToNumber(safeOrder.estimatedShipping) * 100));
+    const taxCents = Math.max(0, Math.round(parseCurrencyToNumber(safeOrder.taxAmount) * 100));
+    const normalizedDiscounts = normalizeDiscountsForTotals(safeOrder.discounts, safeLineItems);
+    const discountTotalCents = Math.min(
+        normalizedDiscounts.reduce((acc, discount) => acc + discount.amountCents, 0),
+        subtotalCents
+    );
+    const subtotalAfterDiscounts = Math.max(0, subtotalCents - discountTotalCents);
+    const totalCents = subtotalAfterDiscounts + shippingCents + taxCents;
+
+    const tableResult = doc.lastAutoTable;
+    let summaryY = (tableResult ? tableResult.finalY : tableStartY) + 10;
+
+    doc.setFontSize(10);
+    doc.text(`Subtotal: $${(subtotalCents / 100).toFixed(2)}`, 14, summaryY);
+    summaryY += 7;
+
+    if (taxCents > 0) {
+        doc.text(`Taxes: $${(taxCents / 100).toFixed(2)}`, 14, summaryY);
+        summaryY += 7;
+    }
+
+    if (shippingCents > 0) {
+        doc.text(`Shipping: $${(shippingCents / 100).toFixed(2)}`, 14, summaryY);
+        summaryY += 7;
+    }
+
+    if (discountTotalCents > 0) {
+        doc.text(`Discounts: -$${(discountTotalCents / 100).toFixed(2)}`, 14, summaryY);
+        summaryY += 7;
+        normalizedDiscounts.forEach((discount) => {
+            const label = discount.label || 'Discount';
+            doc.text(`  ${label}: -$${(discount.amountCents / 100).toFixed(2)}`, 14, summaryY);
+            summaryY += 6;
+        });
+    }
+
+    doc.setFontSize(12);
+    doc.text(`Total: $${(totalCents / 100).toFixed(2)}`, 14, summaryY);
+    summaryY += 10;
+
+    doc.setFontSize(10);
+    if (safeOrder.estimatedShippingDate) {
+        doc.text(`Est. Ship Date: ${formatInTimeZone(safeOrder.estimatedShippingDate, timeZone, dateOptions)}`, 14, summaryY);
+        summaryY += 5;
+    }
+
+    if (safeOrder.priorityLevel) {
+        doc.text(`Priority: ${safeOrder.priorityLevel}`, 14, summaryY);
+        summaryY += 5;
+    }
+
+    if (safeOrder.fulfillmentChannel) {
+        doc.text(`Fulfillment: ${safeOrder.fulfillmentChannel}`, 14, summaryY);
+        summaryY += 5;
+    }
+
+    if (safeOrder.customerReference) {
+        doc.text(`Customer Reference: ${safeOrder.customerReference}`, 14, summaryY);
+        summaryY += 5;
+    }
+
+    const trimmedNotes = (safeOrder.notes || '').trim();
+    if (trimmedNotes) {
+        summaryY += 5;
+        doc.text("Notes:", 14, summaryY);
+        summaryY += 5;
+        const wrappedNotes = doc.splitTextToSize(trimmedNotes, 180);
+        doc.text(wrappedNotes, 14, summaryY);
+        summaryY += wrappedNotes.length * 4;
+    }
+
+    summaryY += 15;
+    if (summaryY > 260) {
+        doc.addPage();
+        summaryY = 20;
+    }
+
+    doc.setFontSize(10);
+    doc.text("Authorized Signature:", 14, summaryY);
+
+    const signatureDataUrl = safeOrder.signatureDataUrl;
+    if (signatureDataUrl) {
+        try {
+            if (signatureDataUrl.startsWith('data:image')) {
+                const base64Data = signatureDataUrl.substring(signatureDataUrl.indexOf(',') + 1);
+                if (base64Data.length > 150) {
+                    const signatureImgWidth = 70;
+                    const signatureImgHeight = 20;
+                    doc.addImage(signatureDataUrl, 'PNG', 50, summaryY - (signatureImgHeight / 2) + 2, signatureImgWidth, signatureImgHeight);
+                } else {
+                    doc.line(50, summaryY, 120, summaryY);
+                }
+            } else {
+                doc.line(50, summaryY, 120, summaryY);
+            }
+        } catch (error) {
+            console.error('Error rendering signature image for PDF:', error);
+            doc.line(50, summaryY, 120, summaryY);
+        }
+    } else {
+        doc.line(50, summaryY, 120, summaryY);
+    }
+
+    let footerY = summaryY + 20;
+    if (invoiceFooter) {
+        if (footerY > 260) {
+            doc.addPage();
+            footerY = 20;
+        }
+        doc.setFontSize(9);
+        const wrappedFooter = doc.splitTextToSize(invoiceFooter, 180);
+        doc.text(wrappedFooter, 14, footerY);
+        doc.setFontSize(10);
+    }
+
+    if (action === 'save') {
+        doc.save(`Invoice_${sanitizedFileLabel}.pdf`);
+    } else if (action === 'preview') {
+        doc.output('dataurlnewwindow');
+    } else if (action === 'datauristring') {
+        return doc.output('datauristring');
+    }
+};
+
+const SalesChart = ({ data }) => {
+    const { useRef, useEffect } = React;
+    const chartRef = useRef(null);
+    const chartInstance = useRef(null);
+    useEffect(() => { if (chartRef.current) { if (chartInstance.current) { chartInstance.current.destroy(); } const ctx = chartRef.current.getContext('2d'); chartInstance.current = new Chart(ctx, { type: 'bar', data, options: { responsive: true, maintainAspectRatio: false, scales: { y: { beginAtZero: true } }, plugins: { legend: { display: false } } } }); } return () => { if (chartInstance.current) { chartInstance.current.destroy(); } }; }, [data]);
+    return <canvas ref={chartRef} />;
+};
+
+const SignaturePad = ({ onSave, initialDataUrl, disabled = false }) => {
+    const { useRef, useEffect, useState } = React;
+    const canvasRef = useRef(null);
+    const [isDrawing, setIsDrawing] = useState(false);
+    const [signatureData, setSignatureData] = useState(initialDataUrl || null);
+
+    useEffect(() => {
+        const canvas = canvasRef.current;
+        if (!canvas) return;
+        const ctx = canvas.getContext('2d');
+        
+        // Set canvas dimensions based on its CSS-defined size
+        canvas.width = canvas.offsetWidth;
+        canvas.height = canvas.offsetHeight;
+
+        ctx.strokeStyle = '#000000';
+        ctx.lineWidth = 2;
+        ctx.lineCap = 'round';
+        ctx.lineJoin = 'round';
+
+        if (signatureData) {
+            const img = new Image();
+            img.onload = () => {
+                ctx.clearRect(0, 0, canvas.width, canvas.height); // Clear before drawing existing
+                ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+            };
+            img.src = signatureData;
+        } else {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+        }
+
+    }, [signatureData, disabled]); // Redraw if signatureData changes or disabled state changes
+
+    const getMousePos = (canvas, evt) => {
+        const rect = canvas.getBoundingClientRect();
+        return {
+            x: evt.clientX - rect.left,
+            y: evt.clientY - rect.top
+        };
+    };
+    
+    const getTouchPos = (canvas, touch) => {
+        const rect = canvas.getBoundingClientRect();
+        return {
+            x: touch.clientX - rect.left,
+            y: touch.clientY - rect.top
+        };
+    };
+
+    const startDrawing = (e) => {
+        if (disabled) return;
+        setIsDrawing(true);
+        const canvas = canvasRef.current;
+        const ctx = canvas.getContext('2d');
+        const pos = e.type.startsWith('touch') ? getTouchPos(canvas, e.touches[0]) : getMousePos(canvas, e);
+        ctx.beginPath();
+        ctx.moveTo(pos.x, pos.y);
+        e.preventDefault(); // Prevent scrolling on touch
+    };
+
+    const draw = (e) => {
+        if (!isDrawing || disabled) return;
+        const canvas = canvasRef.current;
+        const ctx = canvas.getContext('2d');
+        const pos = e.type.startsWith('touch') ? getTouchPos(canvas, e.touches[0]) : getMousePos(canvas, e);
+        ctx.lineTo(pos.x, pos.y);
+        ctx.stroke();
+        e.preventDefault(); // Prevent scrolling on touch
+    };
+
+    const stopDrawing = () => {
+        if (!isDrawing || disabled) return;
+        setIsDrawing(false);
+        const canvas = canvasRef.current;
+        const dataUrl = canvas.toDataURL('image/png');
+        setSignatureData(dataUrl); // Update local state for display
+        if (onSave) {
+            onSave(dataUrl); // Propagate to parent
+        }
+    };
+
+    const clearSignature = () => {
+        if (disabled) return;
+        const canvas = canvasRef.current;
+        const ctx = canvas.getContext('2d');
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        setSignatureData(null);
+        if (onSave) {
+            onSave(null); // Propagate null to parent
+        }
+    };
+    
+    // Add event listeners for touch events
+    useEffect(() => {
+        const canvas = canvasRef.current;
+        if (!canvas || disabled) return;
+
+        // Ensure canvas has dimensions before adding listeners if it might be initially hidden or 0-sized
+        // if (canvas.offsetWidth === 0 || canvas.offsetHeight === 0) { // Removed this check as it might prevent listeners if canvas is initially 0px then resized by CSS
+            // Optionally, wait for dimensions or log a warning
+            // console.warn("SignaturePad canvas has no dimensions yet.");
+            // return; // Or handle resize observer
+        // }
+
+
+        canvas.addEventListener('touchstart', startDrawing, { passive: false });
+        canvas.addEventListener('touchmove', draw, { passive: false });
+        canvas.addEventListener('touchend', stopDrawing);
+        canvas.addEventListener('touchcancel', stopDrawing);
+
+        return () => {
+            canvas.removeEventListener('touchstart', startDrawing);
+            canvas.removeEventListener('touchmove', draw);
+            canvas.removeEventListener('touchend', stopDrawing);
+            canvas.removeEventListener('touchcancel', stopDrawing);
+        };
+    }, [isDrawing, disabled, onSave, canvasRef.current?.offsetWidth, canvasRef.current?.offsetHeight]); // Re-run if canvas dimensions change
+
+    const canvasStyle = {
+        touchAction: 'none'
+    };
+
+    return (
+        <div className="space-y-2">
+            <canvas
+                ref={canvasRef}
+                onMouseDown={startDrawing}
+                onMouseMove={draw}
+                onMouseUp={stopDrawing}
+                onMouseLeave={stopDrawing} // Stop drawing if mouse leaves canvas
+                className={`w-full h-40 bg-slate-100 border border-slate-300 rounded-md cursor-crosshair ${disabled ? 'cursor-not-allowed opacity-70' : ''}`}
+                style={canvasStyle} // Use the style object here
+            ></canvas>
+            {!disabled && (
+                <button
+                    onClick={clearSignature}
+                    className="w-full text-center px-4 py-2 bg-slate-200 text-slate-700 font-semibold rounded-md hover:bg-slate-300 transition-colors text-sm"
+                >
+                    Clear Signature
+                </button>
+            )}
+        </div>
+    );
+};
+
+
+const EmailModal = ({ order, onClose, allItems, onEmailClientOpened, appSettings, saveOrder, onOrderUpdatedAfterEmail }) => {
+    const { useState, useEffect, useRef } = React;
+    const fileInputRef = useRef(null);
+    const [attachments, setAttachments] = useState([]); // Handles multiple attachments
+    const [isSending, setIsSending] = useState(false);
+    const [emailSent, setEmailSent] = useState(false);
+    const [isUploading, setIsUploading] = useState(false); // For upload progress
+    const [editableBody, setEditableBody] = useState('');
+
+    const hiddenFileInputStyle = { display: 'none' };
+
+    const handleFileSelected = async (event) => {
+        const files = Array.from(event.target.files);
+        if (files.length === 0) return;
+
+        setIsUploading(true);
+        const uploadPromises = files.map(file => {
+            const formData = new FormData();
+            formData.append('file', file);
+            return fetch('/api/upload-attachment', {
+                method: 'POST',
+                body: formData,
+            }).then(response => response.json());
+        });
+
+        try {
+            const results = await Promise.all(uploadPromises);
+            const newAttachments = results.map((result, index) => {
+                if (result.status === 'success') {
+                    const expectedPoName = `PO_${order.id}.pdf`;
+                    return {
+                        original: result.originalFilename,
+                        unique: result.uniqueFilename,
+                        isMatch: result.originalFilename === expectedPoName,
+                    };
+                } else {
+                    alert(`Failed to upload ${files[index].name}: ${result.message}`);
+                    return null;
+                }
+            }).filter(Boolean); // Filter out nulls from failed uploads
+
+            setAttachments(prev => [...prev, ...newAttachments]);
+        } catch (error) {
+            alert(`Error during file upload: ${error.message}`);
+        } finally {
+            setIsUploading(false);
+            // Reset file input to allow re-selecting the same file(s)
+            if(fileInputRef.current) {
+                fileInputRef.current.value = "";
+            }
+        }
+    };
+
+    // useEffect for generating pdfDataUri is removed.
+
+    useEffect(() => {
+        const handleOutsideClick = (event) => {
+            // Check if the click is outside the modal content
+            if (event.target.id === "email-modal-backdrop") {
+                onClose();
+            }
+        };
+
+        // Add event listener when the modal is shown
+        document.addEventListener('mousedown', handleOutsideClick);
+
+        // Clean up event listener when the modal is hidden or component unmounts
+        return () => {
+            document.removeEventListener('mousedown', handleOutsideClick);
+        };
+    }, [onClose]);
+
+    useEffect(() => {
+        if (order && appSettings && appSettings.default_email_body) {
+            let body = appSettings.default_email_body;
+            // Replace placeholders
+            // For [customerName], prefer contact name, fallback to company name.
+            body = body.replace(/\[customerName\]/g, order.contactInfo.contactName || order.contactInfo.companyName || '');
+            // For [contactCompanyName], use company name.
+            body = body.replace(/\[contactCompanyName\]/g, order.contactInfo.companyName || '');
+            body = body.replace(/\[contactCompany\]/g, order.contactInfo.companyName || '');
+            body = body.replace(/\[orderID\]/g, order.id || '');
+            body = body.replace(/\[yourCompany\]/g, appSettings.company_name || 'Your Company');
+            setEditableBody(body);
+        } else if (order) {
+            // Fallback if settings are not loaded or default_email_body is missing
+            const fallbackYourCompanyName = appSettings?.company_name || "Your Company";
+            setEditableBody(
+`Dear ${order.contactInfo.contactName || order.contactInfo.companyName},
+
+Please find attached the purchase order ${order.id} for your records.
+
+Thank you,
+${fallbackYourCompanyName}`
+            );
+        }
+    }, [order, appSettings]);
+
+    if (!order) return null;
+
+    const recipient = order.contactInfo.email;
+    const subjectText = `${appSettings?.company_name || "Your Company"} - Order Confirmation ${order.id}`;
+    
+    // mailtoHref will be constructed on click or when rendering the link to use the latest editableBody
+    const getMailtoHref = () => `mailto:${recipient}?subject=${encodeURIComponent(subjectText)}&body=${encodeURIComponent(editableBody)}`;
+
+    return (
+    <div id="email-modal-backdrop" className="fixed inset-0 bg-black bg-opacity-50 z-50 flex justify-center items-center p-4">
+        <div className="bg-white rounded-lg shadow-xl p-8 w-full max-w-2xl max-h-[90vh] overflow-y-auto modal-content">
+                <h2 className="text-2xl font-bold text-slate-800 mb-4">Send Order Confirmation</h2>
+                <div className="space-y-4">
+                    <Input label="To" value={order.contactInfo.email} disabled />
+                    <Input label="Subject" value={subjectText} disabled />
+                    <Textarea label="Email Body" value={editableBody} onChange={e => setEditableBody(e.target.value)} rows={8} disabled={false} />
+                    <div className="bg-orange-50 p-4 rounded-md border border-orange-200">
+                        <p className="text-sm font-medium text-orange-700 mb-2">Order PDF:</p>
+                        {/* Button to trigger client-side PDF generation for download */}
+                        <button
+                            onClick={() => {
+                                if (order && allItems) {
+                                    try {
+                                        generateInvoicePdf(order, allItems, 'save', appSettings); // 'save' action directly downloads
+                                    } catch (e) {
+                                        console.error("Error generating PDF for download:", e);
+                                        alert("Failed to generate PDF for download.");
+                                    }
+                                } else {
+                                    alert("Order data or item data is missing, cannot generate PDF.");
+                                }
+                            }}
+                            className="w-full flex items-center justify-center bg-blue-600 hover:bg-blue-700 text-white font-semibold px-4 py-3 rounded-md shadow-sm transition-colors"
+                        >
+                            <PdfIcon />
+                            <span className="ml-2">Download PO_{order.id}.pdf</span>
+                        </button>
+                        <p className="mt-2 text-xs text-orange-700">Click to download the PO. Then, use the 'Upload Custom Attachment' button below if you wish to attach it to the email.</p>
+                    </div>
+
+                    {/* File Upload Section */}
+                    <div className="pt-2"> {/* Added some top padding */}
+                        <input
+                            type="file"
+                            ref={fileInputRef}
+                            style={hiddenFileInputStyle}
+                            onChange={handleFileSelected}
+                            multiple // Allow multiple files
+                        />
+                        <button
+                            onClick={() => fileInputRef.current && fileInputRef.current.click()}
+                            className={`w-full flex items-center justify-center bg-slate-200 hover:bg-slate-300 text-slate-700 font-semibold px-4 py-3 rounded-md shadow-sm transition-colors text-sm ${isUploading ? 'opacity-50 cursor-not-allowed' : ''}`}
+                            disabled={isUploading}
+                        >
+                            <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2" viewBox="0 0 20 20" fill="currentColor">
+                                <path fillRule="evenodd" d="M3 17a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zM6.293 6.707a1 1 0 010-1.414l3-3a1 1 0 011.414 0l3 3a1 1 0 01-1.414 1.414L11 5.414V13a1 1 0 11-2 0V5.414L7.707 6.707a1 1 0 01-1.414 0z" clipRule="evenodd" />
+                            </svg>
+                            {isUploading ? 'Uploading...' : 'Upload Attachments'}
+                        </button>
+                        {attachments.length > 0 && (
+                            <div className="mt-3 space-y-2">
+                                <p className="text-sm font-medium text-slate-700">Attached Files:</p>
+                                <ul className="list-disc list-inside bg-slate-50 p-3 rounded-md border border-slate-200">
+                                    {attachments.map((att, index) => (
+                                        <li key={index} className="text-xs flex justify-between items-center">
+                                            <span className={att.isMatch ? 'text-green-600 font-semibold' : 'text-slate-600'}>
+                                                {att.original}
+                                                {att.isMatch && <span className="ml-1">✔ Matches Order</span>}
+                                            </span>
+                                            <button onClick={() => setAttachments(attachments.filter((_, i) => i !== index))} className="text-red-500 hover:text-red-700 p-1">
+                                                <TrashIcon />
+                                            </button>
+                                        </li>
+                                    ))}
+                                </ul>
+                            </div>
+                        )}
+                    </div>
+                </div>
+                <div className="mt-6 flex items-center justify-between">
+                    <button 
+                        onClick={onClose} 
+                        className="px-4 py-2 bg-slate-200 text-slate-700 font-semibold rounded-md hover:bg-slate-300 transition-colors"
+                    >
+                        Cancel
+                    </button>
+                    <button
+                        onClick={async () => {
+                            if (isSending || isUploading) return;
+
+                            const hasMismatchedPo = attachments.some(att => !att.isMatch);
+                            if (attachments.length === 0) {
+                                // popup
+                                if (!window.confirm("No files are attached. Send email without attachments?")) return;
+                            } else if (hasMismatchedPo) {
+                                const expectedPoName = `PO_${order.id}.pdf`;
+                                if (!window.confirm(`Warning: At least one attachment does not match the expected PO name "${expectedPoName}". Proceed anyway?`)) return;
+                            }
+                            
+                            setIsSending(true);
+                            const emailPayload = {
+                                order: order,
+                                recipientEmail: order.contactInfo.email,
+                                subject: subjectText,
+                                body: editableBody,
+                                attachments: attachments.map(a => ({ original: a.original, unique: a.unique })),
+                            };
+
+                            try {
+                                const response = await fetch('/api/send-order-email', {
+                                    method: 'POST',
+                                    headers: { 'Content-Type': 'application/json' },
+                                    body: JSON.stringify(emailPayload)
+                                });
+                                const result = await response.json();
+                                if (response.ok) {
+                                    setEmailSent(true);
+                                    
+                                    // New logic: After email sends, update the order status to 'Sent' and save it.
+                                    const newStatusHistory = [...order.statusHistory, { status: 'Sent', date: new Date().toISOString() }];
+                                    const updatedOrderForStatusChange = { ...order, status: 'Sent', statusHistory: newStatusHistory };
+
+                                    try {
+                                        // saveOrder is passed from App, it handles the API call and global state update.
+                                        await saveOrder(updatedOrderForStatusChange);
+                                    } catch (saveError) {
+                                        // If saving the status fails, the user should be notified.
+                                        alert(`Email was sent successfully, but there was an error updating the order status: ${saveError.message}`);
+                                    }
+
+                                    setTimeout(() => {
+                                        if (onEmailClientOpened) {
+                                            onEmailClientOpened();
+                                        }
+                                    }, 1000);
+                                } else {
+                                    alert(`Failed to send email: ${result.message || 'Server error'}`);
+                                }
+                            } catch (error) {
+                                alert(`Error sending email: ${error.message}`);
+                            } finally {
+                                setIsSending(false);
+                            }
+                        }}
+                        className={`px-6 py-2 bg-green-600 text-white font-semibold rounded-md hover:bg-green-700 transition-colors ${isSending || isUploading || emailSent ? 'opacity-50 cursor-not-allowed' : ''}`}
+                        disabled={isSending || isUploading || emailSent}
+                    >
+                        {emailSent ? 'Sent!' : isSending ? 'Sending...' : 'Send via Server'}
+                    </button>
+                </div>
+            </div>
+        </div>
+    );
+};
+
+const Calendar = ({ onSelectDate, position, onClose }) => {
+    const { useState, useEffect, useRef } = React;
+    const [date, setDate] = useState(new Date());
+    const calendarRef = useRef(null);
+
+    const handleDateChange = (e) => {
+        const newDate = new Date(e.target.value);
+        onSelectDate(newDate);
+    };
+    
+    useEffect(() => {
+        const handleClickOutside = (event) => {
+            if (calendarRef.current && !calendarRef.current.contains(event.target)) {
+                onClose();
+            }
+        };
+
+        document.addEventListener('mousedown', handleClickOutside);
+        return () => {
+            document.removeEventListener('mousedown', handleClickOutside);
+        };
+    }, [onClose]);
+
+    return (
+        <div ref={calendarRef} style={{ top: position.top, left: position.left }} className="absolute z-20 bg-white border rounded-lg shadow-lg p-2 calendar-container">
+            <input type="date" onChange={handleDateChange} className="w-full p-1 border-gray-300 rounded-md"/>
+        </div>
+    );
+};
+
+const StatusBadge = ({ statusText, appearance }) => {
+    const { useState, useRef, useEffect, useMemo } = React;
+    const shimmerEnabled = Boolean(appearance?.shimmer);
+    const backgroundColor = appearance?.color || '#E2E8F0';
+    const textColor = appearance?.textColor || (isRgbColorDark(hexToRgb(backgroundColor)) ? '#FFFFFF' : '#0F172A');
+    const borderColor = darkenHexColor(backgroundColor, 0.2);
+    const badgeRef = useRef(null);
+    const proximityThreshold = 75;
+    const baseGradient = useMemo(() => `linear-gradient(135deg, ${lightenHexColor(backgroundColor, 0.2)}, ${backgroundColor}, ${darkenHexColor(backgroundColor, 0.1)})`, [backgroundColor]);
+    const [glintStyle, setGlintStyle] = useState(shimmerEnabled ? { background: baseGradient } : {});
+
+    useEffect(() => {
+        if (!shimmerEnabled) {
+            return undefined;
+        }
+        setGlintStyle({ background: baseGradient });
+        const handleGlobalMouseMove = (e) => {
+            if (!badgeRef.current) return;
+            const rect = badgeRef.current.getBoundingClientRect();
+            const badgeCenterX = rect.left + rect.width / 2;
+            const badgeCenterY = rect.top + rect.height / 2;
+            const cursorX = e.clientX;
+            const cursorY = e.clientY;
+            const distanceX = cursorX - badgeCenterX;
+            const distanceY = cursorY - badgeCenterY;
+            const distance = Math.sqrt(distanceX * distanceX + distanceY * distanceY);
+            if (distance < proximityThreshold + rect.width / 2) {
+                const glareX = ((cursorX - rect.left) / rect.width) * 100;
+                const glareY = ((cursorY - rect.top) / rect.height) * 100;
+                const clampedGlareX = Math.max(-50, Math.min(150, glareX));
+                const clampedGlareY = Math.max(-50, Math.min(150, glareY));
+                setGlintStyle({
+                    background: `radial-gradient(circle at ${clampedGlareX}% ${clampedGlareY}%, rgba(255,255,255,0.75) 0%, rgba(255,255,255,0) 50%), ${baseGradient}`,
+                    transition: 'background 0.05s linear',
+                });
+            } else {
+                setGlintStyle({ background: baseGradient, transition: 'background 0.3s ease-out' });
+            }
+        };
+        document.addEventListener('mousemove', handleGlobalMouseMove);
+        return () => {
+            document.removeEventListener('mousemove', handleGlobalMouseMove);
+        };
+    }, [shimmerEnabled, baseGradient]);
+
+    if (!shimmerEnabled) {
+        return (
+            <span
+                className="px-2 py-1 text-xs font-semibold rounded-full border shadow-sm inline-flex items-center justify-center"
+                style={{ backgroundColor, color: textColor, borderColor }}
+            >
+                {statusText}
+            </span>
+        );
+    }
+
+    return (
+        <span
+            ref={badgeRef}
+            className="px-2 py-1 text-xs font-semibold rounded-full border shadow-md inline-flex items-center justify-center"
+            style={{ ...glintStyle, color: textColor, borderColor, display: 'inline-flex', overflow: 'hidden' }}
+        >
+            {statusText}
+        </span>
+    );
+};
+
+const getContactDisplayName = (contact) => {
+    if (!contact) {
+        return 'Unnamed contact';
+    }
+    const name = sanitizePlaceholderValue(contact.contactName);
+    const company = sanitizePlaceholderValue(contact.companyName);
+    const email = contact.email && contact.email.trim();
+    const handle = contact.handle && contact.handle.trim();
+    return name || company || email || (handle ? `@${handle}` : 'Unnamed contact');
+};
+
+const formatContactAddress = (address, city, state, zip) => {
+    const parts = [];
+    if (address) parts.push(address);
+    const cityState = [city, state].filter(Boolean).join(', ');
+    if (cityState) parts.push(cityState);
+    if (zip) parts.push(zip);
+    return parts.length > 0 ? parts.join(' ') : 'Not provided';
+};
+
+const ContactSummaryCard = ({ contact, shippingFallback, billingFallback }) => {
+    if (!contact) {
+        return (
+            <div className="rounded-lg border border-dashed border-slate-300 p-4 text-sm text-slate-500">
+                Select a primary contact to see their details here.
+            </div>
+        );
+    }
+
+    const phoneDisplay = formatPhoneNumber(contact.phone);
+    const companyDisplay = sanitizePlaceholderValue(contact.companyName);
+    const selectAddressField = (primary, fallback) => {
+        const normalizedPrimary = sanitizePlaceholderValue(primary);
+        if (normalizedPrimary) {
+            return normalizedPrimary;
+        }
+        return sanitizePlaceholderValue(fallback);
+    };
+    const fallbackShipping = shippingFallback || {};
+    const fallbackBilling = billingFallback || shippingFallback || {};
+    const resolvedShippingAddress = selectAddressField(contact.shippingAddress, fallbackShipping.address);
+    const resolvedShippingCity = selectAddressField(contact.shippingCity, fallbackShipping.city);
+    const resolvedShippingState = selectAddressField(contact.shippingState, fallbackShipping.state);
+    const resolvedShippingZip = selectAddressField(contact.shippingZipCode, fallbackShipping.zip);
+    const resolvedBillingAddress = selectAddressField(contact.billingAddress, fallbackBilling.address);
+    const resolvedBillingCity = selectAddressField(contact.billingCity, fallbackBilling.city);
+    const resolvedBillingState = selectAddressField(contact.billingState, fallbackBilling.state);
+    const resolvedBillingZip = selectAddressField(contact.billingZipCode, fallbackBilling.zip);
+    const shippingDisplay = formatContactAddress(
+        resolvedShippingAddress,
+        resolvedShippingCity,
+        resolvedShippingState,
+        resolvedShippingZip
+    );
+    const billingDisplay = formatContactAddress(
+        resolvedBillingAddress,
+        resolvedBillingCity,
+        resolvedBillingState,
+        resolvedBillingZip
+    );
+
+    return (
+        <div className="rounded-lg border border-slate-200 bg-slate-50 p-4 space-y-3">
+            <div>
+                <p className="text-lg font-semibold text-slate-800">{getContactDisplayName(contact)}</p>
+                {companyDisplay && (
+                    <p className="text-sm text-slate-500">{companyDisplay}</p>
+                )}
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm text-slate-600">
+                <div>
+                    <p className="font-medium text-slate-700">Email</p>
+                    <p>{contact.email || 'Not provided'}</p>
+                </div>
+                <div>
+                    <p className="font-medium text-slate-700">Phone</p>
+                    <p>{phoneDisplay || 'Not provided'}</p>
+                </div>
+                <div className="sm:col-span-2">
+                    <p className="font-medium text-slate-700">Shipping</p>
+                    <p>{shippingDisplay}</p>
+                </div>
+                <div className="sm:col-span-2">
+                    <p className="font-medium text-slate-700">Billing</p>
+                    <p>{billingDisplay}</p>
+                </div>
+            </div>
+            {contact.handle && (
+                <span className="inline-flex items-center rounded-full bg-orange-100 px-2.5 py-1 text-xs font-semibold text-orange-700">
+                    @{contact.handle}
+                </span>
+            )}
+        </div>
+    );
+};
+
+// --- COMPONENTS ---
+const Dashboard = ({ orders, navigateTo, viewOrder, allContacts, allSelectableItems, setOrderForEmailModal, branding, orderViewSettings, initialViewState, onViewStateChange }) => {
+    const { useState, useEffect, useMemo, useRef, useCallback } = React;
+    const [searchScopeOrders, setSearchScopeOrders] = useState(orders);
+    const [filteredOrders, setFilteredOrders] = useState(orders);
+    const [searchPills, setSearchPills] = useState([]);
+    const [inputValue, setInputValue] = useState('');
+    const [dashboardStats, setDashboardStats] = useState({ totalRevenue: 0, averageOrderRevenue: 0, totalOrders: 0 });
+    const searchInputRef = useRef(null);
+    const searchAbortRef = useRef(null);
+    const [showCalendar, setShowCalendar] = useState(false);
+    const [calendarPosition, setCalendarPosition] = useState({ top: 0, left: 0 });
+    const [dateKeyword, setDateKeyword] = useState('');
+    const [isSearching, setIsSearching] = useState(false);
+    const [searchError, setSearchError] = useState(null);
+    const [advancedFilters, setAdvancedFilters] = useState([]);
+    const [statusSelections, setStatusSelections] = useState([]);
+    const [activeSearchQuery, setActiveSearchQuery] = useState('');
+    const viewStateHydratedRef = useRef(false);
+    const nextFilterIdRef = useRef(1);
+
+    useEffect(() => {
+        return () => {
+            if (searchAbortRef.current) {
+                searchAbortRef.current.abort();
+            }
+        };
+    }, []);
+
+    const statusPalette = useMemo(() => (
+        Array.isArray(orderViewSettings?.statusPalette) && orderViewSettings.statusPalette.length
+            ? orderViewSettings.statusPalette
+            : DEFAULT_STATUS_PALETTE
+    ), [orderViewSettings]);
+    const statusPaletteMap = useMemo(() => {
+        const entries = new Map();
+        statusPalette.forEach((entry) => {
+            const key = (entry.value || entry.label || '').toLowerCase();
+            if (!key) {
+                return;
+            }
+            entries.set(key, entry);
+        });
+        return entries;
+    }, [statusPalette]);
+    const normalizedStatusSet = useMemo(
+        () => new Set(statusSelections.map((value) => (value || '').toLowerCase())),
+        [statusSelections]
+    );
+
+    useEffect(() => {
+        if (viewStateHydratedRef.current) {
+            return;
+        }
+        const snapshot = initialViewState || DEFAULT_ORDER_VIEW_STATE;
+        setSearchPills(Array.isArray(snapshot.searchPills) ? snapshot.searchPills : []);
+        setInputValue(snapshot.searchInput || '');
+        setAdvancedFilters(Array.isArray(snapshot.advancedFilters) ? snapshot.advancedFilters : []);
+        setStatusSelections(Array.isArray(snapshot.statusSelections) ? snapshot.statusSelections : []);
+        setActiveSearchQuery(snapshot.searchQuery || '');
+        viewStateHydratedRef.current = true;
+    }, [initialViewState]);
+
+    useEffect(() => {
+        if (!activeSearchQuery) {
+            setSearchScopeOrders(orders);
+        }
+    }, [orders, activeSearchQuery]);
+
+    const handleDateSelect = (date) => {
+        const dateString = date.toISOString().split('T')[0];
+        const newPill = `${dateKeyword}${dateString}`;
+        const newInputValue = inputValue.replace(new RegExp(`${dateKeyword}\\S*`), '').trim();
+        setInputValue(newInputValue);
+        setSearchPills(prev => [...prev, newPill]);
+        setShowCalendar(false);
+        setDateKeyword('');
+        requestAnimationFrame(() => {
+            if (searchInputRef.current) {
+                searchInputRef.current.focus();
+            }
+        });
+    };
+
+    const parseInputToPills = (value) => {
+        const keywords = ['from', 'contact', 'customer', 'status', 'item', 'note', 'log', 'before', 'after', 'during'];
+        const keywordPattern = `(?:${keywords.join('|')}):`;
+        const structuredPattern = new RegExp(`(\\b(?:${keywordPattern})(?:"[^"]+"|\S+))|(\\btotal\\s*(?:>=|<=|<>|!=|=|<|>)\\s*\\d+\\.?\\d*)`, 'g');
+        const newPills = value.match(structuredPattern) || [];
+        const remainingText = value.replace(structuredPattern, '').trim();
+        if (newPills.length > 0) {
+            setSearchPills(prev => [...prev, ...newPills]);
+        }
+        setInputValue(remainingText);
+    };
+
+    const handleInputChange = (e) => {
+        const { value } = e.target;
+        const keywordMatch = value.match(/(?:^|\s)(before|after|during):([^\s]*)$/i);
+        if (keywordMatch && keywordMatch[2] === '') {
+            const keyword = `${keywordMatch[1].toLowerCase()}:`;
+            setDateKeyword(keyword);
+            const inputRect = e.target.getBoundingClientRect();
+            setCalendarPosition({ top: inputRect.bottom + window.scrollY, left: inputRect.left + window.scrollX });
+            if (!showCalendar) {
+                setShowCalendar(true);
+            }
+        } else if (showCalendar) {
+            setShowCalendar(false);
+            setDateKeyword('');
+        }
+        setInputValue(value);
+    };
+
+    const handleKeyDown = (e) => {
+        if (e.key === 'Enter') {
+            e.preventDefault();
+            parseInputToPills(inputValue);
+        } else if (e.key === 'Backspace' && inputValue === '' && searchPills.length > 0) {
+            e.preventDefault();
+            setSearchPills(searchPills.slice(0, -1));
+        }
+    };
+
+    const removePill = (indexToRemove) => {
+        setSearchPills(searchPills.filter((_, index) => index !== indexToRemove));
+    };
+
+    const clearSearch = () => {
+        if (searchAbortRef.current) {
+            searchAbortRef.current.abort();
+            searchAbortRef.current = null;
+        }
+        setSearchPills([]);
+        setInputValue('');
+        setSearchError(null);
+        setIsSearching(false);
+        setActiveSearchQuery('');
+        setSearchScopeOrders(orders);
+    };
+
+    const buildSearchQuery = () => {
+        const fragments = [...searchPills];
+        if (inputValue && inputValue.trim()) {
+            fragments.push(inputValue.trim());
+        }
+        return fragments.join(' ').trim();
+    };
+
+    useEffect(() => {
+        const query = buildSearchQuery();
+        if (searchAbortRef.current) {
+            searchAbortRef.current.abort();
+            searchAbortRef.current = null;
+        }
+        if (!query) {
+            setActiveSearchQuery('');
+            setSearchScopeOrders(orders);
+            setIsSearching(false);
+            setSearchError(null);
+            return;
+        }
+        const controller = new AbortController();
+        searchAbortRef.current = controller;
+        setIsSearching(true);
+        setSearchError(null);
+        const timeoutId = setTimeout(async () => {
+            try {
+                const response = await fetch(`/api/search-orders?query=${encodeURIComponent(query)}`, { signal: controller.signal });
+                if (!response.ok) {
+                    throw new Error('Search request failed');
+                }
+                const data = await response.json();
+                setActiveSearchQuery(query);
+                setSearchScopeOrders(Array.isArray(data) ? data : []);
+                setSearchError(null);
+            } catch (error) {
+                if (error.name === 'AbortError') {
+                    return;
+                }
+                console.error('Failed to fetch search results:', error);
+                setSearchError('Search failed. Showing all orders.');
+                setSearchScopeOrders(orders);
+                setActiveSearchQuery('');
+            } finally {
+                setIsSearching(false);
+            }
+        }, 200);
+        return () => {
+            controller.abort();
+            clearTimeout(timeoutId);
+        };
+    }, [searchPills, inputValue, orders]);
+
+    const evaluateRule = useCallback((order, rule) => {
+        if (!rule || !rule.field || !rule.operator) {
+            return true;
+        }
+        const fieldConfig = FILTER_FIELDS.find((field) => field.id === rule.field) || FILTER_FIELDS[0];
+        const fieldId = fieldConfig.id;
+        if (fieldConfig.type === 'text') {
+            const targetValue = (() => {
+                if (fieldId === 'customer') {
+                    return getContactDisplayName(order.primaryContact || order.contactInfo || {});
+                }
+                if (fieldId === 'title') {
+                    return order.title || '';
+                }
+                if (fieldId === 'displayId') {
+                    return order.display_id || '';
+                }
+                if (fieldId === 'notes') {
+                    return order.notes || '';
+                }
+                return '';
+            })();
+            const candidate = (targetValue || '').toString().toLowerCase();
+            const testValue = (rule.value || '').toString().toLowerCase();
+            if (!testValue) {
+                return true;
+            }
+            switch (rule.operator) {
+                case 'contains':
+                    return candidate.includes(testValue);
+                case 'not_contains':
+                    return !candidate.includes(testValue);
+                case 'equals':
+                    return candidate === testValue;
+                case 'not_equals':
+                    return candidate !== testValue;
+                case 'starts_with':
+                    return candidate.startsWith(testValue);
+                case 'ends_with':
+                    return candidate.endsWith(testValue);
+                default:
+                    return true;
+            }
+        }
+        if (fieldConfig.type === 'number') {
+            const targetRaw = typeof order.total === 'number' ? order.total : parseFloat(order.total || 0);
+            const targetNumber = Number.isFinite(targetRaw) ? targetRaw : null;
+            if (targetNumber === null) {
+                return true;
+            }
+            const first = parseFloat(rule.value);
+            const second = parseFloat(rule.valueB);
+            switch (rule.operator) {
+                case 'equals':
+                    return Number.isFinite(first) ? targetNumber === first : true;
+                case 'not_equals':
+                    return Number.isFinite(first) ? targetNumber !== first : true;
+                case 'greater_than':
+                    return Number.isFinite(first) ? targetNumber > first : true;
+                case 'greater_or_equal':
+                    return Number.isFinite(first) ? targetNumber >= first : true;
+                case 'less_than':
+                    return Number.isFinite(first) ? targetNumber < first : true;
+                case 'less_or_equal':
+                    return Number.isFinite(first) ? targetNumber <= first : true;
+                case 'between':
+                    if (!Number.isFinite(first) || !Number.isFinite(second)) {
+                        return true;
+                    }
+                    const min = Math.min(first, second);
+                    const max = Math.max(first, second);
+                    return targetNumber >= min && targetNumber <= max;
+                default:
+                    return true;
+            }
+        }
+        if (fieldConfig.type === 'date') {
+            const targetDate = order.date ? new Date(order.date) : null;
+            if (!targetDate || Number.isNaN(targetDate.getTime())) {
+                return true;
+            }
+            const parseDateValue = (value) => {
+                if (!value) {
+                    return null;
+                }
+                const parsed = new Date(value);
+                return Number.isNaN(parsed.getTime()) ? null : parsed;
+            };
+            const firstDate = parseDateValue(rule.value);
+            const secondDate = parseDateValue(rule.valueB);
+            switch (rule.operator) {
+                case 'on':
+                    return firstDate ? targetDate.toDateString() === firstDate.toDateString() : true;
+                case 'before':
+                    return firstDate ? targetDate < firstDate : true;
+                case 'after':
+                    return firstDate ? targetDate > firstDate : true;
+                case 'between':
+                    if (!firstDate || !secondDate) {
+                        return true;
+                    }
+                    const start = firstDate < secondDate ? firstDate : secondDate;
+                    const end = firstDate < secondDate ? secondDate : firstDate;
+                    return targetDate >= start && targetDate <= end;
+                default:
+                    return true;
+            }
+        }
+        return true;
+    }, []);
+
+    const applyAllFilters = useCallback((sourceOrders) => {
+        if (!Array.isArray(sourceOrders)) {
+            return [];
+        }
+        return sourceOrders.filter((order) => {
+            if (normalizedStatusSet.size > 0) {
+                const statusKey = (order.status || '').toLowerCase();
+                if (!normalizedStatusSet.has(statusKey)) {
+                    return false;
+                }
+            }
+            for (const rule of advancedFilters) {
+                if (!evaluateRule(order, rule)) {
+                    return false;
+                }
+            }
+            return true;
+        });
+    }, [advancedFilters, evaluateRule, normalizedStatusSet]);
+
+    useEffect(() => {
+        setFilteredOrders(applyAllFilters(searchScopeOrders));
+    }, [searchScopeOrders, applyAllFilters]);
+
+    useEffect(() => {
+        const fetchDashboardStats = async () => {
+            try {
+                const response = await fetch('/api/dashboard-stats');
+                const data = await response.json();
+                setDashboardStats(data);
+            } catch (error) {
+                console.error('Failed to fetch dashboard stats:', error);
+                setDashboardStats({ totalRevenue: 0, averageOrderRevenue: 0, totalOrders: orders.length });
+            }
+        };
+        fetchDashboardStats();
+    }, [orders]);
+
+    useEffect(() => {
+        if (!viewStateHydratedRef.current) {
+            return;
+        }
+        if (typeof onViewStateChange === 'function') {
+            onViewStateChange({
+                searchInput: inputValue,
+                searchPills,
+                searchQuery: activeSearchQuery,
+                advancedFilters,
+                statusSelections,
+            });
+        }
+    }, [inputValue, searchPills, activeSearchQuery, advancedFilters, statusSelections, onViewStateChange]);
+
+    const addFilterRule = () => {
+        setAdvancedFilters((prev) => {
+            if (prev.length >= 10) {
+                return prev;
+            }
+            const defaultField = FILTER_FIELDS[0];
+            const defaultOperator = FILTER_OPERATORS[defaultField.type][0].value;
+            const ruleId = `filter-${nextFilterIdRef.current++}`;
+            return [...prev, { id: ruleId, field: defaultField.id, operator: defaultOperator, value: '' }];
+        });
+    };
+
+    const updateFilterField = (ruleId, nextFieldId) => {
+        setAdvancedFilters((prev) => prev.map((rule) => {
+            if (rule.id !== ruleId) {
+                return rule;
+            }
+            const fieldConfig = FILTER_FIELDS.find((field) => field.id === nextFieldId) || FILTER_FIELDS[0];
+            const defaultOperator = FILTER_OPERATORS[fieldConfig.type][0].value;
+            return { id: rule.id, field: fieldConfig.id, operator: defaultOperator, value: '', valueB: '' };
+        }));
+    };
+
+    const updateFilterOperator = (ruleId, operator) => {
+        setAdvancedFilters((prev) => prev.map((rule) => (rule.id === ruleId ? { ...rule, operator } : rule)));
+    };
+
+    const updateFilterValue = (ruleId, key, value) => {
+        setAdvancedFilters((prev) => prev.map((rule) => (rule.id === ruleId ? { ...rule, [key]: value } : rule)));
+    };
+
+    const removeFilterRule = (ruleId) => {
+        setAdvancedFilters((prev) => prev.filter((rule) => rule.id !== ruleId));
+    };
+
+    const clearAllFilters = () => {
+        setAdvancedFilters([]);
+        setStatusSelections([]);
+    };
+
+    const toggleStatusSelection = (value) => {
+        const normalized = (value || '').toLowerCase();
+        if (!normalized) {
+            return;
+        }
+        setStatusSelections((prev) => {
+            const exists = prev.some((entry) => entry.toLowerCase() === normalized);
+            if (exists) {
+                return prev.filter((entry) => entry.toLowerCase() !== normalized);
+            }
+            return [...prev, value];
+        });
+    };
+
+    const clearStatusFilters = () => {
+        setStatusSelections([]);
+    };
+
+    const renderFilterValueInput = (rule) => {
+        const fieldConfig = FILTER_FIELDS.find((field) => field.id === rule.field) || FILTER_FIELDS[0];
+        const baseClass = 'mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-orange-500 focus:outline-none focus:ring-1 focus:ring-orange-500';
+        if (fieldConfig.type === 'number') {
+            if (rule.operator === 'between') {
+                return (
+                    <div className="mt-1 flex items-center gap-2">
+                        <input type="number" step="0.01" value={rule.value ?? ''} onChange={(e) => updateFilterValue(rule.id, 'value', e.target.value)} className={`${baseClass} flex-1`} />
+                        <span className="text-xs text-slate-500">and</span>
+                        <input type="number" step="0.01" value={rule.valueB ?? ''} onChange={(e) => updateFilterValue(rule.id, 'valueB', e.target.value)} className={`${baseClass} flex-1`} />
+                    </div>
+                );
+            }
+            return (
+                <input type="number" step="0.01" value={rule.value ?? ''} onChange={(e) => updateFilterValue(rule.id, 'value', e.target.value)} className={baseClass} />
+            );
+        }
+        if (fieldConfig.type === 'date') {
+            if (rule.operator === 'between') {
+                return (
+                    <div className="mt-1 flex items-center gap-2">
+                        <input type="date" value={rule.value ?? ''} onChange={(e) => updateFilterValue(rule.id, 'value', e.target.value)} className={`${baseClass} flex-1`} />
+                        <span className="text-xs text-slate-500">and</span>
+                        <input type="date" value={rule.valueB ?? ''} onChange={(e) => updateFilterValue(rule.id, 'valueB', e.target.value)} className={`${baseClass} flex-1`} />
+                    </div>
+                );
+            }
+            return (
+                <input type="date" value={rule.value ?? ''} onChange={(e) => updateFilterValue(rule.id, 'value', e.target.value)} className={baseClass} />
+            );
+        }
+        return (
+            <input type="text" value={rule.value ?? ''} onChange={(e) => updateFilterValue(rule.id, 'value', e.target.value)} className={baseClass} />
+        );
+    };
+
+    const paletteForStatus = (status) => {
+        const key = (status || '').toLowerCase();
+        return statusPaletteMap.get(key);
+    };
+
+    const statusFilterDisabled = advancedFilters.length === 0 && statusSelections.length === 0;
+
+    const formatCurrency = (amountInDollars) => {
+        const numericAmount = typeof amountInDollars === 'number' ? amountInDollars : parseFloat(amountInDollars) || 0;
+        return numericAmount.toLocaleString('en-US', {
+            style: 'currency',
+            currency: 'USD',
+            minimumFractionDigits: 2,
+            maximumFractionDigits: 2,
+        });
+    };
+
+    const noFiltersApplied = advancedFilters.length === 0 && statusSelections.length === 0;
+
+    return (
+        <React.Fragment>
+            {showCalendar && (
+                <Calendar
+                    onSelectDate={handleDateSelect}
+                    position={calendarPosition}
+                    onClose={() => { setShowCalendar(false); setDateKeyword(''); }}
+                />
+            )}
+            <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between mb-8">
+                <h1 className="text-3xl font-bold text-slate-800">Orders</h1>
+                <button
+                    onClick={() => navigateTo('createOrder')}
+                    className="inline-flex items-center justify-center gap-2 self-start rounded-md bg-orange-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-orange-700 sm:self-auto"
+                >
+                    + Create New Order
+                </button>
+            </div>
+            <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
+                <div className="space-y-4">
+                    <div className="py-3 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+                        <h2 className="text-xl font-semibold text-slate-700">All Orders</h2>
+                        <div className="w-full sm:max-w-sm lg:max-w-xs">
+                            <div
+                                className="relative"
+                                onClick={() => searchInputRef.current && searchInputRef.current.focus()}
+                            >
+                                <input
+                                    id="orders-search-input"
+                                    ref={searchInputRef}
+                                    type="search"
+                                    value={inputValue}
+                                    onChange={handleInputChange}
+                                    onKeyDown={handleKeyDown}
+                                    onBlur={() => {
+                                        parseInputToPills(inputValue);
+                                        setTimeout(() => {
+                                            if (!document.activeElement.closest('.calendar-container')) {
+                                                setShowCalendar(false);
+                                            }
+                                        }, 150);
+                                    }}
+                                    placeholder="Search Orders"
+                                    className="block w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-orange-500 focus:border-orange-500"
+                                />
+                                {isSearching && (
+                                    <span className="absolute inset-y-0 right-3 flex items-center">
+                                        <svg className="h-4 w-4 animate-spin text-slate-400" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"></path>
+                                        </svg>
+                                    </span>
+                                )}
+                            </div>
+                        </div>
+                    </div>
+                    {searchPills.length > 0 && (
+                        <div className="flex flex-wrap gap-2">
+                            {searchPills.map((pill, index) => (
+                                <span key={index} className="flex items-center bg-slate-100 text-slate-700 text-sm font-medium px-2.5 py-1 rounded-full border border-slate-200">
+                                    {pill}
+                                    <button type="button" onClick={() => removePill(index)} className="ml-1.5 text-slate-400 hover:text-slate-700 focus:outline-none">
+                                        &times;
+                                    </button>
+                                </span>
+                            ))}
+                        </div>
+                    )}
+                    {searchError && <p className="text-xs text-red-600">{searchError}</p>}
+                    <div className="border-t border-slate-200 pt-4 space-y-4">
+                        <div className="bg-slate-50 border border-slate-200 rounded-lg p-4 space-y-4">
+                            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                                <div>
+                                    <p className="text-sm font-semibold text-slate-700">Filters</p>
+                                    <p className="text-xs text-slate-500">Combine advanced filters with the search bar for table-like precision.</p>
+                                </div>
+                                <div className="flex flex-wrap gap-2">
+                                    <button
+                                        type="button"
+                                        onClick={addFilterRule}
+                                        disabled={advancedFilters.length >= 10}
+                                        className="inline-flex items-center rounded-md border border-slate-300 px-3 py-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-100 transition disabled:opacity-40 disabled:cursor-not-allowed"
+                                    >
+                                        Add Filter
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={clearAllFilters}
+                                        disabled={noFiltersApplied}
+                                        className="inline-flex items-center rounded-md border border-slate-300 px-3 py-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-100 transition disabled:opacity-40 disabled:cursor-not-allowed"
+                                    >
+                                        Clear Filters
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={clearSearch}
+                                        className="inline-flex items-center rounded-md border border-slate-300 px-3 py-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-100 transition"
+                                    >
+                                        Reset Search
+                                    </button>
+                                </div>
+                            </div>
+                            <div>
+                                <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Statuses</p>
+                                <div className="mt-2 flex flex-wrap gap-2">
+                                    <button
+                                        type="button"
+                                        onClick={clearStatusFilters}
+                                        disabled={statusSelections.length === 0}
+                                        className={`rounded-full border px-3 py-1 text-xs font-semibold transition ${statusSelections.length === 0 ? 'bg-white text-slate-700 border-orange-500' : 'bg-white text-slate-600 border-slate-300'}`}
+                                    >
+                                        All statuses
+                                    </button>
+                                    {statusPalette.map((entry) => {
+                                        const value = entry.value || entry.label || '';
+                                        const isActive = normalizedStatusSet.has(value.toLowerCase());
+                                        return (
+                                            <button
+                                                key={value}
+                                                type="button"
+                                                onClick={() => toggleStatusSelection(value)}
+                                                className={`rounded-full border px-3 py-1 text-xs font-semibold transition ${isActive ? 'ring-2 ring-offset-1 ring-orange-500' : ''}`}
+                                                style={{ backgroundColor: entry.color || '#E2E8F0', color: entry.textColor || '#0F172A', borderColor: darkenHexColor(entry.color || '#E2E8F0', 0.2) }}
+                                            >
+                                                {entry.label || value}
+                                            </button>
+                                        );
+                                    })}
+                                </div>
+                            </div>
+                            <div className="space-y-3">
+                                {advancedFilters.length === 0 ? (
+                                    <p className="text-sm text-slate-500">No advanced filters applied.</p>
+                                ) : (
+                                    advancedFilters.map((rule) => {
+                                        const fieldConfig = FILTER_FIELDS.find((field) => field.id === rule.field) || FILTER_FIELDS[0];
+                                        const operators = FILTER_OPERATORS[fieldConfig.type] || FILTER_OPERATORS.text;
+                                        return (
+                                            <div key={rule.id} className="rounded-lg bg-white border border-slate-200 p-3 flex flex-col gap-3 md:flex-row md:items-center md:gap-4">
+                                                <div className="flex-1 w-full">
+                                                    <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide">Field</label>
+                                                    <select
+                                                        value={rule.field}
+                                                        onChange={(e) => updateFilterField(rule.id, e.target.value)}
+                                                        className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-orange-500 focus:outline-none focus:ring-1 focus:ring-orange-500"
+                                                    >
+                                                        {FILTER_FIELDS.map((field) => (
+                                                            <option key={field.id} value={field.id}>{field.label}</option>
+                                                        ))}
+                                                    </select>
+                                                </div>
+                                                <div className="w-full md:w-48">
+                                                    <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide">Operator</label>
+                                                    <select
+                                                        value={rule.operator}
+                                                        onChange={(e) => updateFilterOperator(rule.id, e.target.value)}
+                                                        className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-orange-500 focus:outline-none focus:ring-1 focus:ring-orange-500"
+                                                    >
+                                                        {operators.map((option) => (
+                                                            <option key={option.value} value={option.value}>{option.label}</option>
+                                                        ))}
+                                                    </select>
+                                                </div>
+                                                <div className="flex-1 w-full">
+                                                    <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide">Value</label>
+                                                    {renderFilterValueInput(rule)}
+                                                </div>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => removeFilterRule(rule.id)}
+                                                    className="self-start rounded-md border border-red-200 px-3 py-2 text-xs font-semibold text-red-600 hover:bg-red-50 transition"
+                                                >
+                                                    Remove
+                                                </button>
+                                            </div>
+                                        );
+                                    })
+                                )}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div className="overflow-x-auto">
+                    <table className="w-full text-sm text-left text-slate-500">
+                        <thead className="text-xs text-slate-700 uppercase bg-slate-100">
+                            <tr>
+                                <th className="px-4 py-3">Order</th>
+                                <th className="px-4 py-3">Customer</th>
+                                <th className="px-4 py-3">Date</th>
+                                <th className="px-4 py-3">Total</th>
+                                <th className="px-4 py-3">Status</th>
+                                <th className="px-4 py-3 text-center">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {filteredOrders.map((order) => {
+                                const timeZone = 'America/Chicago';
+                                const dateOptions = { year: 'numeric', month: 'long', day: 'numeric' };
+                                const orderTitle = (order.title || '').trim();
+                                const displayIdValue = typeof order.display_id === 'string' ? order.display_id : '';
+                                const trimmedDisplayId = displayIdValue.trim();
+                                const hasDisplayId = Boolean(trimmedDisplayId);
+                                const primaryLabel = orderTitle || 'Untitled Order';
+                                const shortId = order.id ? (order.id.length > 12 ? `${order.id.slice(0, 8)}…` : order.id) : '';
+                                const secondaryTags = [];
+                                if (hasDisplayId) {
+                                    secondaryTags.push(`Ref: ${trimmedDisplayId}`);
+                                }
+                                if (order.id && (!hasDisplayId || trimmedDisplayId !== order.id)) {
+                                    secondaryTags.push(`ID: ${shortId}`);
+                                }
+                                const idLabel = secondaryTags.join(' • ');
+                                const paletteEntry = paletteForStatus(order.status);
+                                return (
+                                    <tr key={order.id} onClick={() => viewOrder(order)} className="bg-white border-b hover:bg-slate-50 cursor-pointer">
+                                        <td className="px-4 py-3 align-top">
+                                            <div className="flex flex-col">
+                                                <span className="font-medium text-slate-800">{primaryLabel}</span>
+                                                {idLabel && <span className="text-xs text-slate-500" title={order.id}>{idLabel}</span>}
+                                            </div>
+                                        </td>
+                                        <td className="px-4 py-3">{getContactDisplayName(order.primaryContact || order.contactInfo)}</td>
+                                        <td className="px-4 py-3">{formatInTimeZone(order.date, timeZone, dateOptions)}</td>
+                                        <td className="px-4 py-3">{formatCurrency(order.total)}</td>
+                                        <td className="px-4 py-3">
+                                            <StatusBadge statusText={order.status || 'Unknown'} appearance={paletteEntry} />
+                                        </td>
+                                        <td className="px-4 py-3 text-center" onClick={(e) => e.stopPropagation()}>
+                                            <div className="flex items-center justify-center space-x-2">
+                                                <button onClick={() => generateInvoicePdf(order, allSelectableItems, 'preview', branding)} className="p-1 text-slate-500 hover:text-orange-600"><PdfIcon /></button>
+                                                <button onClick={() => setOrderForEmailModal(order)} className="p-1 text-slate-500 hover:text-orange-600"><EmailIcon /></button>
+                                            </div>
+                                        </td>
+                                    </tr>
+                                );
+                            })}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </React.Fragment>
+    );
+};
+
+const UnsavedChangesModal = ({ onCancel, onDelete, onSaveAndClose }) => {
+    return (
+        <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex justify-center items-center p-4">
+            <div className="bg-white rounded-lg shadow-xl p-8 w-full max-w-md">
+                <h2 className="text-xl font-bold text-slate-800 mb-4">You have unsaved changes.</h2>
+                <p className="text-slate-600 mb-6">What would you like to do?</p>
+                <div className="flex justify-end space-x-4">
+                    <button onClick={onCancel} className="px-4 py-2 bg-slate-200 text-slate-700 font-semibold rounded-md hover:bg-slate-300 transition-colors">Cancel</button>
+                    <button onClick={onDelete} className="px-4 py-2 bg-red-600 text-white font-semibold rounded-md hover:bg-red-700 transition-colors">Delete</button>
+                    <button onClick={onSaveAndClose} className="px-4 py-2 bg-orange-600 text-white font-semibold rounded-md hover:bg-orange-700 transition-colors">Save and Close</button>
+                </div>
+            </div>
+        </div>
+    );
+};
+
+const OrderForm = ({ order, navigateTo, saveOrder, deleteOrder, allContacts, allSelectableItems, itemData, packageData, fetchAndUpdateContacts, setOrderForEmailModal, startInEditMode = false, branding }) => {
+    const { useState, useMemo, useEffect, useRef, useCallback } = React;
+    const defaultOrderState = {
+        id: null,
+        title: '',
+        display_id: '',
+        contactInfo: {},
+        additionalContacts: [],
+        lineItems: [],
+        notes: '',
+        estimatedShippingDate: '',
+        estimatedShipping: '0.00',
+        taxAmount: '0.00',
+        discounts: [],
+        priorityLevel: '',
+        fulfillmentChannel: '',
+        customerReference: '',
+        signatureDataUrl: null,
+        statusHistory: [{ status: 'Draft', date: new Date().toISOString() }],
+        status: 'Draft',
+        shippingAddress: '',
+        shippingCity: '',
+        shippingState: '',
+        shippingZipCode: '',
+        billingAddress: '',
+        billingCity: '',
+        billingState: '',
+        billingZipCode: '',
+    };
+
+    const deriveInitialFormState = (incomingOrder) => {
+        if (!incomingOrder) {
+            return { ...defaultOrderState };
+        }
+        const formatCurrencyField = (rawValue) => {
+            const numeric = Math.max(0, parseCurrencyToNumber(rawValue));
+            return centsToCurrency(Math.round(numeric * 100));
+        };
+
+        const sanitizedDiscounts = Array.isArray(incomingOrder.discounts)
+            ? incomingOrder.discounts.map((discount, index) => {
+                const rawId = discount && discount.id != null ? discount.id : `discount-${index + 1}`;
+                const discountId = String(rawId);
+                const type = discount?.type === 'percentage' ? 'percentage' : 'fixed';
+                const rawValue = discount?.value ?? '';
+                let value;
+                if (type === 'percentage') {
+                    if (typeof rawValue === 'number') {
+                        value = String(rawValue);
+                    } else if (typeof rawValue === 'string') {
+                        value = rawValue;
+                    } else {
+                        value = '';
+                    }
+                } else {
+                    const numericValue = parseCurrencyToNumber(rawValue);
+                    value = centsToCurrency(Math.round(Math.max(0, numericValue) * 100));
+                }
+                const appliesTo = Array.isArray(discount?.appliesTo)
+                    ? discount.appliesTo.map(itemId => String(itemId))
+                    : [];
+                return {
+                    id: discountId,
+                    label: typeof discount?.label === 'string' ? discount.label : '',
+                    type,
+                    value: value || (type === 'percentage' ? '' : '0.00'),
+                    appliesTo,
+                };
+            })
+            : [];
+
+        return {
+            ...defaultOrderState,
+            ...incomingOrder,
+            id: incomingOrder.id || null,
+            title: incomingOrder.title || '',
+            display_id: incomingOrder.display_id || '',
+            additionalContacts: incomingOrder.additionalContacts || [],
+            estimatedShipping: formatCurrencyField(incomingOrder.estimatedShipping),
+            taxAmount: formatCurrencyField(incomingOrder.taxAmount),
+            discounts: sanitizedDiscounts,
+            priorityLevel: incomingOrder.priorityLevel || '',
+            fulfillmentChannel: incomingOrder.fulfillmentChannel || '',
+            customerReference: incomingOrder.customerReference || '',
+            shippingAddress: incomingOrder.shippingAddress || '',
+            shippingCity: incomingOrder.shippingCity || '',
+            shippingState: incomingOrder.shippingState || '',
+            shippingZipCode: incomingOrder.shippingZipCode || '',
+            billingAddress: incomingOrder.billingAddress || '',
+            billingCity: incomingOrder.billingCity || '',
+            billingState: incomingOrder.billingState || '',
+            billingZipCode: incomingOrder.billingZipCode || '',
+            lineItems: Array.isArray(incomingOrder.lineItems)
+                ? incomingOrder.lineItems.map((item, index) => ({
+                    id: item?.id != null
+                        ? String(item.id)
+                        : item?.line_item_id != null
+                            ? String(item.line_item_id)
+                            : String(index + 1),
+                    catalogItemId: item?.catalogItemId ?? item?.catalog_item_id ?? null,
+                    name: item?.name || '',
+                    description: item?.description || '',
+                    quantity: Number(item?.quantity) || 0,
+                    price: Number(item?.price) || 0,
+                    packageId: item?.packageId ?? item?.package_id ?? null,
+                }))
+                : [],
+            notes: incomingOrder.notes || '',
+            statusHistory: incomingOrder.statusHistory || defaultOrderState.statusHistory,
+            status: incomingOrder.status || 'Draft',
+            signatureDataUrl: incomingOrder.signatureDataUrl || null,
+        };
+    };
+
+    const [isEditing, setIsEditing] = useState(startInEditMode || !order || order.status === 'Draft');
+    const [formData, setFormData] = useState(deriveInitialFormState(order));
+    const [primaryContactId, setPrimaryContactId] = useState(order?.primaryContactId || order?.contactInfo?.id || '');
+    const [primaryContactSummary, setPrimaryContactSummary] = useState(() => order?.primaryContact || order?.contactInfo || null);
+    const [showUnsavedChangesModal, setShowUnsavedChangesModal] = useState(false);
+    const [scanInput, setScanInput] = useState('');
+    const scanInputRef = React.useRef(null);
+    const nextLineItemIdRef = useRef(1);
+    const nextDiscountIdRef = useRef(1);
+    const [billingSameAsShipping, setBillingSameAsShipping] = useState(() =>
+        addressesAreEqual(
+            extractAddressFields(formData, 'shipping'),
+            extractAddressFields(formData, 'billing')
+        )
+    );
+    const [useContactAddresses, setUseContactAddresses] = useState(() => orderAddressesMatchContact(primaryContactSummary, formData));
+    const [lastSelectedContactId, setLastSelectedContactId] = useState(primaryContactId || '');
+
+    useEffect(() => {
+        const numericIds = formData.lineItems
+            .map(item => {
+                if (typeof item.id === 'number') {
+                    return item.id;
+                }
+                const parsed = parseInt(item.id, 10);
+                return Number.isFinite(parsed) ? parsed : null;
+            })
+            .filter(value => value !== null);
+        const maxId = numericIds.length > 0 ? Math.max(...numericIds) : 0;
+        if (maxId + 1 > nextLineItemIdRef.current) {
+            nextLineItemIdRef.current = maxId + 1;
+        }
+    }, [formData.lineItems]);
+    useEffect(() => {
+        const numericIds = (formData.discounts || [])
+            .map(discount => {
+                if (!discount || discount.id == null) {
+                    return null;
+                }
+                const idString = String(discount.id);
+                const matches = idString.match(/(\d+)/g);
+                if (!matches || matches.length === 0) {
+                    return null;
+                }
+                const parsed = parseInt(matches[matches.length - 1], 10);
+                return Number.isFinite(parsed) ? parsed : null;
+            })
+            .filter(value => value !== null);
+        const maxId = numericIds.length > 0 ? Math.max(...numericIds) : 0;
+        const candidate = maxId + 1;
+        if (candidate > nextDiscountIdRef.current) {
+            nextDiscountIdRef.current = candidate;
+        }
+    }, [formData.discounts]);
+    const [isSelectingPrimary, setIsSelectingPrimary] = useState(false);
+    const [primarySearchTerm, setPrimarySearchTerm] = useState('');
+    const [showNewContactModal, setShowNewContactModal] = useState(false);
+
+    const applyContactAddresses = (contact, { updateContactInfo = false, preserveExistingWhenMissing = false } = {}) => {
+        let nextLinked = false;
+        const shippingFromContact = pickContactAddress(contact, 'shipping');
+        const billingFromContact = pickContactAddress(contact, 'billing');
+
+        setFormData(prev => {
+            const previousShipping = extractAddressFields(prev, 'shipping');
+            const previousBilling = extractAddressFields(prev, 'billing');
+            const effectiveShipping = hasAddressFields(shippingFromContact)
+                ? shippingFromContact
+                : (preserveExistingWhenMissing ? previousShipping : { kind: 'shipping', street: '', city: '', state: '', postalCode: '' });
+            const effectiveBilling = hasAddressFields(billingFromContact)
+                ? billingFromContact
+                : (preserveExistingWhenMissing ? previousBilling : effectiveShipping);
+            nextLinked = !hasAddressFields(billingFromContact) || addressesAreEqual(effectiveShipping, effectiveBilling);
+
+            const nextState = {
+                ...prev,
+                ...(updateContactInfo ? { contactInfo: { ...contact } } : {}),
+                shippingAddress: effectiveShipping.street,
+                shippingCity: effectiveShipping.city,
+                shippingState: effectiveShipping.state,
+                shippingZipCode: effectiveShipping.postalCode,
+            };
+
+            if (nextLinked) {
+                nextState.billingAddress = effectiveShipping.street;
+                nextState.billingCity = effectiveShipping.city;
+                nextState.billingState = effectiveShipping.state;
+                nextState.billingZipCode = effectiveShipping.postalCode;
+            } else {
+                nextState.billingAddress = effectiveBilling.street;
+                nextState.billingCity = effectiveBilling.city;
+                nextState.billingState = effectiveBilling.state;
+                nextState.billingZipCode = effectiveBilling.postalCode;
+            }
+
+            return nextState;
+        });
+
+        setBillingSameAsShipping(nextLinked);
+    };
+
+    useEffect(() => {
+        const nextForm = deriveInitialFormState(order);
+        const nextPrimaryId = order?.primaryContactId || order?.contactInfo?.id || '';
+        const nextPrimaryContact = order?.primaryContact || order?.contactInfo || null;
+        setFormData(nextForm);
+        setIsEditing(startInEditMode || !order || order?.status === 'Draft');
+        setPrimaryContactId(nextPrimaryId);
+        setPrimaryContactSummary(nextPrimaryContact);
+        setBillingSameAsShipping(
+            addressesAreEqual(
+                extractAddressFields(nextForm, 'shipping'),
+                extractAddressFields(nextForm, 'billing')
+            )
+        );
+        setUseContactAddresses(orderAddressesMatchContact(nextPrimaryContact, nextForm));
+        setLastSelectedContactId(nextPrimaryId || '');
+    }, [order, startInEditMode]);
+
+    useEffect(() => {
+        if (!primaryContactId) {
+            setPrimaryContactSummary(null);
+            return;
+        }
+        const match = allContacts.find(contact => contact.id === primaryContactId);
+        if (match) {
+            setPrimaryContactSummary(prev => ({ ...prev, ...match }));
+        }
+    }, [primaryContactId, allContacts]);
+
+    const mentionedContacts = formData.additionalContacts || [];
+    const normalizedLineItems = useMemo(() => normalizeLineItemsForSave(formData.lineItems), [formData.lineItems]);
+
+    const handleBillingSameToggle = (isChecked) => {
+        setBillingSameAsShipping(isChecked);
+        if (isChecked) {
+            setFormData(prev => ({
+                ...prev,
+                billingAddress: prev.shippingAddress,
+                billingCity: prev.shippingCity,
+                billingState: prev.shippingState,
+                billingZipCode: prev.shippingZipCode,
+            }));
+        }
+    };
+
+    const handleToggleUseContactAddresses = (isChecked) => {
+        setUseContactAddresses(isChecked);
+        if (isChecked && primaryContactSummary) {
+            applyContactAddresses(primaryContactSummary, { preserveExistingWhenMissing: false });
+        }
+    };
+
+    const handleReturnToOrders = () => {
+        const isNewUnsavedDraft = !order && (formData.lineItems.length > 0 || Boolean(primaryContactId));
+
+        if (isNewUnsavedDraft) {
+            setShowUnsavedChangesModal(true);
+        } else {
+            navigateTo('dashboard');
+        }
+    };
+
+    const handlePrimaryContactSelect = (contact) => {
+        if (!contact) {
+            return;
+        }
+        setPrimaryContactId(contact.id);
+        setPrimaryContactSummary(contact);
+        setIsSelectingPrimary(false);
+        setPrimarySearchTerm('');
+        setLastSelectedContactId(contact.id);
+        const hasAddresses = contactHasSavedAddresses(contact);
+        setUseContactAddresses(hasAddresses);
+        applyContactAddresses(contact, { updateContactInfo: true, preserveExistingWhenMissing: false });
+    };
+
+    const filteredPrimaryContacts = useMemo(() => {
+        const query = primarySearchTerm.trim().toLowerCase();
+        if (!query) return allContacts;
+        return allContacts.filter(contact => {
+            const name = (contact.contactName || '').toLowerCase();
+            const company = (contact.companyName || '').toLowerCase();
+            const email = (contact.email || '').toLowerCase();
+            const handle = (contact.handle || '').toLowerCase();
+            return name.includes(query) || company.includes(query) || email.includes(query) || handle.includes(query);
+        });
+    }, [allContacts, primarySearchTerm]);
+
+    const refreshMentionedContacts = useCallback(async () => {
+        if (!formData.id) return;
+        try {
+            const response = await fetch(`/api/orders/${formData.id}`);
+            if (!response.ok) {
+                console.error('Failed to refresh mentioned contacts for order', formData.id);
+                return;
+            }
+            const updatedOrder = await response.json();
+            setFormData(prev => ({ ...prev, additionalContacts: updatedOrder.additionalContacts || [] }));
+        } catch (error) {
+            console.error('Failed to refresh mentioned contacts:', error);
+        }
+    }, [formData.id]);
+
+    const createEmptyContactForm = () => ({
+        contactName: '',
+        companyName: '',
+        email: '',
+        phone: '',
+        shippingAddress: '',
+        shippingCity: '',
+        shippingState: '',
+        shippingZipCode: '',
+        billingAddress: '',
+        billingCity: '',
+        billingState: '',
+        billingZipCode: ''
+    });
+    const [newContactForm, setNewContactForm] = useState(createEmptyContactForm);
+    const [isCreatingContact, setIsCreatingContact] = useState(false);
+
+    const resetNewContactForm = () => setNewContactForm(createEmptyContactForm());
+
+    const handleCreateContact = async (event) => {
+        event.preventDefault();
+        if (!newContactForm.contactName.trim() && !newContactForm.companyName.trim()) {
+            alert('Please provide at least a contact name or company name.');
+            return;
+        }
+
+        setIsCreatingContact(true);
+        const emailValue = newContactForm.email.trim();
+        const phoneDigits = normalizePhoneDigits(newContactForm.phone);
+        const shippingAddress = newContactForm.shippingAddress.trim();
+        const shippingCity = newContactForm.shippingCity.trim();
+        const shippingState = newContactForm.shippingState.trim();
+        const shippingZip = newContactForm.shippingZipCode.trim();
+        const billingAddress = newContactForm.billingAddress.trim();
+        const billingCity = newContactForm.billingCity.trim();
+        const billingState = newContactForm.billingState.trim();
+        const billingZip = newContactForm.billingZipCode.trim();
+
+        const addresses = [];
+        if ([shippingAddress, shippingCity, shippingState, shippingZip].some(Boolean)) {
+            addresses.push({
+                label: 'Shipping Address',
+                kind: 'shipping',
+                street: shippingAddress,
+                city: shippingCity,
+                state: shippingState,
+                postalCode: shippingZip,
+                isPrimary: true,
+            });
+        }
+        if ([billingAddress, billingCity, billingState, billingZip].some(Boolean)) {
+            addresses.push({
+                label: 'Billing Address',
+                kind: 'billing',
+                street: billingAddress,
+                city: billingCity,
+                state: billingState,
+                postalCode: billingZip,
+                isPrimary: addresses.length === 0,
+            });
+        }
+
+        const payload = {
+            contactName: newContactForm.contactName.trim(),
+            companyName: newContactForm.companyName.trim(),
+            contactDetails: {
+                emails: emailValue ? [{ label: 'Email', value: emailValue, isPrimary: true }] : [],
+                phones: phoneDigits ? [{ label: 'Phone', value: phoneDigits, isPrimary: true }] : [],
+                addresses,
+            },
+            email: emailValue,
+            phone: phoneDigits,
+            shippingAddress,
+            shippingCity,
+            shippingState,
+            shippingZipCode: shippingZip,
+            billingAddress,
+            billingCity,
+            billingState,
+            billingZipCode: billingZip,
+        };
+        try {
+            const response = await fetch('/api/contacts', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            });
+            const result = await response.json();
+            if (!response.ok) {
+                alert(result.message || 'Failed to create contact');
+                return;
+            }
+            const created = result.contact;
+            if (fetchAndUpdateContacts) {
+                await fetchAndUpdateContacts();
+            }
+            setPrimaryContactId(created.id);
+            setPrimaryContactSummary(created);
+            setLastSelectedContactId(created.id);
+            const hasAddresses = contactHasSavedAddresses(created);
+            setUseContactAddresses(hasAddresses);
+            if (hasAddresses) {
+                applyContactAddresses(created, { updateContactInfo: true, preserveExistingWhenMissing: false });
+            } else {
+                setFormData(prev => ({
+                    ...prev,
+                    contactInfo: { ...created },
+                    shippingAddress: '',
+                    shippingCity: '',
+                    shippingState: '',
+                    shippingZipCode: '',
+                    billingAddress: '',
+                    billingCity: '',
+                    billingState: '',
+                    billingZipCode: '',
+                }));
+                setBillingSameAsShipping(true);
+            }
+            setShowNewContactModal(false);
+            resetNewContactForm();
+        } catch (error) {
+            console.error('Failed to create contact', error);
+            alert('Failed to create contact');
+        } finally {
+            setIsCreatingContact(false);
+        }
+    };
+    
+const unpackPackage = (id, pkgCode) => {
+  const pkg = packageData[pkgCode] || { contents: [] };
+
+  const newItems = pkg.contents
+    .map(({ itemId, quantity }) => {
+      const catalog = itemData[itemId] || {};
+      const resolvedQuantity = Number(quantity) || 0;
+      if (resolvedQuantity <= 0) {
+        return null;
+      }
+      return {
+        id: String(nextLineItemIdRef.current++),
+        catalogItemId: itemId || null,
+        name: catalog.name || pkg.name || '',
+        description: catalog.description || '',
+        quantity: resolvedQuantity,
+        price: typeof catalog.price === 'number' ? catalog.price : 0,
+        packageId: pkgCode,
+      };
+    })
+    .filter(Boolean);
+
+  if (newItems.length === 0) {
+    return;
+  }
+
+  setFormData(prev => ({
+    ...prev,
+    lineItems: [
+      ...prev.lineItems.filter(item => String(item.id) !== String(id)),
+      ...newItems
+    ]
+  }));
+};
+
+    const handleLineItemChange = (id, field, value) => {
+        setFormData(prev => ({
+            ...prev,
+            lineItems: prev.lineItems.map(item => {
+                if (String(item.id) !== String(id)) return item;
+                const updatedItem = { ...item };
+                switch (field) {
+                    case 'name':
+                        updatedItem.name = value;
+                        break;
+                    case 'description':
+                        updatedItem.description = value;
+                        break;
+                    case 'quantity': {
+                        const numeric = Number(value);
+                        updatedItem.quantity = Number.isFinite(numeric) && numeric >= 0 ? Math.round(numeric) : 0;
+                        break;
+                    }
+                    case 'price': {
+                        const cents = Number(value);
+                        updatedItem.price = Number.isFinite(cents) && cents >= 0 ? cents : 0;
+                        break;
+                    }
+                    default:
+                        updatedItem[field] = value;
+                }
+                return updatedItem;
+            })
+        }));
+    };
+
+    const handleCatalogSelect = (id, selectedId) => {
+        if (!selectedId) {
+            setFormData(prev => ({
+                ...prev,
+                lineItems: prev.lineItems.map(item => String(item.id) !== String(id) ? item : { ...item, catalogItemId: null })
+            }));
+            return;
+        }
+
+        const selectedEntry = allSelectableItems[selectedId];
+        if (selectedEntry?.kind === 'package') {
+            unpackPackage(String(nextLineItemIdRef.current++), selectedId);
+            return;
+        }
+
+        const catalogItem = itemData[selectedId] || {};
+        setFormData(prev => ({
+            ...prev,
+            lineItems: prev.lineItems.map(item => {
+                if (String(item.id) !== String(id)) return item;
+                return {
+                    ...item,
+                    catalogItemId: selectedId,
+                    name: catalogItem.name || item.name || '',
+                    description: catalogItem.description || item.description || '',
+                    price: typeof catalogItem.price === 'number' ? catalogItem.price : item.price,
+                    packageId: null,
+                };
+            })
+        }));
+    };
+    
+    const handleScanAddItem = (event) => {
+        if (event) event.preventDefault();
+
+        const rawInput = scanInput.trim();
+        if (!rawInput) {
+            return;
+        }
+
+        const normalizedInput = rawInput.toLowerCase();
+        let matchedEntry = null;
+
+        for (const [key, details] of Object.entries(allSelectableItems)) {
+            const idMatch = key.toLowerCase() === normalizedInput;
+            const nameMatch = typeof details.name === 'string' && details.name.toLowerCase() === normalizedInput;
+            if (idMatch || nameMatch) {
+                matchedEntry = [key, details];
+                break;
+            }
+        }
+
+        if (matchedEntry) {
+            const [matchedId, details] = matchedEntry;
+            if (details.kind === 'package') {
+                unpackPackage(String(nextLineItemIdRef.current++), matchedId);
+            } else {
+                const catalogItem = itemData[matchedId] || {};
+                setFormData(prev => ({
+                    ...prev,
+                    lineItems: [
+                        ...prev.lineItems,
+                        {
+                            id: String(nextLineItemIdRef.current++),
+                            catalogItemId: matchedId,
+                            name: catalogItem.name || '',
+                            description: catalogItem.description || '',
+                            quantity: 1,
+                            price: typeof catalogItem.price === 'number' ? catalogItem.price : 0,
+                            packageId: null,
+                        },
+                    ],
+                }));
+            }
+            setScanInput('');
+        } else {
+            console.log("Catalog item not found:", rawInput);
+        }
+
+        if (scanInputRef.current) {
+            scanInputRef.current.focus();
+        }
+    };
+
+    const addEmptyLineItem = () => {
+        const newId = nextLineItemIdRef.current++;
+        setFormData(prev => ({ ...prev, lineItems: [...prev.lineItems, createEmptyLineItem(String(newId))] }));
+    };
+    const removeLineItem = (id) => {
+        const targetId = String(id);
+        setFormData(prev => ({
+            ...prev,
+            lineItems: prev.lineItems.filter(item => String(item.id) !== targetId),
+            discounts: (prev.discounts || []).map(discount => {
+                if (!Array.isArray(discount.appliesTo) || discount.appliesTo.length === 0) {
+                    return discount;
+                }
+                const filtered = discount.appliesTo.filter(itemId => String(itemId) !== targetId);
+                if (filtered.length === discount.appliesTo.length) {
+                    return discount;
+                }
+                return { ...discount, appliesTo: filtered };
+            }),
+        }));
+    };
+
+    const addDiscount = () => {
+        const newId = `discount-${nextDiscountIdRef.current++}`;
+        setFormData(prev => ({
+            ...prev,
+            discounts: [
+                ...(prev.discounts || []),
+                {
+                    id: newId,
+                    label: '',
+                    type: 'fixed',
+                    value: '0.00',
+                    appliesTo: [],
+                },
+            ],
+        }));
+    };
+
+    const updateDiscount = (id, updater) => {
+        const targetId = String(id);
+        setFormData(prev => ({
+            ...prev,
+            discounts: (prev.discounts || []).map(discount => {
+                if (String(discount.id) !== targetId) {
+                    return discount;
+                }
+                const current = { ...discount };
+                const nextChanges = typeof updater === 'function' ? updater(current) : updater;
+                return { ...current, ...nextChanges };
+            }),
+        }));
+    };
+
+    const removeDiscount = (id) => {
+        const targetId = String(id);
+        setFormData(prev => ({
+            ...prev,
+            discounts: (prev.discounts || []).filter(discount => String(discount.id) !== targetId),
+        }));
+    };
+
+    const handleDiscountLabelChange = (id, value) => {
+        updateDiscount(id, { label: value });
+    };
+
+    const handleDiscountTypeChange = (id, value) => {
+        const nextType = value === 'percentage' ? 'percentage' : 'fixed';
+        updateDiscount(id, (current) => {
+            if (nextType === 'percentage') {
+                const parsed = parseFloat(current.value);
+                return {
+                    type: 'percentage',
+                    value: Number.isFinite(parsed) ? String(parsed) : '',
+                };
+            }
+            const numeric = parseCurrencyToNumber(current.value);
+            return {
+                type: 'fixed',
+                value: centsToCurrency(Math.round(Math.max(0, numeric) * 100)),
+            };
+        });
+    };
+
+    const handleDiscountPercentageValueChange = (id, value) => {
+        updateDiscount(id, { value });
+    };
+
+    const handleDiscountFixedValueChange = (id, cents) => {
+        updateDiscount(id, { value: centsToCurrency(Math.max(0, cents)) });
+    };
+
+    const toggleDiscountApplyToAll = (id, applyToAll) => {
+        if (applyToAll) {
+            updateDiscount(id, { appliesTo: [] });
+            return;
+        }
+        const fallbackIds = normalizedLineItems.map(item => String(item.id));
+        updateDiscount(id, { appliesTo: fallbackIds });
+    };
+
+    const toggleDiscountLineItem = (id, lineItemId, isChecked) => {
+        const targetLineItemId = String(lineItemId);
+        updateDiscount(id, (current) => {
+            const currentIds = Array.isArray(current.appliesTo)
+                ? current.appliesTo.map(itemId => String(itemId))
+                : [];
+            let nextIds;
+            if (isChecked) {
+                nextIds = currentIds.includes(targetLineItemId)
+                    ? currentIds
+                    : [...currentIds, targetLineItemId];
+            } else {
+                nextIds = currentIds.filter(existingId => existingId !== targetLineItemId);
+            }
+            return { appliesTo: nextIds };
+        });
+    };
+
+    const orderTotals = useMemo(() => {
+        const subtotal = normalizedLineItems.reduce((acc, item) => acc + (item.quantity * item.price), 0);
+        const shippingCents = Math.max(0, Math.round(parseCurrencyToNumber(formData.estimatedShipping) * 100));
+        const taxCents = Math.max(0, Math.round(parseCurrencyToNumber(formData.taxAmount) * 100));
+        const normalizedDiscounts = normalizeDiscountsForTotals(formData.discounts, normalizedLineItems);
+        const discountTotalCents = Math.min(
+            normalizedDiscounts.reduce((acc, discount) => acc + discount.amountCents, 0),
+            subtotal
+        );
+        const subtotalAfterDiscounts = Math.max(0, subtotal - discountTotalCents);
+        const total = subtotalAfterDiscounts + shippingCents + taxCents;
+
+        return {
+            subtotal,
+            shippingCents,
+            taxCents,
+            discounts: normalizedDiscounts,
+            discountTotalCents,
+            total,
+        };
+    }, [normalizedLineItems, formData.estimatedShipping, formData.taxAmount, formData.discounts]);
+    const discountAmountLookup = useMemo(() => {
+        const lookup = new Map();
+        (orderTotals.discounts || []).forEach(discount => {
+            lookup.set(String(discount.id), discount);
+        });
+        return lookup;
+    }, [orderTotals.discounts]);
+
+    const isDraft = formData.status === 'Draft';
+    const canEdit = isEditing || isDraft;
+    const contactHasAddresses = contactHasSavedAddresses(primaryContactSummary);
+    const addressesLocked = useContactAddresses && contactHasAddresses;
+    const resolvedOrderLabel = formData.title || formData.display_id || formData.id || order?.id || 'New Order';
+    const pageHeading = !order ? 'New Order' : (isEditing ? `Edit Order: ${resolvedOrderLabel}` : `Order Details: ${resolvedOrderLabel}`);
+    
+    const handleStatusChange = async (newStatus) => {
+        const updatedOrder = createOrderObject(newStatus);
+        setFormData(updatedOrder);
+        try {
+            const saved = await saveOrder(updatedOrder);
+            if (saved) {
+                const nextForm = deriveInitialFormState(saved);
+                const nextPrimaryId = saved.primaryContactId || saved.contactInfo?.id || '';
+                const nextPrimaryContact = saved.primaryContact || saved.contactInfo || null;
+                setFormData(nextForm);
+                setPrimaryContactId(nextPrimaryId);
+                setPrimaryContactSummary(nextPrimaryContact);
+                setBillingSameAsShipping(
+                    addressesAreEqual(
+                        extractAddressFields(nextForm, 'shipping'),
+                        extractAddressFields(nextForm, 'billing')
+                    )
+                );
+                setUseContactAddresses(orderAddressesMatchContact(nextPrimaryContact, nextForm));
+                setLastSelectedContactId(nextPrimaryId || '');
+            }
+        } catch (error) {
+            console.error('Failed to update order status:', error);
+        }
+    };
+    
+    const createOrderObject = (status) => {
+        const finalStatus = status || formData.status;
+        const newStatusHistory = formData.statusHistory.find(h => h.status === finalStatus) ? formData.statusHistory : [...formData.statusHistory, { status: finalStatus, date: new Date().toISOString() }];
+        const isNewOrder = !formData.id;
+        
+        // Normalize line items before saving
+        const normalizedLineItems = normalizeLineItemsForSave(formData.lineItems);
+
+        const subtotal = normalizedLineItems.reduce((acc, item) => acc + (item.quantity * item.price), 0);
+        const shippingCents = Math.max(0, Math.round(parseCurrencyToNumber(formData.estimatedShipping) * 100));
+        const taxCents = Math.max(0, Math.round(parseCurrencyToNumber(formData.taxAmount) * 100));
+        const normalizedDiscounts = normalizeDiscountsForTotals(formData.discounts, normalizedLineItems);
+        const discountTotalCents = Math.min(
+            normalizedDiscounts.reduce((acc, discount) => acc + discount.amountCents, 0),
+            subtotal
+        );
+        const subtotalAfterDiscounts = Math.max(0, subtotal - discountTotalCents);
+        const finalTotal = subtotalAfterDiscounts + shippingCents + taxCents;
+
+        const payloadDiscounts = normalizedDiscounts.map(discount => ({
+            id: discount.id,
+            label: discount.label,
+            type: discount.type,
+            value: discount.value,
+            appliesTo: discount.appliesTo,
+        }));
+
+        const shippingPayload = {
+            address: formData.shippingAddress || '',
+            city: formData.shippingCity || '',
+            state: formData.shippingState || '',
+            zip: formData.shippingZipCode || '',
+        };
+        const billingPayload = billingSameAsShipping
+            ? shippingPayload
+            : {
+                address: formData.billingAddress || '',
+                city: formData.billingCity || '',
+                state: formData.billingState || '',
+                zip: formData.billingZipCode || '',
+            };
+
+        return {
+            ...formData,
+            lineItems: normalizedLineItems, // Use the filtered list
+            estimatedShipping: centsToCurrency(shippingCents),
+            taxAmount: centsToCurrency(taxCents),
+            discounts: payloadDiscounts,
+            discountTotal: discountTotalCents,
+            id: formData.id || null,
+            date: isNewOrder ? (formData.date || new Date().toISOString()) : formData.date,
+            status: finalStatus,
+            statusHistory: newStatusHistory,
+            total: finalTotal, // Use the recalculated total in cents
+            signatureDataUrl: formData.signatureDataUrl,
+            primaryContactId,
+            contactInfo: primaryContactSummary ? { ...primaryContactSummary, id: primaryContactId } : { id: primaryContactId },
+            shippingAddress: shippingPayload.address,
+            shippingCity: shippingPayload.city,
+            shippingState: shippingPayload.state,
+            shippingZipCode: shippingPayload.zip,
+            billingAddress: billingPayload.address,
+            billingCity: billingPayload.city,
+            billingState: billingPayload.state,
+            billingZipCode: billingPayload.zip,
+        };
+    };
+
+    const handleSaveDraft = async () => {
+        if (!primaryContactId) {
+            console.log("Order save failed: Please select a primary contact.");
+            return;
+        }
+        const newOrder = createOrderObject('Draft');
+        try {
+            const saved = await saveOrder(newOrder);
+            if (saved) {
+                const nextForm = deriveInitialFormState(saved);
+                const nextPrimaryId = saved.primaryContactId || saved.contactInfo?.id || '';
+                const nextPrimaryContact = saved.primaryContact || saved.contactInfo || null;
+                setFormData(nextForm);
+                setPrimaryContactId(nextPrimaryId);
+                setPrimaryContactSummary(nextPrimaryContact);
+                setBillingSameAsShipping(
+                    addressesAreEqual(
+                        extractAddressFields(nextForm, 'shipping'),
+                        extractAddressFields(nextForm, 'billing')
+                    )
+                );
+                setUseContactAddresses(orderAddressesMatchContact(nextPrimaryContact, nextForm));
+                setLastSelectedContactId(nextPrimaryId || '');
+                navigateTo('dashboard');
+            }
+        } catch (error) {
+            // Error is already logged by saveOrder, just log to console here
+            console.log(`Failed to save draft: ${error.message}`);
+        }
+    };
+    
+    const handleSaveAndSend = async () => {
+        if (!primaryContactId || !primaryContactSummary?.email) {
+            console.log("Order save failed: Please select a contact with a valid email address.");
+            return;
+        }
+        const newOrder = createOrderObject('Sent'); // Order status is 'Sent'
+        try {
+            const saved = await saveOrder(newOrder); // Save the order
+            if (saved) {
+                const nextForm = deriveInitialFormState(saved);
+                const nextPrimaryId = saved.primaryContactId || saved.contactInfo?.id || '';
+                const nextPrimaryContact = saved.primaryContact || saved.contactInfo || null;
+                setFormData(nextForm);
+                setPrimaryContactId(nextPrimaryId);
+                setPrimaryContactSummary(nextPrimaryContact);
+                setBillingSameAsShipping(
+                    addressesAreEqual(
+                        extractAddressFields(nextForm, 'shipping'),
+                        extractAddressFields(nextForm, 'billing')
+                    )
+                );
+                setUseContactAddresses(orderAddressesMatchContact(nextPrimaryContact, nextForm));
+                setLastSelectedContactId(nextPrimaryId || '');
+                // Instead of direct mailto and navigate, trigger the EmailModal
+                // The EmailModal's onEmailClientOpened callback (passed from App component) will handle navigation.
+                setOrderForEmailModal(saved);
+            }
+        } catch (error) {
+            console.error('Failed to save order before sending email:', error);
+        }
+    };
+
+    const handlePreviewPdf = () => { const tempOrder = createOrderObject(); generateInvoicePdf(tempOrder, allSelectableItems, 'preview', branding); };
+    
+    const handleDelete = async () => {
+        if (!formData || !formData.id) {
+            console.log("Cannot delete: Order data is missing.");
+            return;
+        }
+
+        const orderId = formData.id;
+        const orderStatus = formData.status;
+        const companyName = primaryContactSummary?.companyName || primaryContactSummary?.contactName || "";
+        const cleanedOrderId = orderId.replace("PO-", "");
+        let orderIdDigitsForConfirmation = "";
+
+        if (cleanedOrderId.length >= 4) {
+            orderIdDigitsForConfirmation = cleanedOrderId.slice(-4); // Get last 4 digits
+        } else if (cleanedOrderId.length > 0) {
+            orderIdDigitsForConfirmation = cleanedOrderId; // Use all available if less than 4
+        }
+
+
+        let confirmationMessage = "Are you sure you want to delete this order? This action cannot be undone.";
+        let requiresSpecialConfirmation = false;
+        let expectedConfirmationPhrase = "";
+
+        if (orderStatus !== 'Draft') {
+            requiresSpecialConfirmation = true;
+            if (!companyName || !orderIdDigitsForConfirmation) {
+                 console.log("Cannot proceed with deletion: Company name or Order ID is missing/invalid for confirmation string generation.");
+                 return;
+            }
+            expectedConfirmationPhrase = `delete ${companyName} order ${orderIdDigitsForConfirmation}`;
+            confirmationMessage = `To delete this order, please type the following exactly:\n\n"${expectedConfirmationPhrase}"`; // Added \n\n for a new line and some spacing
+        }
+
+        const userInput = window.prompt(confirmationMessage);
+
+        if (userInput === null) { // User cancelled the prompt
+            return;
+        }
+
+        let deletePayload = { ...formData, status: "Deleted" };
+
+        if (requiresSpecialConfirmation) {
+            if (userInput === expectedConfirmationPhrase) {
+                deletePayload.deleteConfirmation = userInput; // Pass to backend
+            } else {
+                console.log("Deletion cancelled: The confirmation phrase was incorrect.");
+                return;
+            }
+        } else { // For Draft orders, simple confirm is enough (prompt acts as confirm)
+            if (userInput === "" && orderStatus === 'Draft' && window.confirm("Are you sure you want to delete this draft? This action cannot be undone.")) {
+                 // This path is if prompt was empty but they confirm a second time.
+                 // However, the prompt itself serves as the main confirmation for draft.
+                 // If prompt is empty for draft, we can assume they don't want to type anything.
+            } else if (userInput !== "" && orderStatus === 'Draft') {
+                // If they typed something for a draft order, it's not the special confirmation,
+                // but we can treat it as a "yes" to the prompt.
+            } else if (orderStatus !== 'Draft') { 
+                // This case should not be reached if requiresSpecialConfirmation logic is correct.
+                console.log("Deletion cancelled.");
+                return;
+            }
+            // For draft, no special deleteConfirmation field needed unless backend strictly requires it (which it doesn't for drafts)
+        }
+        
+        // Proceed with deletion
+        try {
+            await deleteOrder(orderId, deletePayload); // Pass the full payload for deletion
+            navigateTo('dashboard');
+        } catch (error) {
+            // Error should be handled by saveOrder/deleteOrder and displayed by them or here
+            console.error("Error during delete operation:", error);
+            console.log(`Failed to delete order: ${error.message || 'Unknown error'}`);
+        }
+    };
+
+    return (
+        <>
+            {showUnsavedChangesModal && (
+                <UnsavedChangesModal
+                    onCancel={() => setShowUnsavedChangesModal(false)}
+                    onDelete={() => {
+                        setShowUnsavedChangesModal(false);
+                        navigateTo('dashboard');
+                    }}
+                    onSaveAndClose={() => {
+                        setShowUnsavedChangesModal(false);
+                        handleSaveDraft();
+                    }}
+                />
+            )}
+            {/* EmailModal is now handled at the App level, triggered by setOrderForEmailModal prop */}
+            <div className="mb-6"><button onClick={handleReturnToOrders} className="text-orange-600 hover:text-orange-800 font-semibold">&larr; Back to Orders</button><h1 className="text-3xl font-bold text-slate-800 mt-2">{pageHeading}</h1></div>
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+                <div className="lg:col-span-2 space-y-6">
+                    <div className="bg-white p-6 rounded-lg shadow-sm border border-slate-200">
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <Input
+                                label="Order Title"
+                                placeholder="Give this order a descriptive title"
+                                value={formData.title}
+                                onChange={e => setFormData(prev => ({ ...prev, title: e.target.value }))}
+                                disabled={!canEdit}
+                            />
+                            <div>
+                                <label className="block text-sm font-medium text-slate-600">Internal Order ID</label>
+                                <div className="mt-1 block w-full px-3 py-2 bg-slate-100 border border-slate-200 rounded-md text-sm text-slate-600">
+                                    {formData.id || order?.id || 'Pending assignment'}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div className="relative">
+                        <div className="bg-white p-6 rounded-lg shadow-sm border border-slate-200 space-y-6">
+                            <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
+                                <div>
+                                    <h2 className="text-xl font-semibold text-slate-700">Primary Contact</h2>
+                                    <p className="text-sm text-slate-500 mt-1">Assign the main point of contact for this order.</p>
+                                </div>
+                                <div className="flex flex-wrap gap-2">
+                                    <button
+                                        type="button"
+                                        onClick={() => { if (!canEdit) return; setIsSelectingPrimary(true); setPrimarySearchTerm(''); }}
+                                        disabled={!canEdit}
+                                        className={`px-4 py-2 rounded-md text-sm font-semibold shadow ${canEdit ? 'bg-slate-900 text-white hover:bg-slate-700' : 'bg-slate-200 text-slate-500 cursor-not-allowed'}`}
+                                    >
+                                        {primaryContactId ? 'Change Contact' : 'Select Contact'}
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => { if (!canEdit) return; resetNewContactForm(); setShowNewContactModal(true); }}
+                                        disabled={!canEdit}
+                                        className={`px-4 py-2 rounded-md text-sm font-semibold ${canEdit ? 'bg-orange-600 text-white hover:bg-orange-700' : 'bg-slate-200 text-slate-500 cursor-not-allowed'}`}
+                                    >
+                                        + New Contact
+                                    </button>
+                                    {primaryContactId && (
+                                        <a
+                                            href={`/contacts?contact_id=${primaryContactId}`}
+                                            target="_blank"
+                                            rel="noopener noreferrer"
+                                            className="px-4 py-2 rounded-md text-sm font-semibold text-slate-700 border border-slate-300 hover:bg-slate-100"
+                                        >
+                                            Open in Contacts
+                                        </a>
+                                    )}
+                                </div>
+                            </div>
+                            <ContactSummaryCard
+                                contact={primaryContactSummary}
+                                shippingFallback={{
+                                    address: formData.shippingAddress,
+                                    city: formData.shippingCity,
+                                    state: formData.shippingState,
+                                    zip: formData.shippingZipCode,
+                                }}
+                                billingFallback={{
+                                    address: formData.billingAddress,
+                                    city: formData.billingCity,
+                                    state: formData.billingState,
+                                    zip: formData.billingZipCode,
+                                }}
+                            />
+                            <div className="space-y-4 border-t border-slate-200 pt-6">
+                                <div className="flex items-center justify-between">
+                                    <h3 className="text-lg font-semibold text-slate-700">Shipping Details</h3>
+                                </div>
+                                <Textarea
+                                    label="Shipping Address"
+                                    rows={2}
+                                    value={formData.shippingAddress}
+                                    onChange={e => {
+                                        const value = e.target.value;
+                                        setFormData(prev => {
+                                            const next = { ...prev, shippingAddress: value };
+                                            if (billingSameAsShipping) {
+                                                next.billingAddress = value;
+                                            }
+                                            return next;
+                                        });
+                                    }}
+                                    disabled={!canEdit || addressesLocked}
+                                />
+                                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                    <Input
+                                        label="City"
+                                        value={formData.shippingCity}
+                                        onChange={e => {
+                                            const value = e.target.value;
+                                            setFormData(prev => {
+                                                const next = { ...prev, shippingCity: value };
+                                                if (billingSameAsShipping) {
+                                                    next.billingCity = value;
+                                                }
+                                                return next;
+                                            });
+                                        }}
+                                        disabled={!canEdit || addressesLocked}
+                                    />
+                                    <Input
+                                        label="State"
+                                        value={formData.shippingState}
+                                        onChange={e => {
+                                            const value = e.target.value;
+                                            setFormData(prev => {
+                                                const next = { ...prev, shippingState: value };
+                                                if (billingSameAsShipping) {
+                                                    next.billingState = value;
+                                                }
+                                                return next;
+                                            });
+                                        }}
+                                        disabled={!canEdit || addressesLocked}
+                                    />
+                                    <Input
+                                        label="Zip Code"
+                                        value={formData.shippingZipCode}
+                                        onChange={e => {
+                                            const value = e.target.value;
+                                            setFormData(prev => {
+                                                const next = { ...prev, shippingZipCode: value };
+                                                if (billingSameAsShipping) {
+                                                    next.billingZipCode = value;
+                                                }
+                                                return next;
+                                            });
+                                        }}
+                                        disabled={!canEdit || addressesLocked}
+                                    />
+                                </div>
+                                {canEdit && (
+                                    <div className="space-y-2">
+                                        <label className="flex items-center gap-2 text-sm text-slate-600">
+                                            <input
+                                                type="checkbox"
+                                                className="h-4 w-4 rounded border-slate-300 text-orange-600 focus:ring-orange-500"
+                                                checked={billingSameAsShipping}
+                                                disabled={!canEdit || addressesLocked}
+                                                onChange={e => handleBillingSameToggle(e.target.checked)}
+                                            />
+                                            Billing address is the same as shipping address
+                                        </label>
+                                        <label className={`flex items-center gap-2 text-sm ${contactHasAddresses ? 'text-slate-600' : 'text-slate-400'}`}>
+                                            <input
+                                                type="checkbox"
+                                                className="h-4 w-4 rounded border-slate-300 text-orange-600 focus:ring-orange-500 disabled:opacity-60"
+                                                checked={contactHasAddresses ? useContactAddresses : false}
+                                                disabled={!canEdit || !contactHasAddresses}
+                                                onChange={e => handleToggleUseContactAddresses(e.target.checked)}
+                                            />
+                                            Use saved contact addresses
+                                        </label>
+                                    </div>
+                                )}
+                                {!billingSameAsShipping && (
+                                    <div className="space-y-4 border-t border-slate-200 pt-4">
+                                        <h3 className="text-lg font-semibold text-slate-700">Billing Address</h3>
+                                        <Textarea
+                                            label="Billing Address"
+                                            rows={2}
+                                            value={formData.billingAddress}
+                                            onChange={e => setFormData(prev => ({ ...prev, billingAddress: e.target.value }))}
+                                            disabled={!canEdit || addressesLocked}
+                                        />
+                                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                            <Input label="City" value={formData.billingCity} onChange={e => setFormData(prev => ({ ...prev, billingCity: e.target.value }))} disabled={!canEdit || addressesLocked} />
+                                            <Input label="State" value={formData.billingState} onChange={e => setFormData(prev => ({ ...prev, billingState: e.target.value }))} disabled={!canEdit || addressesLocked} />
+                                            <Input label="Zip Code" value={formData.billingZipCode} onChange={e => setFormData(prev => ({ ...prev, billingZipCode: e.target.value }))} disabled={!canEdit || addressesLocked} />
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+                            <div className="border-t border-slate-200 pt-6 space-y-3">
+                                <div className="flex items-center justify-between">
+                                    <h3 className="text-lg font-semibold text-slate-700">Mentioned Contacts</h3>
+                                </div>
+                                <p className="text-sm text-slate-500">Mention teammates or customers in notes and logs with <span className="font-semibold text-slate-700">@handle</span>. They’ll appear here automatically.</p>
+                                {mentionedContacts.length === 0 ? (
+                                    <p className="text-sm text-slate-500">No other contacts have been mentioned yet.</p>
+                                ) : (
+                                    <div className="flex flex-wrap gap-2">
+                                        {mentionedContacts.map(contact => (
+                                            <span key={contact.id} className="inline-flex items-center rounded-full bg-slate-200 px-3 py-1 text-sm font-medium text-slate-700">
+                                                {getContactDisplayName(contact)}
+                                            </span>
+                                        ))}
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+                        {isSelectingPrimary && (
+                            <div className="absolute inset-0 z-20 flex items-start justify-center bg-black/20 px-4 py-10">
+                                <div className="w-full max-w-lg rounded-lg bg-white p-6 shadow-xl space-y-4">
+                                    <div className="flex items-center justify-between">
+                                        <h3 className="text-lg font-semibold text-slate-800">Select Primary Contact</h3>
+                                        <button type="button" onClick={() => { setIsSelectingPrimary(false); setPrimarySearchTerm(''); }} className="text-slate-400 hover:text-slate-600 text-xl leading-none">&times;</button>
+                                    </div>
+                                    <input
+                                        type="search"
+                                        value={primarySearchTerm}
+                                        onChange={e => setPrimarySearchTerm(e.target.value)}
+                                        placeholder="Search by name, handle, or company"
+                                        className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-orange-500 focus:outline-none focus:ring-1 focus:ring-orange-500"
+                                    />
+                                    <div className="max-h-64 overflow-y-auto space-y-2">
+                                        {filteredPrimaryContacts.length === 0 ? (
+                                            <p className="text-sm text-slate-500">No contacts match "{primarySearchTerm}".</p>
+                                        ) : (
+                                            filteredPrimaryContacts.map(contact => {
+                                                const companyLine = sanitizePlaceholderValue(contact.companyName);
+                                                return (
+                                                    <button
+                                                        key={contact.id}
+                                                        type="button"
+                                                        onClick={() => handlePrimaryContactSelect(contact)}
+                                                        className="w-full rounded-md border border-slate-200 px-3 py-2 text-left hover:border-orange-400 hover:bg-orange-50"
+                                                    >
+                                                        <p className="font-semibold text-slate-800">{getContactDisplayName(contact)}</p>
+                                                        {companyLine && <p className="text-sm text-slate-500">{companyLine}</p>}
+                                                        {contact.email && <p className="text-xs text-slate-400">{contact.email}</p>}
+                                                    </button>
+                                                );
+                                            })
+                                        )}
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+                        {showNewContactModal && (
+                            <div className="absolute inset-0 z-30 flex items-start justify-center bg-black/30 px-4 py-10">
+                                <form onSubmit={handleCreateContact} className="w-full max-w-lg rounded-lg bg-white p-6 shadow-xl space-y-5">
+                                    <div className="flex items-center justify-between">
+                                        <h3 className="text-lg font-semibold text-slate-800">Create New Contact</h3>
+                                        <button type="button" onClick={() => { setShowNewContactModal(false); resetNewContactForm(); }} className="text-slate-400 hover:text-slate-600 text-xl leading-none">&times;</button>
+                                    </div>
+                                    <div className="grid grid-cols-1 gap-4">
+                                        <Input label="Contact Name" value={newContactForm.contactName} onChange={e => setNewContactForm(prev => ({ ...prev, contactName: e.target.value }))} disabled={isCreatingContact} />
+                                        <Input label="Company" value={newContactForm.companyName} onChange={e => setNewContactForm(prev => ({ ...prev, companyName: e.target.value }))} disabled={isCreatingContact} />
+                                        <Input label="Email" value={newContactForm.email} onChange={e => setNewContactForm(prev => ({ ...prev, email: e.target.value }))} disabled={isCreatingContact} />
+                                        <Input
+                                            label="Phone"
+                                            value={newContactForm.phone}
+                                            onChange={e => {
+                                                const formatted = formatPhoneNumber(e.target.value);
+                                                setNewContactForm(prev => ({ ...prev, phone: formatted }));
+                                            }}
+                                            disabled={isCreatingContact}
+                                        />
+                                    </div>
+                                    <div className="space-y-3">
+                                        <Textarea
+                                            label="Shipping Address"
+                                            rows={2}
+                                            value={newContactForm.shippingAddress}
+                                            onChange={e => setNewContactForm(prev => ({ ...prev, shippingAddress: e.target.value }))}
+                                            disabled={isCreatingContact}
+                                        />
+                                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                                            <Input label="City" value={newContactForm.shippingCity} onChange={e => setNewContactForm(prev => ({ ...prev, shippingCity: e.target.value }))} disabled={isCreatingContact} />
+                                            <Input label="State" value={newContactForm.shippingState} onChange={e => setNewContactForm(prev => ({ ...prev, shippingState: e.target.value }))} disabled={isCreatingContact} />
+                                            <Input label="Zip Code" value={newContactForm.shippingZipCode} onChange={e => setNewContactForm(prev => ({ ...prev, shippingZipCode: e.target.value }))} disabled={isCreatingContact} />
+                                        </div>
+                                    </div>
+                                    <div className="space-y-3">
+                                        <Textarea
+                                            label="Billing Address"
+                                            rows={2}
+                                            value={newContactForm.billingAddress}
+                                            onChange={e => setNewContactForm(prev => ({ ...prev, billingAddress: e.target.value }))}
+                                            disabled={isCreatingContact}
+                                        />
+                                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                                            <Input label="City" value={newContactForm.billingCity} onChange={e => setNewContactForm(prev => ({ ...prev, billingCity: e.target.value }))} disabled={isCreatingContact} />
+                                            <Input label="State" value={newContactForm.billingState} onChange={e => setNewContactForm(prev => ({ ...prev, billingState: e.target.value }))} disabled={isCreatingContact} />
+                                            <Input label="Zip Code" value={newContactForm.billingZipCode} onChange={e => setNewContactForm(prev => ({ ...prev, billingZipCode: e.target.value }))} disabled={isCreatingContact} />
+                                        </div>
+                                    </div>
+                                    <div className="flex items-center justify-end gap-3">
+                                        <button type="button" onClick={() => { setShowNewContactModal(false); resetNewContactForm(); }} className="px-4 py-2 text-sm font-semibold text-slate-600 hover:text-slate-800">Cancel</button>
+                                        <button type="submit" disabled={isCreatingContact} className={`px-4 py-2 rounded-md text-sm font-semibold text-white ${isCreatingContact ? 'bg-orange-300 cursor-not-allowed' : 'bg-orange-600 hover:bg-orange-700'}`}>{isCreatingContact ? 'Creating…' : 'Create Contact'}</button>
+                                    </div>
+                                </form>
+                            </div>
+                        )}
+                    </div>
+
+                    <OrderLogsSection orderId={formData.id} canEdit={canEdit} allContacts={allContacts} onContactsChanged={refreshMentionedContacts} />
+
+                    <div className="bg-white rounded-lg shadow-sm border border-slate-200"><div className="p-6 border-b"><h2 className="text-xl font-semibold text-slate-700 mb-4">Line Items</h2>{canEdit && (<div className="flex gap-2"><input ref={scanInputRef} type="text" value={scanInput} onChange={e => setScanInput(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') { handleScanAddItem(e); } }} placeholder="Scan or Enter Item Code" className="flex-grow block w-full px-3 py-2 bg-white border border-slate-300 rounded-md shadow-sm placeholder-slate-400 focus:outline-none focus:ring-orange-500 focus:border-orange-500 sm:text-sm" /><button onClick={handleScanAddItem} className="px-4 py-2 bg-orange-600 text-white font-semibold rounded-md hover:bg-orange-700 transition-colors">Add</button></div>)}</div><div className="overflow-x-auto"><table className="w-full text-sm text-left text-slate-500"><thead className="text-xs uppercase text-slate-700 bg-slate-100"><tr><th scope="col" className="px-4 py-3">Name</th><th scope="col" className="px-4 py-3">Description</th><th scope="col" className="px-4 py-3 text-center">Units</th><th scope="col" className="px-4 py-3 text-right">Unit Price</th><th scope="col" className="px-4 py-3 text-right">Total</th>{canEdit && <th scope="col" className="px-2 py-3"></th>}</tr></thead><tbody>
+{formData.lineItems.map(item => {
+    const catalogEntry = item.catalogItemId ? allSelectableItems[item.catalogItemId] : null;
+    const displayName = item.name || catalogEntry?.name || 'Line Item';
+    const descriptionValue = item.description || '';
+    const lineTotalCents = (Number(item.quantity) || 0) * (Number(item.price) || 0);
+
+    return (
+        <tr key={item.id} className="border-b align-top">
+            <td className="px-4 py-2">
+                <div className="space-y-2">
+                    {canEdit && (
+                        <Select value={item.catalogItemId || ''} onChange={e => handleCatalogSelect(item.id, e.target.value)} disabled={!canEdit}>
+                            <option value="">Manual entry</option>
+                            {Object.entries(allSelectableItems).map(([id, details]) => (
+                                <option key={id} value={id}>
+                                    {details.name}{details.kind === 'package' ? ' (Package)' : ''}
+                                </option>
+                            ))}
+                        </Select>
+                    )}
+                    {canEdit ? (
+                        <input
+                            type="text"
+                            value={item.name}
+                            onChange={e => handleLineItemChange(item.id, 'name', e.target.value)}
+                            className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm shadow-sm focus:border-orange-500 focus:outline-none focus:ring-1 focus:ring-orange-500"
+                            placeholder="Line item name"
+                        />
+                    ) : (
+                        <div className="text-sm font-medium text-slate-800">{displayName}</div>
+                    )}
+                </div>
+            </td>
+            <td className="px-4 py-2">
+                {canEdit ? (
+                    <textarea
+                        rows={2}
+                        value={item.description}
+                        onChange={e => handleLineItemChange(item.id, 'description', e.target.value)}
+                        className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm shadow-sm focus:border-orange-500 focus:outline-none focus:ring-1 focus:ring-orange-500"
+                        placeholder="Optional description"
+                    />
+                ) : (
+                    <div className="text-sm text-slate-600 whitespace-pre-wrap">
+                        {descriptionValue ? descriptionValue : <span className="text-slate-400">No description</span>}
+                    </div>
+                )}
+            </td>
+            <td className="px-4 py-2 text-center align-top">
+                <div className="flex flex-col items-center gap-1">
+                    {canEdit ? (
+                        <input
+                            type="number"
+                            min="0"
+                            value={item.quantity}
+                            onChange={e => handleLineItemChange(item.id, 'quantity', e.target.value)}
+                            className="w-20 text-center bg-white border border-slate-300 rounded-md shadow-sm focus:outline-none focus:ring-orange-500 focus:border-orange-500 sm:text-sm p-2"
+                        />
+                    ) : (
+                        <div className="text-sm font-medium text-slate-800">{item.quantity}</div>
+                    )}
+                    <span className="text-xs text-slate-400">Units</span>
+                </div>
+            </td>
+            <td className="px-4 py-2 text-right align-top">
+                <div className="flex flex-col items-end gap-1">
+                    <PriceInput
+                        value={item.price}
+                        onChange={newPrice => handleLineItemChange(item.id, 'price', newPrice)}
+                        disabled={!canEdit}
+                        ariaLabel={`Unit price for ${displayName}`}
+                    />
+                    <span className="text-xs text-slate-400">Unit Price</span>
+                </div>
+            </td>
+            <td className="px-4 py-2 text-right font-medium text-slate-800 align-top">
+                ${ (lineTotalCents / 100).toFixed(2) }
+            </td>
+            {canEdit && (
+                <td className="px-2 py-2 text-center align-top">
+                    <button onClick={() => removeLineItem(item.id)} className="text-slate-400 hover:text-red-600 p-1 rounded-full hover:bg-red-100 transition-colors">
+                        <TrashIcon />
+                    </button>
+                </td>
+            )}
+        </tr>
+    );
+})}
+</tbody></table></div>{canEdit && <div className="p-6 border-t"><button onClick={addEmptyLineItem} className="w-full text-center px-4 py-2 bg-orange-100 text-orange-700 font-semibold rounded-md hover:bg-orange-200 transition-colors">+ Add Line Item</button></div>}</div>
+                </div>
+                <div className="lg:col-span-1 space-y-6">
+                    <div className="bg-white p-6 rounded-lg shadow-sm border border-slate-200"><h2 className="text-xl font-semibold text-slate-700 border-b pb-3 mb-4">Order Metadata</h2><div className="space-y-4"><Input label="Estimated Shipping Date" type="date" value={formData.estimatedShippingDate} onChange={e => setFormData(p=>({...p, estimatedShippingDate: e.target.value}))} disabled={!canEdit} /><div><label className="block text-sm font-medium text-slate-600 mb-1">Priority Level</label><Select value={formData.priorityLevel} onChange={e => setFormData(p=>({...p, priorityLevel: e.target.value}))} disabled={!canEdit}><option value="">No priority set</option><option value="High">High</option><option value="Standard">Standard</option><option value="Low">Low</option></Select></div><div><label className="block text-sm font-medium text-slate-600 mb-1">Fulfillment Channel</label><Select value={formData.fulfillmentChannel} onChange={e => setFormData(p=>({...p, fulfillmentChannel: e.target.value}))} disabled={!canEdit}><option value="">Not specified</option><option value="In-House">In-House</option><option value="Dropship">Dropship</option><option value="Third-Party">Third-Party</option><option value="Pickup">Customer Pickup</option></Select></div><Input label="Customer Reference" placeholder="Optional PO, campaign, or reference" value={formData.customerReference} onChange={e => setFormData(p=>({...p, customerReference: e.target.value}))} disabled={!canEdit} /></div></div>
+                    {!isDraft && (<div className="bg-white p-6 rounded-lg shadow-sm border border-slate-200"><h2 className="text-xl font-semibold text-slate-700 mb-4">Update Status</h2><div className="space-y-2"><button onClick={() => handleStatusChange('Paid')} disabled={formData.status !== 'Sent'} className="w-full text-center px-4 py-2 bg-blue-500 text-white font-semibold rounded-md hover:bg-blue-600 disabled:bg-slate-300 disabled:cursor-not-allowed">Mark as Paid</button><button onClick={() => handleStatusChange('Shipped')} disabled={formData.status !== 'Paid'} className="w-full text-center px-4 py-2 bg-green-500 text-white font-semibold rounded-md hover:bg-green-600 disabled:bg-slate-300 disabled:cursor-not-allowed">Mark as Shipped</button></div></div>)}
+                    <div className="bg-white p-6 rounded-lg shadow-sm border border-slate-200">
+                        <h2 className="text-xl font-semibold text-slate-700 mb-3 border-b pb-3">Signature</h2>
+                        <SignaturePad 
+                            initialDataUrl={formData.signatureDataUrl}
+                            onSave={(dataUrl) => setFormData(prev => ({...prev, signatureDataUrl: dataUrl}))}
+                            disabled={!canEdit}
+                        />
+                    </div>
+                    <div className="bg-white p-6 rounded-lg shadow-sm border border-slate-200">
+                        <h2 className="text-xl font-semibold text-slate-700 mb-3">Notes</h2>
+                        <ContactMentionTextarea
+                            value={formData.notes}
+                            onChange={value => setFormData(p => ({...p, notes: value}))}
+                            rows={4}
+                            disabled={!canEdit}
+                            entityTypes={['contact', 'order', 'note', 'calendar_event', 'reminder']}
+                            placeholder="Capture order notes and use @handle to mention key contacts"
+                            label=""
+                        />
+                    </div>
+                    <div className="bg-white p-6 rounded-lg shadow-sm border border-slate-200">
+                        <div className="flex items-center justify-between border-b border-slate-200 pb-3">
+                            <h2 className="text-xl font-semibold text-slate-700">Order Summary</h2>
+                            {canEdit && (
+                                <button
+                                    type="button"
+                                    onClick={addDiscount}
+                                    className="text-sm font-semibold text-orange-600 hover:text-orange-700"
+                                >
+                                    + Add Discount
+                                </button>
+                            )}
+                        </div>
+                        <div className="mt-4 space-y-4">
+                            <div>
+                                <label className="block text-xs font-medium text-slate-500 uppercase tracking-wide">Shipping</label>
+                                {canEdit ? (
+                                    <PriceInput
+                                        value={orderTotals.shippingCents}
+                                        onChange={(cents) => setFormData(prev => ({ ...prev, estimatedShipping: centsToCurrency(Math.max(0, cents)) }))}
+                                        ariaLabel="Shipping amount"
+                                    />
+                                ) : (
+                                    <p className="mt-1 text-right font-medium text-slate-700">${centsToCurrency(orderTotals.shippingCents)}</p>
+                                )}
+                            </div>
+                            <div>
+                                <label className="block text-xs font-medium text-slate-500 uppercase tracking-wide">Taxes</label>
+                                {canEdit ? (
+                                    <PriceInput
+                                        value={orderTotals.taxCents}
+                                        onChange={(cents) => setFormData(prev => ({ ...prev, taxAmount: centsToCurrency(Math.max(0, cents)) }))}
+                                        ariaLabel="Tax amount"
+                                    />
+                                ) : (
+                                    <p className="mt-1 text-right font-medium text-slate-700">${centsToCurrency(orderTotals.taxCents)}</p>
+                                )}
+                            </div>
+                        </div>
+                        <div className="mt-6 space-y-4">
+                            {(formData.discounts || []).length === 0 && canEdit && (
+                                <p className="text-sm text-slate-500">No discounts applied.</p>
+                            )}
+                            {(formData.discounts || []).map(discount => {
+                                const discountId = String(discount.id);
+                                const computed = discountAmountLookup.get(discountId) || { amountCents: 0, appliesToAll: true };
+                                const appliesSet = new Set(Array.isArray(discount.appliesTo) ? discount.appliesTo.map(String) : []);
+                                return (
+                                    <div key={discountId} className="space-y-3 rounded-md border border-slate-200 p-4">
+                                        <div className="flex items-start justify-between gap-3">
+                                            <div className="flex-1">
+                                                <label className="block text-xs font-medium text-slate-500 uppercase tracking-wide">Label</label>
+                                                {canEdit ? (
+                                                    <input
+                                                        type="text"
+                                                        value={discount.label}
+                                                        onChange={(e) => handleDiscountLabelChange(discountId, e.target.value)}
+                                                        className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm shadow-sm focus:border-orange-500 focus:outline-none focus:ring-1 focus:ring-orange-500"
+                                                    />
+                                                ) : (
+                                                    <p className="mt-1 text-sm font-medium text-slate-700">{discount.label || 'Discount'}</p>
+                                                )}
+                                            </div>
+                                            {canEdit && (
+                                                <button
+                                                    type="button"
+                                                    onClick={() => removeDiscount(discountId)}
+                                                    className="text-sm font-semibold text-red-600 hover:text-red-700"
+                                                >
+                                                    Remove
+                                                </button>
+                                            )}
+                                        </div>
+                                        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                                            <div>
+                                                <label className="block text-xs font-medium text-slate-500 uppercase tracking-wide">Type</label>
+                                                {canEdit ? (
+                                                    <select
+                                                        value={discount.type}
+                                                        onChange={(e) => handleDiscountTypeChange(discountId, e.target.value)}
+                                                        className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm shadow-sm focus:border-orange-500 focus:outline-none focus:ring-1 focus:ring-orange-500"
+                                                    >
+                                                        <option value="fixed">Fixed Amount</option>
+                                                        <option value="percentage">Percentage</option>
+                                                    </select>
+                                                ) : (
+                                                    <p className="mt-1 text-sm text-slate-700 capitalize">{discount.type}</p>
+                                                )}
+                                            </div>
+                                            <div>
+                                                <label className="block text-xs font-medium text-slate-500 uppercase tracking-wide">Value</label>
+                                                {canEdit ? (
+                                                    discount.type === 'percentage' ? (
+                                                        <input
+                                                            type="number"
+                                                            min="0"
+                                                            step="0.01"
+                                                            value={discount.value ?? ''}
+                                                            onChange={(e) => handleDiscountPercentageValueChange(discountId, e.target.value)}
+                                                            className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm shadow-sm focus:border-orange-500 focus:outline-none focus:ring-1 focus:ring-orange-500"
+                                                        />
+                                                    ) : (
+                                                        <PriceInput
+                                                            value={Math.max(0, Math.round(parseCurrencyToNumber(discount.value) * 100))}
+                                                            onChange={(cents) => handleDiscountFixedValueChange(discountId, cents)}
+                                                            ariaLabel="Discount amount"
+                                                        />
+                                                    )
+                                                ) : (
+                                                    <p className="mt-1 text-sm text-slate-700">
+                                                        {discount.type === 'percentage'
+                                                            ? `${discount.value || '0'}%`
+                                                            : `$${centsToCurrency(Math.round(parseCurrencyToNumber(discount.value) * 100))}`}
+                                                    </p>
+                                                )}
+                                            </div>
+                                        </div>
+                                        <div className="space-y-2">
+                                            <div className="flex flex-wrap items-center justify-between gap-2 text-xs font-medium uppercase tracking-wide text-slate-500">
+                                                <span>Applies To</span>
+                                                <span className="text-slate-600">Amount: ${centsToCurrency(computed.amountCents)}</span>
+                                            </div>
+                                            {normalizedLineItems.length === 0 ? (
+                                                <p className="text-xs text-slate-400">Add line items to target specific discounts.</p>
+                                            ) : (
+                                                <div className="space-y-2 text-sm text-slate-600">
+                                                    <label className="inline-flex items-center gap-2">
+                                                        <input
+                                                            type="checkbox"
+                                                            checked={computed.appliesToAll}
+                                                            onChange={(e) => toggleDiscountApplyToAll(discountId, e.target.checked)}
+                                                            disabled={!canEdit}
+                                                        />
+                                                        <span>Apply to all line items</span>
+                                                    </label>
+                                                    <div className={`grid gap-2 ${computed.appliesToAll ? 'opacity-50' : ''}`}>
+                                                        {normalizedLineItems.map(item => {
+                                                            const itemId = String(item.id);
+                                                            const isChecked = computed.appliesToAll || appliesSet.has(itemId);
+                                                            return (
+                                                                <label key={itemId} className="inline-flex items-center gap-2">
+                                                                    <input
+                                                                        type="checkbox"
+                                                                        checked={isChecked}
+                                                                        onChange={(e) => toggleDiscountLineItem(discountId, itemId, e.target.checked)}
+                                                                        disabled={!canEdit || computed.appliesToAll}
+                                                                    />
+                                                                    <span>{item.name || 'Line Item'} ({item.quantity} @ ${centsToCurrency(item.price)})</span>
+                                                                </label>
+                                                            );
+                                                        })}
+                                                    </div>
+                                                </div>
+                                            )}
+                                        </div>
+                                    </div>
+                                );
+                            })}
+                            {!canEdit && (formData.discounts || []).length === 0 && (
+                                <p className="text-sm text-slate-500">No discounts applied.</p>
+                            )}
+                        </div>
+                        <div className="mt-6 border-t border-slate-200 pt-4">
+                            <div className="ml-auto max-w-xs space-y-2 text-right text-sm text-slate-600">
+                                <div className="flex justify-between gap-4">
+                                    <span>Subtotal</span>
+                                    <span className="font-medium text-slate-700">${centsToCurrency(orderTotals.subtotal)}</span>
+                                </div>
+                                <div className="flex justify-between gap-4">
+                                    <span>Taxes</span>
+                                    <span className="font-medium text-slate-700">${centsToCurrency(orderTotals.taxCents)}</span>
+                                </div>
+                                <div className="flex justify-between gap-4">
+                                    <span>Shipping</span>
+                                    <span className="font-medium text-slate-700">${centsToCurrency(orderTotals.shippingCents)}</span>
+                                </div>
+                                <div className={`flex justify-between gap-4 ${orderTotals.discountTotalCents > 0 ? 'text-rose-600' : 'text-slate-700'}`}>
+                                    <span>Discounts</span>
+                                    <span className="font-medium">{orderTotals.discountTotalCents > 0 ? '-' : ''}${centsToCurrency(orderTotals.discountTotalCents)}</span>
+                                </div>
+                                {orderTotals.discounts.length > 0 && (
+                                    <div className="space-y-1 text-xs text-rose-500">
+                                        {orderTotals.discounts.map(discount => (
+                                            <div key={discount.id} className="flex justify-between gap-3">
+                                                <span className="truncate">{discount.label || 'Discount'}</span>
+                                                <span>- ${centsToCurrency(discount.amountCents)}</span>
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
+                                <div className="flex justify-between items-center gap-4 border-t border-slate-200 pt-2 text-lg font-semibold text-slate-800">
+                                    <span>Total</span>
+                                    <span>${centsToCurrency(orderTotals.total)}</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div className="space-y-3">
+                        {isDraft && <button onClick={handleSaveAndSend} className="w-full text-center px-6 py-3 bg-orange-600 text-white font-bold rounded-md hover:bg-orange-700">Save and Send</button>}
+                        {!isDraft && !isEditing && <button onClick={() => setOrderForEmailModal(formData)} className="w-full text-center px-6 py-3 bg-orange-600 text-white font-bold rounded-md hover:bg-orange-700">Resend Email</button>}
+                        {isDraft && <button onClick={handleSaveDraft} className="w-full text-center px-6 py-3 bg-slate-600 text-white font-bold rounded-md hover:bg-slate-700">Save as Draft</button>}
+                        {isEditing && !isDraft && (
+                            <button
+                                onClick={async () => {
+                                    try {
+                                        const saved = await saveOrder(createOrderObject());
+                                        if (saved) {
+                                            const nextForm = deriveInitialFormState(saved);
+                                            const nextPrimaryId = saved.primaryContactId || saved.contactInfo?.id || '';
+                                            const nextPrimaryContact = saved.primaryContact || saved.contactInfo || null;
+                                            setFormData(nextForm);
+                                            setPrimaryContactId(nextPrimaryId);
+                                            setPrimaryContactSummary(nextPrimaryContact);
+                                            setBillingSameAsShipping(
+                                                addressesAreEqual(
+                                                    extractAddressFields(nextForm, 'shipping'),
+                                                    extractAddressFields(nextForm, 'billing')
+                                                )
+                                            );
+                                            setUseContactAddresses(orderAddressesMatchContact(nextPrimaryContact, nextForm));
+                                            setLastSelectedContactId(nextPrimaryId || '');
+                                            setIsEditing(false);
+                                        }
+                                    } catch (error) {
+                                        console.error('Failed to save order changes:', error);
+                                    }
+                                }}
+                                className="w-full text-center px-6 py-3 bg-slate-600 text-white font-bold rounded-md hover:bg-slate-700"
+                            >
+                                Save Changes
+                            </button>
+                        )}
+                        <button onClick={handlePreviewPdf} className="w-full text-center px-6 py-3 bg-white text-slate-700 font-bold rounded-md hover:bg-slate-100 border border-slate-300">Preview Invoice</button>
+                        {!isDraft && !isEditing && <button onClick={() => setIsEditing(true)} className="w-full text-center px-6 py-3 bg-blue-100 text-blue-700 font-bold rounded-md hover:bg-blue-200">Edit Order</button>}
+                        {/* Always show delete button if order exists (formData.id) */}
+                        {formData.id && (
+                            <button 
+                                onClick={handleDelete} 
+                                className="w-full text-center px-6 py-3 bg-red-100 text-red-700 font-bold rounded-md hover:bg-red-200"
+                            >
+                                {isDraft ? "Delete Draft" : "Delete Order"}
+                            </button>
+                        )}
+                    </div>
+                </div>
+            </div>
+        </>
+    );
+};
+
+// --- MAIN APP COMPONENT (Router) ---
+const App = () => {
+    const { useState, useEffect, useCallback, useRef } = React;
+    const [page, setPage] = useState('dashboard');
+    const [orders, setOrders] = useState([]);
+    const [activeOrder, setActiveOrder] = useState(null);
+    const [startInEditMode, setStartInEditMode] = useState(false);
+    const [isLoading, setIsLoading] = useState(true);
+    const [allContacts, setAllContacts] = useState([]);
+    const [allSelectableItems, setAllSelectableItems] = useState({});
+    const [itemData, setItemData] = useState({});
+    const [packageData, setPackageData] = useState({});
+    const [orderForEmailModal, setOrderForEmailModal] = useState(null); // State to control EmailModal
+    const [appSettings, setAppSettings] = useState({
+        company_name: "Your Company",
+        default_email_body: "",
+        invoice_business_name: "FireNotes OMS",
+        invoice_business_details: "",
+        invoice_brand_color: "#f97316",
+        invoice_logo_data_url: "",
+    });
+    const [orderViewSettings, setOrderViewSettings] = useState({ rememberLastView: true, statusPalette: DEFAULT_STATUS_PALETTE });
+    const [orderViewState, setOrderViewState] = useState(DEFAULT_ORDER_VIEW_STATE);
+    const orderViewSaveTimeoutRef = useRef(null);
+    const latestOrderViewStateRef = useRef(DEFAULT_ORDER_VIEW_STATE);
+
+    const updateBrowserUrl = useCallback((updater) => {
+        if (typeof window === 'undefined') {
+            return;
+        }
+        const url = new URL(window.location.href);
+        updater(url.searchParams);
+        const newSearch = url.searchParams.toString();
+        const current = `${window.location.pathname}${window.location.search}`;
+        const next = newSearch ? `${url.pathname}?${newSearch}` : url.pathname;
+        if (next !== current) {
+            window.history.replaceState({}, '', next);
+        }
+    }, []);
+
+    useEffect(() => {
+        return () => {
+            if (orderViewSaveTimeoutRef.current) {
+                clearTimeout(orderViewSaveTimeoutRef.current);
+            }
+        };
+    }, []);
+
+    const handleOrderUpdate = (updatedOrderFromServer) => { // Added this function
+        setOrders(prevOrders => {
+            const index = prevOrders.findIndex(o => o.id === updatedOrderFromServer.id);
+            if (index !== -1) {
+                const updatedOrders = [...prevOrders];
+                updatedOrders[index] = updatedOrderFromServer;
+                return updatedOrders;
+            }
+            // Fallback for safety, though email update should always find the order
+            console.warn("Order to update from email not found in existing orders list.");
+            return [...prevOrders.filter(o => o.id !== updatedOrderFromServer.id), updatedOrderFromServer];
+        });
+    };
+
+    const fetchAndUpdateContacts = async () => {
+        try {
+            const contactsRes = await fetch('/api/contacts');
+            const contactsData = await contactsRes.json();
+            setAllContacts(contactsData);
+        } catch (error) {
+            console.error("Failed to re-fetch contacts:", error);
+        }
+    };
+
+    useEffect(() => {
+        const fetchData = async () => {
+            setIsLoading(true);
+            try {
+            const [ordersRes, contactsRes, itemsRes, packagesRes, settingsRes, orderViewRes] = await Promise.all([
+                fetch('/api/orders'),
+                fetch('/api/contacts'),
+                fetch('/api/items'),
+                fetch('/api/packages'),
+                fetch('/api/settings'), // Fetch settings
+                fetch('/api/order-view-settings')
+            ]);
+
+            const ordersData   = await ordersRes.json();
+            const settingsData = await settingsRes.json(); // Get settings data
+            setAppSettings(settingsData); // Set app settings
+            window.fireCoastBranding = settingsData;
+            let orderViewData = {};
+            if (orderViewRes.ok) {
+                orderViewData = await orderViewRes.json().catch(() => ({}));
+            }
+            const sanitizedPalette = Array.isArray(orderViewData.statusPalette) && orderViewData.statusPalette.length
+                ? orderViewData.statusPalette
+                : DEFAULT_STATUS_PALETTE;
+            const hydratedViewState = {
+                ...DEFAULT_ORDER_VIEW_STATE,
+                ...(orderViewData.lastViewState || {}),
+            };
+            setOrderViewSettings({
+                rememberLastView: orderViewData.rememberLastView !== false,
+                statusPalette: sanitizedPalette,
+            });
+            setOrderViewState(hydratedViewState);
+            latestOrderViewStateRef.current = hydratedViewState;
+            const contactsData  = await contactsRes.json();
+            const itemsDataArray    = await itemsRes.json(); // Renamed to itemsDataArray
+            const packagesData = await packagesRes.json();
+
+            // Transform itemsDataArray to an object keyed by item_code
+            const itemsDataById = itemsDataArray.reduce((acc, item) => {
+                if (!item || !item.id) {
+                    return acc;
+                }
+                acc[item.id] = {
+                    ...item,
+                    name: item.name || '',
+                    description: item.description || '',
+                    price: typeof item.price === 'number' ? item.price : 0,
+                };
+                return acc;
+            }, {});
+
+            setOrders(ordersData);
+            setAllContacts(contactsData);
+            // Combine items (now itemsDataById) and packages for the dropdown
+            const combinedSelectableItems = Object.keys(itemsDataById).reduce((acc, key) => {
+                const entry = itemsDataById[key];
+                acc[key] = {
+                    name: entry.name,
+                    description: entry.description,
+                    price: entry.price,
+                    kind: 'item',
+                };
+                return acc;
+            }, {});
+            for (const pkgId in packagesData) {
+                const pkg = packagesData[pkgId];
+                combinedSelectableItems[pkgId] = {
+                    name: pkg.name,
+                    description: (pkg.contents || []).map(c => `${c.quantity} × ${(c.name || c.itemId || 'Item')}`).join(', '),
+                    kind: 'package',
+                };
+            }
+            setAllSelectableItems(combinedSelectableItems);
+            setItemData(itemsDataById); // Store the object version
+            setPackageData(packagesData); // Store raw packages data
+
+            // Check for order_id in URL to load an order for editing
+            const urlParams = new URLSearchParams(window.location.search);
+            const orderIdFromUrl = urlParams.get('order_id');
+            const viewParam = urlParams.get('view');
+            const modeParam = urlParams.get('mode');
+
+            if (orderIdFromUrl) {
+                let orderToEdit = ordersData.find(o => o.id === orderIdFromUrl);
+                if (!orderToEdit) {
+                    try {
+                        const detailRes = await fetch(`/api/orders/${orderIdFromUrl}`);
+                        if (detailRes.ok) {
+                            orderToEdit = await detailRes.json();
+                        }
+                    } catch (detailError) {
+                        console.error("Failed to fetch order details for editing:", detailError);
+                    }
+                }
+
+                if (orderToEdit) {
+                    setActiveOrder(orderToEdit);
+                    const shouldEdit = modeParam !== 'view';
+                    setStartInEditMode(shouldEdit);
+                    setPage('viewOrder');
+                    updateBrowserUrl(params => {
+                        params.set('order_id', orderToEdit.id);
+                        if (shouldEdit) {
+                            params.set('mode', 'edit');
+                        } else {
+                            params.delete('mode');
+                        }
+                        params.delete('view');
+                    });
+                } else {
+                    console.warn(`Order with id ${orderIdFromUrl} could not be found for editing.`);
+                    setActiveOrder(null);
+                    setStartInEditMode(false);
+                    setPage('dashboard');
+                    updateBrowserUrl(params => {
+                        params.delete('order_id');
+                        params.delete('mode');
+                    });
+                }
+            } else if (viewParam === 'create') {
+                setActiveOrder(null);
+                setStartInEditMode(true);
+                setPage('createOrder');
+                updateBrowserUrl(params => {
+                    params.set('view', 'create');
+                    params.delete('order_id');
+                    params.delete('mode');
+                });
+            } else {
+                setActiveOrder(null);
+                setStartInEditMode(false);
+                updateBrowserUrl(params => {
+                    params.delete('order_id');
+                    params.delete('mode');
+                    if (!viewParam) {
+                        params.delete('view');
+                    }
+                });
+            }
+
+            } catch (error) {
+            console.error("Failed to fetch data:", error);
+            setOrderViewSettings({ rememberLastView: true, statusPalette: DEFAULT_STATUS_PALETTE });
+            setOrderViewState(DEFAULT_ORDER_VIEW_STATE);
+            latestOrderViewStateRef.current = DEFAULT_ORDER_VIEW_STATE;
+            } finally {
+            setIsLoading(false);
+            }
+        };
+        fetchData();
+    }, []);
+
+    const persistOrderViewState = useCallback((nextState) => {
+        if (!nextState || typeof nextState !== 'object') {
+            return;
+        }
+        const snapshot = {
+            ...DEFAULT_ORDER_VIEW_STATE,
+            ...nextState,
+            searchInput: typeof nextState.searchInput === 'string' ? nextState.searchInput : '',
+            searchQuery: typeof nextState.searchQuery === 'string' ? nextState.searchQuery : '',
+            searchPills: Array.isArray(nextState.searchPills) ? nextState.searchPills : [],
+            advancedFilters: Array.isArray(nextState.advancedFilters) ? nextState.advancedFilters : [],
+            statusSelections: Array.isArray(nextState.statusSelections) ? nextState.statusSelections : [],
+        };
+        setOrderViewState(snapshot);
+        latestOrderViewStateRef.current = snapshot;
+        if (orderViewSettings.rememberLastView === false) {
+            return;
+        }
+        if (orderViewSaveTimeoutRef.current) {
+            clearTimeout(orderViewSaveTimeoutRef.current);
+        }
+        orderViewSaveTimeoutRef.current = setTimeout(async () => {
+            try {
+                await fetch('/api/order-view-settings', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ last_view_state: snapshot }),
+                });
+            } catch (error) {
+                console.error('Failed to persist order view state', error);
+            }
+        }, 500);
+    }, [orderViewSettings.rememberLastView]);
+
+    
+    const navigateTo = useCallback((pageName, options = {}) => {
+        if (pageName === 'settings') {
+            window.location.href = '/settings';
+            return;
+        }
+
+        if (pageName === 'dashboard') {
+            setActiveOrder(null);
+            setStartInEditMode(false);
+            updateBrowserUrl(params => {
+                params.delete('order_id');
+                params.delete('mode');
+                params.delete('view');
+            });
+        } else if (pageName === 'createOrder') {
+            setActiveOrder(null);
+            setStartInEditMode(true);
+            updateBrowserUrl(params => {
+                params.set('view', 'create');
+                params.delete('order_id');
+                params.delete('mode');
+            });
+        } else if (pageName === 'viewOrder' && options.orderId) {
+            updateBrowserUrl(params => {
+                params.set('order_id', options.orderId);
+                if (options.startInEditMode) {
+                    params.set('mode', 'edit');
+                } else {
+                    params.delete('mode');
+                }
+                params.delete('view');
+            });
+        }
+
+        if (options.order) {
+            setActiveOrder(options.order);
+        }
+
+        if (typeof options.startInEditMode === 'boolean') {
+            setStartInEditMode(options.startInEditMode);
+        }
+
+        setPage(pageName);
+    }, [updateBrowserUrl]);
+
+    const viewOrder = (order) => {
+        window.location.href = `/order/${order.id}`;
+    };
+    
+    const saveOrder = async (orderToSave) => {
+        try {
+            const response = await fetch('/api/orders', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(orderToSave)
+            });
+            const result = await response.json();
+            if (result.status === 'success' && result.order) {
+                const savedOrderFromServer = result.order;
+                setOrders(prevOrders => {
+                    const index = prevOrders.findIndex(o => o.id === savedOrderFromServer.id);
+                    if (index !== -1) {
+                        // Update existing order
+                        const updatedOrders = [...prevOrders];
+                        updatedOrders[index] = savedOrderFromServer;
+                        return updatedOrders;
+                    } else {
+                        // Add new order
+                        return [savedOrderFromServer, ...prevOrders.filter(o => o.id !== savedOrderFromServer.id)];
+                    }
+                });
+                return savedOrderFromServer;
+            } else {
+                console.error("Failed to save order - server response:", result.message || "Unknown server error");
+                throw new Error(result.message || "Failed to save order on server.");
+            }
+        } catch (error) {
+            console.error("Failed to save order - network/fetch error:", error);
+            throw error; // Re-throw to be caught by caller
+        }
+    };
+    
+    const deleteOrder = async (orderId, deletePayload) => { // deletePayload now comes from handleDelete
+        const orderToDelete = orders.find(o => o.id === orderId);
+        if (!orderToDelete) {
+            console.warn("Order not found for deletion:", orderId);
+            throw new Error("Order not found locally. Cannot proceed with deletion.");
+        }
+
+        // The deletePayload already has status: "Deleted" and potentially deleteConfirmation
+        // It also includes the latest statusHistory from the form's state.
+        // We just need to ensure the statusHistory is correctly updated if not already done by createOrderObject logic
+        const finalPayload = {
+            ...deletePayload, // This comes from handleDelete, based on formData
+            status: "Deleted", // Ensure it's set
+            statusHistory: [
+                ...(deletePayload.statusHistory || orderToDelete.statusHistory || []), // Use payload's history, fallback to existing
+                { status: "Deleted", date: new Date().toISOString() }
+            ].filter((item, index, self) => // Deduplicate status history just in case
+                index === self.findIndex((t) => (
+                    t.status === item.status && new Date(t.date).getTime() === new Date(item.date).getTime()
+                )) || item.status !== "Deleted" // Keep all non-deleted, allow multiple "Deleted" if dates differ (though unlikely here)
+            )
+        };
+         // Ensure the last entry for "Deleted" is the most recent one if multiple somehow exist
+        const deletedEntries = finalPayload.statusHistory.filter(h => h.status === "Deleted");
+        if (deletedEntries.length > 1) {
+            const latestDeletedEntry = deletedEntries.reduce((latest, current) => 
+                new Date(current.date) > new Date(latest.date) ? current : latest
+            );
+            finalPayload.statusHistory = [
+                ...finalPayload.statusHistory.filter(h => h.status !== "Deleted"),
+                latestDeletedEntry
+            ];
+        }
+
+
+        // saveOrder will handle the API call and local state update
+        // It expects the full order object to save/update.
+        await saveOrder(finalPayload); 
+    };
+    
+    const renderPage = () => {
+        switch(page) {
+            case 'createOrder':
+                return <OrderForm navigateTo={navigateTo} saveOrder={saveOrder} allContacts={allContacts} allSelectableItems={allSelectableItems} itemData={itemData} packageData={packageData} fetchAndUpdateContacts={fetchAndUpdateContacts} setOrderForEmailModal={setOrderForEmailModal} startInEditMode={true} branding={appSettings} />;
+            case 'viewOrder':
+                // This case is now handled by a separate page, but we keep the OrderForm logic
+                // for when the user navigates back to edit from the view page via URL param.
+                return <OrderForm order={activeOrder} navigateTo={navigateTo} saveOrder={saveOrder} deleteOrder={deleteOrder} allContacts={allContacts} allSelectableItems={allSelectableItems} itemData={itemData} packageData={packageData} fetchAndUpdateContacts={fetchAndUpdateContacts} setOrderForEmailModal={setOrderForEmailModal} startInEditMode={startInEditMode} branding={appSettings} />;
+            case 'dashboard':
+            default:
+                return <Dashboard orders={orders} navigateTo={navigateTo} viewOrder={viewOrder} allContacts={allContacts} allSelectableItems={allSelectableItems} setOrderForEmailModal={setOrderForEmailModal} branding={appSettings} orderViewSettings={orderViewSettings} initialViewState={orderViewState} onViewStateChange={persistOrderViewState} />;
+        }
+    }
+
+    const handleLogout = useCallback(async () => {
+        try {
+            const response = await fetch('/shutdown', { method: 'POST' });
+            if (response.ok) {
+                // Server acknowledged shutdown, update page content
+                document.body.innerHTML = '<div style="text-align: center; padding: 50px; font-family: sans-serif; font-size: 1.2em; color: #333;">Application has been shut down. You can now close this tab.</div>';
+                // No automatic window.close() as it's unreliable and can be blocked.
+            } else {
+                // Server responded, but not with success (e.g., 500 error if shutdown endpoint failed before responding)
+                alert('Failed to send shutdown signal to the server (server responded with an error). Please close the tab manually.');
+            }
+        } catch (error) {
+            // Network error or server completely unreachable (possibly already shut down)
+            console.error('Error during shutdown attempt:', error);
+            alert('Error attempting to shut down the server. Please use Task Manager to stop the task.');
+        }
+    }, []);
+
+    useEffect(() => {
+        window.fireCoastNavigateTo = (target, options = {}) => {
+            if (target === 'createOrder') {
+                navigateTo('createOrder');
+            } else if (target === 'dashboard') {
+                navigateTo('dashboard');
+            } else if (target === 'viewOrder') {
+                if (options.order) {
+                    navigateTo('viewOrder', {
+                        order: options.order,
+                        orderId: options.order.id,
+                        startInEditMode: options.startInEditMode ?? false,
+                    });
+                } else if (options.orderId) {
+                    navigateTo('viewOrder', {
+                        orderId: options.orderId,
+                        startInEditMode: options.startInEditMode ?? false,
+                    });
+                }
+            }
+        };
+        window.fireCoastLogout = handleLogout;
+        return () => {
+            delete window.fireCoastNavigateTo;
+            delete window.fireCoastLogout;
+        };
+    }, [handleLogout, navigateTo]);
+
+    if (isLoading) {
+        return <div className="text-center p-8">Loading...</div>;
+    }
+
+    return (
+        <div className="bg-slate-50 min-h-screen font-sans">
+            {orderForEmailModal && (
+                <EmailModal
+                    order={orderForEmailModal}
+                    allItems={allSelectableItems}
+                    appSettings={appSettings} // Pass appSettings
+                    saveOrder={saveOrder}
+                    onClose={() => setOrderForEmailModal(null)}
+                    onOrderUpdatedAfterEmail={handleOrderUpdate} // Pass the new handler
+                    onEmailClientOpened={() => {
+                        setOrderForEmailModal(null);
+                        navigateTo('dashboard'); 
+                    }}
+                />
+            )}
+            <div className="max-w-7xl mx-auto p-4 sm:p-6 lg:p-8">
+                {renderPage()}
+            </div>
+        </div>
+    );
+};
+
+const container = document.getElementById('root');
+const root = ReactDOM.createRoot(container);
+root.render(<App />);
