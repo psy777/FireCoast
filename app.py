@@ -642,10 +642,17 @@ def _sanitize_order_view_settings(candidate: Any) -> Dict[str, Any]:
         candidate = {}
     sanitized = {
         'remember_last_view': bool(candidate.get('remember_last_view', True)),
-        'status_palette': _sanitize_status_palette(candidate.get('status_palette')),
         'last_view_state': _sanitize_last_view_state(candidate.get('last_view_state')),
     }
     return sanitized
+
+
+def _try_sanitize_status_palette(candidate: Any) -> Optional[List[Dict[str, Any]]]:
+    if isinstance(candidate, tuple):
+        candidate = list(candidate)
+    if isinstance(candidate, list):
+        return _sanitize_status_palette(candidate)
+    return None
 
 
 def _coerce_order_view_by_device_map(candidate: Any) -> Dict[str, Dict[str, Any]]:
@@ -683,9 +690,47 @@ def _resolve_order_view_settings_for_device(
     return device_token, order_view_by_device, order_view
 
 
-def _serialize_order_view_settings(order_view_settings: Dict[str, Any]) -> Dict[str, Any]:
+def _resolve_order_status_palette(
+    settings: Dict[str, Any],
+    *,
+    create_if_missing: bool = False,
+) -> List[Dict[str, Any]]:
+    explicit = _try_sanitize_status_palette(settings.get('order_status_palette'))
+    if explicit:
+        return explicit
+
+    legacy_sources: List[Any] = []
+    legacy_view = settings.get('order_view')
+    if isinstance(legacy_view, dict):
+        legacy_sources.append(legacy_view.get('status_palette'))
+
+    legacy_scoped = settings.get('order_view_by_device')
+    if isinstance(legacy_scoped, dict):
+        for entry in legacy_scoped.values():
+            if isinstance(entry, dict):
+                legacy_sources.append(entry.get('status_palette'))
+
+    for candidate in legacy_sources:
+        palette = _try_sanitize_status_palette(candidate)
+        if palette:
+            if create_if_missing:
+                settings['order_status_palette'] = palette
+            return palette
+
+    palette = _default_status_palette()
+    if create_if_missing:
+        settings['order_status_palette'] = palette
+    return palette
+
+
+def _serialize_order_view_settings(
+    order_view_settings: Dict[str, Any],
+    *,
+    status_palette: Optional[List[Dict[str, Any]]] = None,
+) -> Dict[str, Any]:
     palette_payload = []
-    for entry in order_view_settings.get('status_palette', []):
+    source_palette = status_palette if status_palette is not None else order_view_settings.get('status_palette', [])
+    for entry in source_palette:
         palette_payload.append({
             'value': entry.get('value'),
             'label': entry.get('label'),
@@ -7345,7 +7390,8 @@ def update_invoice_settings():
 def get_order_view_settings():
     settings = _load_settings_dict()
     _, _, order_view = _resolve_order_view_settings_for_device(settings, create_if_missing=False)
-    return jsonify(_serialize_order_view_settings(order_view))
+    palette = _resolve_order_status_palette(settings)
+    return jsonify(_serialize_order_view_settings(order_view, status_palette=palette))
 
 
 @app.route('/api/order-view-settings', methods=['POST'])
@@ -7364,9 +7410,11 @@ def update_order_view_settings():
     if remember_key is not None:
         order_view['remember_last_view'] = bool(payload.get(remember_key))
 
+    palette_override: Optional[List[Dict[str, Any]]] = None
     palette_key = 'status_palette' if 'status_palette' in payload else 'statusPalette' if 'statusPalette' in payload else None
     if palette_key is not None:
-        order_view['status_palette'] = _sanitize_status_palette(payload.get(palette_key))
+        palette_override = _sanitize_status_palette(payload.get(palette_key))
+        settings['order_status_palette'] = palette_override
 
     view_state_key = 'last_view_state' if 'last_view_state' in payload else 'lastViewState' if 'lastViewState' in payload else None
     if view_state_key is not None:
@@ -7375,13 +7423,18 @@ def update_order_view_settings():
     if device_token:
         order_view_by_device[device_token] = order_view
 
-    if order_view_by_device:
-        settings['order_view_by_device'] = order_view_by_device
+    cleaned_scoped: Dict[str, Dict[str, Any]] = {}
+    for scoped_token, scoped_settings in order_view_by_device.items():
+        cleaned_scoped[scoped_token] = _sanitize_order_view_settings(scoped_settings)
+
+    if cleaned_scoped:
+        settings['order_view_by_device'] = cleaned_scoped
     else:
         settings.pop('order_view_by_device', None)
 
     write_json_file(SETTINGS_FILE, settings)
-    return jsonify(_serialize_order_view_settings(order_view))
+    palette = palette_override or _resolve_order_status_palette(settings)
+    return jsonify(_serialize_order_view_settings(order_view, status_palette=palette))
 
 
 @app.route('/api/system/upgrade', methods=['POST'])

@@ -103,6 +103,8 @@ def test_order_view_settings_persist_updates(order_view_client):
     scoped = persisted.get('order_view_by_device', {})
     assert scoped[device_token]['remember_last_view'] is False
     assert scoped[device_token]['last_view_state']['search_input'] == 'urgent'
+    assert 'status_palette' not in scoped[device_token]
+    assert persisted['order_status_palette'][0]['value'] == 'Shipping'
 
     follow_up = client.get('/api/order-view-settings')
     follow_payload = follow_up.get_json()
@@ -111,7 +113,7 @@ def test_order_view_settings_persist_updates(order_view_client):
     assert follow_payload['statusPalette'][0]['value'] == 'Shipping'
 
 
-def test_order_view_settings_are_scoped_per_device(order_view_client):
+def test_order_view_settings_share_status_palette_but_scope_view_state(order_view_client):
     client, settings_file = order_view_client
 
     first_device = 'device-one'
@@ -134,7 +136,7 @@ def test_order_view_settings_are_scoped_per_device(order_view_client):
     _set_device_token(client, second_device)
     second_default = client.get('/api/order-view-settings').get_json()
     assert second_default['rememberLastView'] is True
-    assert second_default['statusPalette'][0]['value'] == 'Draft'
+    assert second_default['statusPalette'][0]['value'] == 'FirstOnly'
     assert second_default['lastViewState']['searchInput'] == ''
 
     second_payload = {
@@ -153,7 +155,7 @@ def test_order_view_settings_are_scoped_per_device(order_view_client):
     _set_device_token(client, first_device)
     first_view = client.get('/api/order-view-settings').get_json()
     assert first_view['rememberLastView'] is False
-    assert first_view['statusPalette'][0]['value'] == 'FirstOnly'
+    assert first_view['statusPalette'][0]['value'] == 'SecondOnly'
     assert first_view['lastViewState']['searchInput'] == 'first'
 
     _set_device_token(client, second_device)
@@ -163,7 +165,10 @@ def test_order_view_settings_are_scoped_per_device(order_view_client):
     assert second_view['lastViewState']['searchInput'] == 'second'
 
     persisted = json.loads(settings_file.read_text())
+    assert persisted['order_status_palette'][0]['value'] == 'SecondOnly'
     scoped = persisted.get('order_view_by_device', {})
     assert first_device in scoped and second_device in scoped
     assert scoped[first_device]['last_view_state']['search_input'] == 'first'
     assert scoped[second_device]['last_view_state']['search_input'] == 'second'
+    assert 'status_palette' not in scoped[first_device]
+    assert 'status_palette' not in scoped[second_device]
