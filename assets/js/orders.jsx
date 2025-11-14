@@ -2863,10 +2863,9 @@ const Dashboard = ({ orders, navigateTo, viewOrder, allContacts, allSelectableIt
                         </div>
                     )}
                     {searchError && <p className="text-xs text-red-600">{searchError}</p>}
-                </div>
-                <div className="pt-4 border-t border-slate-200">
-                    <div className="overflow-x-auto">
-                        <table className="w-full text-sm text-left text-slate-500">
+                    <div className="pt-4 border-t border-slate-200">
+                        <div className="overflow-x-auto">
+                            <table className="w-full text-sm text-left text-slate-500">
                             <thead className="text-xs text-slate-700 uppercase bg-slate-100">
                                 <tr>
                                     {orderedColumns.map((column) => {
