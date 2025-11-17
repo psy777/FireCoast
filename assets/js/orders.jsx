@@ -88,6 +88,29 @@ const createDefaultOrderViewState = () => ({
     columnWidths: { ...DEFAULT_COLUMN_WIDTHS },
 });
 
+const ensureFilterRulesHaveIds = (entries, startCounter = 1) => {
+    if (!Array.isArray(entries)) {
+        return { filters: [], nextCounter: Math.max(1, startCounter) };
+    }
+    const usedIds = new Set();
+    let counter = Math.max(1, startCounter);
+    const filters = [];
+    entries.forEach((entry) => {
+        if (!entry || typeof entry !== 'object') {
+            return;
+        }
+        const rule = { ...entry };
+        let candidateId = typeof rule.id === 'string' ? rule.id.trim() : '';
+        while (!candidateId || usedIds.has(candidateId)) {
+            candidateId = `filter-${counter++}`;
+        }
+        rule.id = candidateId;
+        usedIds.add(candidateId);
+        filters.push(rule);
+    });
+    return { filters, nextCounter: counter };
+};
+
 const sanitizeColumnOrderPreference = (candidate) => {
     const resolved = [];
     if (Array.isArray(candidate)) {
@@ -178,7 +201,7 @@ const sanitizeOrderViewStateSnapshot = (candidate) => {
         base.searchPills = [...candidate.searchPills];
     }
     if (Array.isArray(candidate.advancedFilters)) {
-        base.advancedFilters = candidate.advancedFilters.map((entry) => ({ ...entry }));
+        base.advancedFilters = ensureFilterRulesHaveIds(candidate.advancedFilters).filters;
     }
     if (Array.isArray(candidate.statusSelections)) {
         base.statusSelections = [...candidate.statusSelections];
@@ -230,6 +253,7 @@ const FILTER_FIELDS = [
     { id: 'customer', label: 'Customer', type: 'text' },
     { id: 'title', label: 'Title', type: 'text' },
     { id: 'displayId', label: 'Reference ID', type: 'text' },
+    { id: 'customerReference', label: 'Customer Reference', type: 'text' },
     { id: 'notes', label: 'Notes', type: 'text' },
     { id: 'total', label: 'Total Amount', type: 'number' },
     { id: 'date', label: 'Order Date', type: 'date' },
@@ -2014,7 +2038,12 @@ const Dashboard = ({ orders, navigateTo, viewOrder, allContacts, allSelectableIt
         const snapshot = sanitizeOrderViewStateSnapshot(initialViewState);
         setSearchPills(Array.isArray(snapshot.searchPills) ? snapshot.searchPills : []);
         setInputValue(snapshot.searchInput || '');
-        setAdvancedFilters(Array.isArray(snapshot.advancedFilters) ? snapshot.advancedFilters : []);
+        const { filters: hydratedFilters, nextCounter } = ensureFilterRulesHaveIds(
+            Array.isArray(snapshot.advancedFilters) ? snapshot.advancedFilters : [],
+            nextFilterIdRef.current,
+        );
+        setAdvancedFilters(hydratedFilters);
+        nextFilterIdRef.current = Math.max(nextCounter, nextFilterIdRef.current);
         setStatusSelections(Array.isArray(snapshot.statusSelections) ? snapshot.statusSelections : []);
         setActiveSearchQuery(snapshot.searchQuery || '');
         setColumnOrder(sanitizeColumnOrderPreference(snapshot.columnOrder));
@@ -2201,6 +2230,9 @@ const Dashboard = ({ orders, navigateTo, viewOrder, allContacts, allSelectableIt
                 }
                 if (fieldId === 'displayId') {
                     return order.display_id || '';
+                }
+                if (fieldId === 'customerReference') {
+                    return order.customerReference || '';
                 }
                 if (fieldId === 'notes') {
                     return order.notes || '';
