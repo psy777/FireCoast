@@ -19,7 +19,7 @@
     </main>
     {% raw %}
     <script type="text/babel">
-const { useState, useEffect, useMemo } = React;
+const { useState, useEffect, useMemo, useRef } = React;
 
 const EMPTY_CONTACT = {
     id: null,
@@ -272,6 +272,39 @@ const ContactMentions = ({ mentions }) => {
     );
 };
 
+const CopyToast = ({ notice }) => {
+    if (!notice || !notice.message) return null;
+    const isError = notice.tone === 'error';
+    return (
+        <div className="pointer-events-none fixed top-6 left-1/2 z-40 -translate-x-1/2">
+            <div
+                className={`inline-flex items-center gap-2 rounded-full px-4 py-2 text-sm font-semibold shadow-lg border ${
+                    isError ? 'bg-red-600 border-red-500 text-white' : 'bg-white border-slate-200 text-slate-700'
+                }`}
+            >
+                {isError ? (
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
+                        <path
+                            fillRule="evenodd"
+                            d="M10 18a8 8 0 100-16 8 8 0 000 16zm-.75-11.5a.75.75 0 011.5 0v4.5a.75.75 0 01-1.5 0V6.5zm.75 8a1 1 0 100-2 1 1 0 000 2z"
+                            clipRule="evenodd"
+                        />
+                    </svg>
+                ) : (
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 text-emerald-500" viewBox="0 0 20 20" fill="currentColor">
+                        <path
+                            fillRule="evenodd"
+                            d="M16.704 4.153a.75.75 0 0 1 .143 1.052l-7.25 9a.75.75 0 0 1-1.154.057l-3.25-3.5a.75.75 0 1 1 1.102-1.018l2.65 2.852 6.7-8.322a.75.75 0 0 1 1.059-.121z"
+                            clipRule="evenodd"
+                        />
+                    </svg>
+                )}
+                <span>{notice.message}</span>
+            </div>
+        </div>
+    );
+};
+
 const ContactDetail = ({ contact, onSave, isSaving, onCancelCreate, onDelete, isDeleting }) => {
     const createBlankEmail = () => ({ id: generateLocalId('email'), label: 'Email', value: '', isPrimary: false });
     const createBlankPhone = () => ({ id: generateLocalId('phone'), label: 'Phone', value: '', isPrimary: false });
@@ -368,12 +401,23 @@ const ContactDetail = ({ contact, onSave, isSaving, onCancelCreate, onDelete, is
     const [formState, setFormState] = useState(mapContactToFormState(contact));
     const [isDirty, setIsDirty] = useState(false);
     const [mode, setMode] = useState(contact?.id ? 'view' : 'create');
+    const [copyNotice, setCopyNotice] = useState(null);
+    const copyTimerRef = useRef(null);
 
     useEffect(() => {
         setFormState(mapContactToFormState(contact));
         setIsDirty(false);
         setMode(contact?.id ? 'view' : 'create');
+        setCopyNotice(null);
     }, [contact]);
+
+    useEffect(() => {
+        return () => {
+            if (copyTimerRef.current) {
+                clearTimeout(copyTimerRef.current);
+            }
+        };
+    }, []);
 
     if (!contact) {
         return (
@@ -490,21 +534,96 @@ const ContactDetail = ({ contact, onSave, isSaving, onCancelCreate, onDelete, is
     const phoneEntries = formState.contactDetails.phones.filter(phone => normalizePhoneDigits(phone.value).length);
     const addressEntries = dedupeAddresses(addressList).filter(addressHasFields);
 
+    const showCopyNotice = (message, tone = 'success') => {
+        if (!message) return;
+        if (copyTimerRef.current) {
+            clearTimeout(copyTimerRef.current);
+        }
+        setCopyNotice({ message, tone });
+        copyTimerRef.current = setTimeout(() => setCopyNotice(null), 2400);
+    };
+
+    const copyToClipboard = async (value, label) => {
+        if (!value) return;
+        try {
+            if (navigator.clipboard?.writeText) {
+                await navigator.clipboard.writeText(value);
+            } else {
+                const textarea = document.createElement('textarea');
+                textarea.value = value;
+                textarea.setAttribute('readonly', '');
+                textarea.style.position = 'absolute';
+                textarea.style.left = '-9999px';
+                document.body.appendChild(textarea);
+                textarea.select();
+                document.execCommand('copy');
+                document.body.removeChild(textarea);
+            }
+            showCopyNotice(`${label} copied`);
+        } catch (error) {
+            console.error('Unable to copy contact field', error);
+            showCopyNotice('Unable to copy right now', 'error');
+        }
+    };
+
+    const CopyableCard = ({ title, value, helperText, hint, isPrimary = false }) => {
+        const hasValue = Boolean(value);
+        return (
+            <button
+                type="button"
+                onClick={() => hasValue && copyToClipboard(value, title)}
+                className={`flex w-full items-start justify-between gap-3 rounded-xl border px-4 py-3 text-left shadow-sm transition ${
+                    hasValue
+                        ? 'bg-white border-slate-200 hover:border-orange-300 hover:shadow-md'
+                        : 'bg-slate-50 border-slate-200 cursor-not-allowed'
+                }`}
+                disabled={!hasValue}
+            >
+                <div className="space-y-1">
+                    <div className="flex items-center gap-2">
+                        <p className="text-xs uppercase tracking-wide text-slate-500">{title}</p>
+                        {isPrimary && <span className="text-[10px] font-semibold text-orange-700 bg-orange-100 px-2 py-0.5 rounded-full">Primary</span>}
+                    </div>
+                    <p className={`text-sm font-semibold ${hasValue ? 'text-slate-800' : 'text-slate-400'}`}>{hasValue ? value : 'Not provided'}</p>
+                    {helperText && <p className="text-xs text-slate-500">{helperText}</p>}
+                </div>
+                <span
+                    className={`shrink-0 self-center rounded-full border px-3 py-1 text-xs font-semibold ${
+                        hasValue ? 'border-orange-200 text-orange-700 bg-orange-50' : 'border-slate-200 text-slate-400 bg-white'
+                    }`}
+                >
+                    {hasValue ? hint || 'Copy' : 'Unavailable'}
+                </span>
+            </button>
+        );
+    };
+
     return (
         <div className="space-y-6">
-            <div className="bg-white border border-slate-200 rounded-xl shadow-sm p-6">
+            <CopyToast notice={copyNotice} />
+            <div className="bg-white border border-slate-200 rounded-xl shadow-sm p-6 space-y-6">
                 <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-                    <div>
+                    <div className="space-y-2">
                         <p className="text-xs uppercase tracking-wider text-slate-500">{isCreateMode ? 'New Contact' : 'Contact'}</p>
-                        <h2 className="mt-1 text-2xl font-semibold text-slate-800">{displayName}</h2>
-                        {showCompanyLine && <p className="text-sm text-slate-500">{formState.companyName}</p>}
+                        <div className="flex flex-wrap items-center gap-2">
+                            <h2 className="text-2xl font-semibold text-slate-800 break-words">{displayName}</h2>
+                            {formState.handle && (
+                                <button
+                                    type="button"
+                                    onClick={() => copyToClipboard(`@${formState.handle}`, 'Handle')}
+                                    className="inline-flex items-center gap-1 rounded-full bg-orange-50 px-3 py-1 text-xs font-semibold text-orange-700 border border-orange-200 hover:bg-orange-100"
+                                >
+                                    @{formState.handle}
+                                    <span className="text-[10px]">Copy</span>
+                                </button>
+                            )}
+                        </div>
+                        {showCompanyLine && <p className="text-sm text-slate-500 break-words">{formState.companyName}</p>}
+                        {!hasIdentity && (
+                            <p className="text-xs text-slate-500">Add a name or company to make this contact easier to scan.</p>
+                        )}
                     </div>
                     <div className="flex flex-wrap gap-2">
-                        {formState.handle && (
-                            <span className="inline-flex items-center space-x-1 bg-orange-100 text-orange-700 px-3 py-1 rounded-full text-sm font-semibold">
-                                <span>@{formState.handle}</span>
-                            </span>
-                        )}
                         {primaryOrders.length > 0 && (
                             <span className="inline-flex items-center bg-slate-100 text-slate-700 px-3 py-1 rounded-full text-xs font-semibold">
                                 Primary for {primaryOrders.length} order{primaryOrders.length === 1 ? '' : 's'}
@@ -521,65 +640,99 @@ const ContactDetail = ({ contact, onSave, isSaving, onCancelCreate, onDelete, is
                         )}
                     </div>
                 </div>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-6 text-sm text-slate-600">
-                    <div>
-                        <p className="font-semibold text-slate-700">Emails</p>
+
+                <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                    <div className="space-y-3">
+                        <div className="flex items-center justify-between">
+                            <h3 className="text-sm font-semibold text-slate-700">Emails</h3>
+                            <span className="text-xs text-slate-500">Tap to copy</span>
+                        </div>
                         {emailEntries.length === 0 ? (
-                            <p>Not provided</p>
+                            <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-500">
+                                No emails saved yet.
+                            </div>
                         ) : (
-                            <ul className="space-y-1">
+                            <div className="space-y-3">
                                 {emailEntries.map(email => (
-                                    <li key={email.id} className="flex items-center justify-between gap-2">
-                                        <span>{email.label}: {email.value}</span>
-                                        {email.isPrimary && <span className="text-xs font-semibold text-orange-600">Primary</span>}
-                                    </li>
+                                    <CopyableCard
+                                        key={email.id}
+                                        title={email.label || 'Email'}
+                                        value={email.value}
+                                        helperText={email.isPrimary ? 'Primary email' : undefined}
+                                        hint="Copy email"
+                                        isPrimary={email.isPrimary}
+                                    />
                                 ))}
-                            </ul>
+                            </div>
                         )}
                     </div>
-                    <div>
-                        <p className="font-semibold text-slate-700">Phones</p>
+                    <div className="space-y-3">
+                        <div className="flex items-center justify-between">
+                            <h3 className="text-sm font-semibold text-slate-700">Phones</h3>
+                            <span className="text-xs text-slate-500">Tap to copy</span>
+                        </div>
                         {phoneEntries.length === 0 ? (
-                            <p>Not provided</p>
+                            <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-500">
+                                No phone numbers saved yet.
+                            </div>
                         ) : (
-                            <ul className="space-y-1">
+                            <div className="space-y-3">
                                 {phoneEntries.map(phone => (
-                                    <li key={phone.id} className="flex items-center justify-between gap-2">
-                                        <span>{phone.label}: {formatPhoneNumber(phone.value)}</span>
-                                        {phone.isPrimary && <span className="text-xs font-semibold text-orange-600">Primary</span>}
-                                    </li>
+                                    <CopyableCard
+                                        key={phone.id}
+                                        title={phone.label || 'Phone'}
+                                        value={formatPhoneNumber(phone.value)}
+                                        helperText={phone.isPrimary ? 'Primary phone' : undefined}
+                                        hint="Copy phone"
+                                        isPrimary={phone.isPrimary}
+                                    />
                                 ))}
-                            </ul>
+                            </div>
                         )}
                     </div>
                 </div>
-                {addressEntries.length > 0 && (
-                    <div className="mt-6">
-                        <h3 className="text-sm font-semibold text-slate-700 mb-2">All Addresses</h3>
-                        <div className="space-y-2">
-                            {addressEntries.map(address => (
-                                <div key={address.id} className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm">
-                                    <div className="flex items-center justify-between">
-                                        <span className="font-semibold text-slate-700">{address.label}</span>
-                                        {address.isPrimary && <span className="text-xs font-semibold text-orange-600">Primary</span>}
-                                    </div>
-                                    <p className="text-slate-600 mt-1">{formatAddress(address)}</p>
-                                </div>
-                            ))}
-                        </div>
+
+                <div className="space-y-3">
+                    <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                        <h3 className="text-sm font-semibold text-slate-700">Addresses</h3>
+                        <span className="text-xs text-slate-500">Tap to copy full address</span>
                     </div>
-                )}
+                    {addressEntries.length === 0 ? (
+                        <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-500">
+                            No addresses on file yet.
+                        </div>
+                    ) : (
+                        <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                            {addressEntries.map(address => {
+                                const prettyAddress = formatAddress(address);
+                                return (
+                                    <CopyableCard
+                                        key={address.id}
+                                        title={address.label || 'Address'}
+                                        value={prettyAddress}
+                                        helperText={address.kind ? `${address.kind.charAt(0).toUpperCase()}${address.kind.slice(1)} address` : undefined}
+                                        hint="Copy address"
+                                        isPrimary={address.isPrimary}
+                                    />
+                                );
+                            })}
+                        </div>
+                    )}
+                </div>
+
                 {primaryOrders.length > 0 && (
-                    <div className="mt-6">
-                        <h3 className="text-sm font-semibold text-slate-700 mb-3">Primary Orders</h3>
+                    <div className="pt-2 space-y-3">
+                        <h3 className="text-sm font-semibold text-slate-700">Primary Orders</h3>
                         <ul className="space-y-2">
                             {primaryOrders.map(order => (
-                                <li key={order.orderId} className="flex items-center justify-between rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm">
+                                <li key={order.orderId} className="flex flex-col gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm sm:flex-row sm:items-center sm:justify-between">
                                     <div>
                                         <p className="font-semibold text-slate-700">{order.orderDisplayId}</p>
                                         <p className="text-xs text-slate-500">{order.status || 'Status unknown'} · Updated {formatDateTime(order.updatedAt)}</p>
                                     </div>
-                                    <a href={`/order/${order.orderId}`} className="text-xs font-semibold text-orange-600 hover:text-orange-800">View</a>
+                                    <a href={`/order/${order.orderId}`} className="text-xs font-semibold text-orange-600 hover:text-orange-800">
+                                        View order
+                                    </a>
                                 </li>
                             ))}
                         </ul>
