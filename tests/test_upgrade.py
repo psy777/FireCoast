@@ -202,6 +202,44 @@ def test_run_with_error_handling_reports_missing_executable(tmp_path):
     assert "required executable 'git' was not found" in str(excinfo.value)
 
 
+def test_clone_repository_falls_back_to_archive_when_git_missing(monkeypatch, tmp_path):
+    clone_target = tmp_path / 'clone'
+
+    def missing_runner(args, *, cwd=None):
+        raise FileNotFoundError('No such file or directory')
+
+    calls: dict[str, tuple[str, str, Path]] = {}
+
+    def fake_download(remote_url: str, branch: str, destination: Path) -> None:
+        calls['params'] = (remote_url, branch, destination)
+        destination.mkdir(parents=True, exist_ok=True)
+        (destination / 'app.py').write_text('contents')
+
+    monkeypatch.setattr(upgrade, '_download_repository_archive', fake_download)
+
+    with upgrade._clone_repository('https://github.com/example/repo.git', 'main', missing_runner, tmp_path) as path:
+        assert path.name == 'clone'
+        assert (path / 'app.py').read_text() == 'contents'
+
+    assert calls['params'][0] == 'https://github.com/example/repo.git'
+    assert calls['params'][1] == 'main'
+    assert calls['params'][2].name == 'clone'
+
+
+def test_infer_github_archive_url_supports_multiple_formats():
+    https_url = 'https://github.com/owner/repo.git'
+    ssh_url = 'git@github.com:owner/repo.git'
+    assert (
+        upgrade._infer_github_archive_url(https_url, 'branch')
+        == 'https://github.com/owner/repo/archive/refs/heads/branch.zip'
+    )
+    assert (
+        upgrade._infer_github_archive_url(ssh_url, 'branch')
+        == 'https://github.com/owner/repo/archive/refs/heads/branch.zip'
+    )
+    assert upgrade._infer_github_archive_url('https://example.com/owner/repo.git', 'branch') is None
+
+
 def test_schedule_restart_launches_new_process(monkeypatch):
     firenotes_app.app.config['TESTING'] = False
 

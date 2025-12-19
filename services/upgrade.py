@@ -9,6 +9,9 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import urllib.parse
+import urllib.request
+import zipfile
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterator, Optional, Protocol, Sequence
@@ -313,26 +316,99 @@ def _clone_repository(
     clone_target = tmp_dir / "clone"
 
     LOGGER.info("Cloning %s (branch %s) into %s", remote_url, branch, clone_target)
-    _run_with_error_handling(
-        runner,
-        [
-            "git",
-            "clone",
-            "--depth",
-            "1",
-            "--branch",
-            branch,
+    try:
+        _run_with_error_handling(
+            runner,
+            [
+                "git",
+                "clone",
+                "--depth",
+                "1",
+                "--branch",
+                branch,
+                remote_url,
+                str(clone_target),
+            ],
+            repo_root.parent,
+            f"clone repository from {remote_url}",
+        )
+    except UpgradeError as exc:
+        if "required executable" not in str(exc):
+            raise
+        LOGGER.warning(
+            "Git is unavailable; attempting archive download for %s (branch %s)",
             remote_url,
-            str(clone_target),
-        ],
-        repo_root.parent,
-        f"clone repository from {remote_url}",
-    )
+            branch,
+        )
+        _download_repository_archive(remote_url, branch, clone_target)
 
     try:
         yield clone_target
     finally:
         shutil.rmtree(tmp_dir, ignore_errors=True)
+
+
+def _download_repository_archive(remote_url: str, branch: str, destination: Path) -> None:
+    archive_url = _infer_github_archive_url(remote_url, branch)
+    if not archive_url:
+        raise UpgradeError(
+            "Git is unavailable and the repository URL does not support automatic archive download. "
+            "Please install Git to proceed with the upgrade."
+        )
+
+    staging_dir = destination.parent
+    staging_dir.mkdir(parents=True, exist_ok=True)
+    download_dir = Path(tempfile.mkdtemp(prefix="firecoast-archive-"))
+    archive_path = download_dir / "repository.zip"
+    extract_root = download_dir / "extract"
+
+    LOGGER.info("Downloading repository archive from %s", archive_url)
+    try:
+        with urllib.request.urlopen(archive_url) as response, open(archive_path, "wb") as output:
+            shutil.copyfileobj(response, output)
+
+        extract_root.mkdir(parents=True, exist_ok=True)
+        with zipfile.ZipFile(archive_path) as archive:
+            archive.extractall(extract_root)
+
+        try:
+            extracted_root = next(extract_root.iterdir())
+        except StopIteration as exc:  # pragma: no cover - defensive
+            raise UpgradeError("Downloaded archive was empty.") from exc
+
+        if destination.exists():
+            shutil.rmtree(destination, ignore_errors=True)
+        shutil.copytree(extracted_root, destination)
+    except OSError as exc:  # pragma: no cover - filesystem failures
+        LOGGER.error("Failed to persist downloaded archive: %s", exc)
+        raise UpgradeError("Unable to write downloaded archive to disk.") from exc
+    except zipfile.BadZipFile as exc:
+        LOGGER.error("Downloaded archive was not a valid zip file: %s", exc)
+        raise UpgradeError("Downloaded repository archive is corrupt.") from exc
+    except Exception as exc:  # pragma: no cover - network failures
+        LOGGER.error("Failed to download repository archive: %s", exc)
+        raise UpgradeError("Unable to download repository archive.") from exc
+    finally:
+        shutil.rmtree(download_dir, ignore_errors=True)
+
+
+def _infer_github_archive_url(remote_url: str, branch: str) -> Optional[str]:
+    """Return a GitHub archive URL for the given remote if possible."""
+
+    if remote_url.startswith("git@github.com:"):
+        repo_path = remote_url.split(":", 1)[1]
+    else:
+        parsed = urllib.parse.urlparse(remote_url)
+        if parsed.scheme in {"http", "https"} and parsed.netloc.endswith("github.com"):
+            repo_path = parsed.path.lstrip("/")
+        else:
+            return None
+
+    repo_path = repo_path[:-4] if repo_path.endswith(".git") else repo_path
+    if not repo_path:
+        return None
+
+    return f"https://github.com/{repo_path}/archive/refs/heads/{branch}.zip"
 
 
 def _synchronise_application_tree(source: Path, destination: Path) -> None:
