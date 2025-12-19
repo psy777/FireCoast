@@ -7,6 +7,16 @@
     <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script>
+        if (window.Babel && Babel.availablePresets) {
+            if (!Babel.availablePresets.env && Babel.availablePresets['env']) {
+                Babel.registerPreset('env', Babel.availablePresets['env']);
+            }
+            if (!Babel.availablePresets.react && Babel.availablePresets['react']) {
+                Babel.registerPreset('react', Babel.availablePresets['react']);
+            }
+        }
+    </script>
     <script type="text/babel" data-presets="env,react" src="/assets/js/record_mentions.jsx"></script>
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="icon" href="/favicon.ico" type="image/x-icon">
@@ -1401,7 +1411,14 @@ const ContactsApp = () => {
     );
 };
 
-ReactDOM.createRoot(document.getElementById('root')).render(<ContactsApp />);
+const contactsRoot = document.getElementById('root');
+if (contactsRoot) {
+    if (ReactDOM.createRoot) {
+        ReactDOM.createRoot(contactsRoot).render(<ContactsApp />);
+    } else if (ReactDOM.render) {
+        ReactDOM.render(<ContactsApp />, contactsRoot);
+    }
+}
     </script>
     {% endraw %}
 </body>
