@@ -81,6 +81,45 @@ const formatPhoneNumber = (value = '') => {
     return `(${digits.slice(0, 3)}) ${digits.slice(3, 6)} ${digits.slice(6)}`;
 };
 
+const CopyIconButton = ({ value, label }) => {
+    const [copied, setCopied] = React.useState(false);
+
+    const handleCopy = async () => {
+        if (!value) return;
+        try {
+            if (navigator?.clipboard?.writeText) {
+                await navigator.clipboard.writeText(value);
+            } else {
+                const helper = document.createElement('textarea');
+                helper.value = value;
+                document.body.appendChild(helper);
+                helper.select();
+                document.execCommand('copy');
+                document.body.removeChild(helper);
+            }
+            setCopied(true);
+            setTimeout(() => setCopied(false), 1200);
+        } catch (err) {
+            console.error('Copy failed', err);
+        }
+    };
+
+    return (
+        <button
+            type="button"
+            onClick={handleCopy}
+            className={`inline-flex h-8 w-8 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-500 transition hover:text-orange-600 hover:border-orange-400 focus:outline-none focus:ring-2 focus:ring-orange-500 ${copied ? 'ring-2 ring-orange-500 text-orange-600 border-orange-400' : ''}`}
+            aria-label={label ? `Copy ${label}` : 'Copy value'}
+        >
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="h-4 w-4">
+                <path d="M16 1.5H8.75A2.25 2.25 0 0 0 6.5 3.75V6H5A2.25 2.25 0 0 0 2.75 8.25v12A2.25 2.25 0 0 0 5 22.5h8.25A2.25 2.25 0 0 0 15.5 20.25V18h1.5A2.25 2.25 0 0 0 19.25 15.75V4.75L16 1.5Zm-1.25 3v-.69l1.44 1.44h-.69A.5.5 0 0 1 14.75 4.5Z" />
+                <path d="M6.5 3.75A1.25 1.25 0 0 1 7.75 2.5h6.25V4a1.75 1.75 0 0 0 1.75 1.75H17v10a1.25 1.25 0 0 1-1.25 1.25h-1.5V8.25A2.25 2.25 0 0 0 12 6H6.5V3.75Z" />
+            </svg>
+            <span className="sr-only">{copied ? 'Copied' : 'Copy'}</span>
+        </button>
+    );
+};
+
 const addressHasFields = (address = {}) => {
     if (!address) return false;
     return [address.street, address.city, address.state, address.postalCode]
@@ -553,22 +592,25 @@ const ContactDetail = ({ contact, onSave, isSaving, onCancelCreate, onDelete, is
                 </div>
 
                 {isViewMode && (
-                    <div className="mt-4 grid grid-cols-1 sm:grid-cols-3 gap-3 text-sm">
-                        <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
-                            <p className="text-xs uppercase tracking-wide text-slate-500">Email</p>
-                            <p className="mt-1 font-semibold text-slate-800">{primaryEmailEntry ? primaryEmailEntry.value : 'Not provided'}</p>
-                            <p className="text-xs text-slate-500">{primaryEmailEntry?.label || 'Primary'}</p>
-                        </div>
-                        <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
-                            <p className="text-xs uppercase tracking-wide text-slate-500">Phone</p>
-                            <p className="mt-1 font-semibold text-slate-800">{primaryPhoneEntry ? formatPhoneNumber(primaryPhoneEntry.value) : 'Not provided'}</p>
-                            <p className="text-xs text-slate-500">{primaryPhoneEntry?.label || 'Primary'}</p>
-                        </div>
-                        <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
-                            <p className="text-xs uppercase tracking-wide text-slate-500">Address</p>
-                            <p className="mt-1 font-semibold text-slate-800">{primaryAddressEntry ? formatAddress(primaryAddressEntry) : 'Not provided'}</p>
-                            <p className="text-xs text-slate-500">{primaryAddressEntry?.label || 'Preferred'}</p>
-                        </div>
+                    <div className="mt-4 flex flex-wrap gap-3 text-sm text-slate-700">
+                        {primaryEmailEntry && (
+                            <div className="inline-flex items-center gap-2 rounded-full bg-slate-100 px-3 py-2">
+                                <span className="font-medium">{primaryEmailEntry.value}</span>
+                                <CopyIconButton value={primaryEmailEntry.value} label={`${primaryEmailEntry.label || 'Email'} ${primaryEmailEntry.value}`} />
+                            </div>
+                        )}
+                        {primaryPhoneEntry && (
+                            <div className="inline-flex items-center gap-2 rounded-full bg-slate-100 px-3 py-2">
+                                <span className="font-medium">{formatPhoneNumber(primaryPhoneEntry.value)}</span>
+                                <CopyIconButton value={formatPhoneNumber(primaryPhoneEntry.value)} label={`${primaryPhoneEntry.label || 'Phone'} ${formatPhoneNumber(primaryPhoneEntry.value)}`} />
+                            </div>
+                        )}
+                        {primaryAddressEntry && (
+                            <div className="inline-flex items-center gap-2 rounded-full bg-slate-100 px-3 py-2">
+                                <span className="font-medium">{formatAddress(primaryAddressEntry)}</span>
+                                <CopyIconButton value={formatAddress(primaryAddressEntry)} label={`${primaryAddressEntry.label || 'Address'} ${formatAddress(primaryAddressEntry)}`} />
+                            </div>
+                        )}
                     </div>
                 )}
             </div>
@@ -579,19 +621,25 @@ const ContactDetail = ({ contact, onSave, isSaving, onCancelCreate, onDelete, is
                         <h3 className="text-base font-semibold text-slate-800">Contact info</h3>
                         <div className="divide-y divide-slate-100">
                             {emailEntries.length > 0 ? emailEntries.map(entry => (
-                                <div key={entry.id} className="py-3 flex flex-col">
-                                    <span className="text-[13px] text-slate-500">{entry.label || 'Email'}</span>
-                                    <span className="text-sm font-medium text-slate-900">{entry.value}</span>
-                                    {entry.isPrimary && <span className="text-xs text-orange-600">Primary</span>}
+                                <div key={entry.id} className="py-3 flex items-start justify-between gap-3">
+                                    <div className="flex-1">
+                                        <span className="text-[13px] text-slate-500 block">{entry.label || 'Email'}</span>
+                                        <span className="text-sm font-medium text-slate-900">{entry.value}</span>
+                                        {entry.isPrimary && <span className="ml-2 text-xs text-orange-600">Primary</span>}
+                                    </div>
+                                    <CopyIconButton value={entry.value} label={`${entry.label || 'Email'} ${entry.value}`} />
                                 </div>
                             )) : (
                                 <p className="py-3 text-sm text-slate-500">No emails yet.</p>
                             )}
                             {phoneEntries.length > 0 ? phoneEntries.map(entry => (
-                                <div key={entry.id} className="py-3 flex flex-col">
-                                    <span className="text-[13px] text-slate-500">{entry.label || 'Phone'}</span>
-                                    <span className="text-sm font-medium text-slate-900">{formatPhoneNumber(entry.value)}</span>
-                                    {entry.isPrimary && <span className="text-xs text-orange-600">Primary</span>}
+                                <div key={entry.id} className="py-3 flex items-start justify-between gap-3">
+                                    <div className="flex-1">
+                                        <span className="text-[13px] text-slate-500 block">{entry.label || 'Phone'}</span>
+                                        <span className="text-sm font-medium text-slate-900">{formatPhoneNumber(entry.value)}</span>
+                                        {entry.isPrimary && <span className="ml-2 text-xs text-orange-600">Primary</span>}
+                                    </div>
+                                    <CopyIconButton value={formatPhoneNumber(entry.value)} label={`${entry.label || 'Phone'} ${formatPhoneNumber(entry.value)}`} />
                                 </div>
                             )) : (
                                 <p className="py-3 text-sm text-slate-500">No phone numbers yet.</p>
@@ -604,10 +652,16 @@ const ContactDetail = ({ contact, onSave, isSaving, onCancelCreate, onDelete, is
                         {addressEntries.length > 0 ? (
                             <ul className="divide-y divide-slate-100">
                                 {addressEntries.map(entry => (
-                                    <li key={entry.id} className="py-3">
-                                        <p className="text-sm font-semibold text-slate-900">{entry.label || 'Address'}</p>
-                                        <p className="text-sm text-slate-600">{formatAddress(entry)}</p>
-                                        <p className="text-xs text-slate-500 uppercase tracking-wide">{(entry.kind || 'other').toUpperCase()}</p>
+                                    <li key={entry.id} className="py-3 flex items-start justify-between gap-3">
+                                        <div className="flex-1">
+                                            <div className="flex items-center gap-2 text-[13px] text-slate-500">
+                                                <span>{entry.label || 'Address'}</span>
+                                                {entry.kind && <span className="text-xs uppercase tracking-wide text-slate-400">{entry.kind}</span>}
+                                                {entry.isPrimary && <span className="text-xs text-orange-600">Primary</span>}
+                                            </div>
+                                            <p className="text-sm font-medium text-slate-900 mt-1">{formatAddress(entry)}</p>
+                                        </div>
+                                        <CopyIconButton value={formatAddress(entry)} label={`${entry.label || 'Address'} ${formatAddress(entry)}`} />
                                     </li>
                                 ))}
                             </ul>
@@ -824,6 +878,15 @@ const ContactsApp = () => {
     const [isSaving, setIsSaving] = useState(false);
     const [isDeleting, setIsDeleting] = useState(false);
     const [previousSelectedId, setPreviousSelectedId] = useState(null);
+    const [isMobileLayout, setIsMobileLayout] = useState(() => window.innerWidth < 1024);
+    const [showMobileDetail, setShowMobileDetail] = useState(false);
+
+    useEffect(() => {
+        const handleResize = () => setIsMobileLayout(window.innerWidth < 1024);
+        handleResize();
+        window.addEventListener('resize', handleResize);
+        return () => window.removeEventListener('resize', handleResize);
+    }, []);
 
 
     useEffect(() => {
@@ -874,6 +937,14 @@ const ContactsApp = () => {
         fetchDetail();
     }, [selectedId]);
 
+    useEffect(() => {
+        if (!isMobileLayout) {
+            setShowMobileDetail(true);
+        } else if (!selectedId) {
+            setShowMobileDetail(false);
+        }
+    }, [isMobileLayout, selectedId]);
+
     const filteredContacts = useMemo(() => {
         const term = searchTerm.trim().toLowerCase();
         if (!term) return contacts;
@@ -887,6 +958,13 @@ const ContactsApp = () => {
             ].some(field => field && field.toLowerCase().includes(term));
         });
     }, [contacts, searchTerm]);
+
+    const handleSelectContact = (contactId) => {
+        setSelectedId(contactId);
+        if (isMobileLayout) {
+            setShowMobileDetail(true);
+        }
+    };
 
     const handleSaveContact = async (formState) => {
         const details = formState.contactDetails || { emails: [], phones: [], addresses: [] };
@@ -1060,6 +1138,9 @@ const ContactsApp = () => {
         }
         setSelectedId('new');
         setContactDetail({ ...EMPTY_CONTACT });
+        if (isMobileLayout) {
+            setShowMobileDetail(true);
+        }
     };
 
     const cancelCreateContact = () => {
@@ -1072,6 +1153,15 @@ const ContactsApp = () => {
             setSelectedId(null);
             setContactDetail(null);
         }
+        if (isMobileLayout) {
+            setShowMobileDetail(false);
+        }
+    };
+
+    const handleBackToList = () => {
+        setShowMobileDetail(false);
+        setSelectedId(null);
+        setContactDetail(null);
     };
 
     if (isLoading) {
@@ -1084,6 +1174,74 @@ const ContactsApp = () => {
 
     const isNewContactActive = selectedId === 'new';
     const isNewButtonDisabled = isNewContactActive || isDeleting;
+
+    const listPanel = (
+        <aside className="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden">
+            <div className="px-4 py-3 border-b border-slate-200 space-y-3">
+                <div className="flex items-center justify-between gap-3">
+                    <h2 className="text-lg font-semibold text-slate-800">All Contacts</h2>
+                </div>
+                <input
+                    type="search"
+                    value={searchTerm}
+                    onChange={e => setSearchTerm(e.target.value)}
+                    placeholder="Search by name, handle, or company"
+                    className="block w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-orange-500 focus:border-orange-500"
+                />
+            </div>
+            <div className="max-h-[70vh] overflow-y-auto">
+                {filteredContacts.length === 0 && (
+                    <div className="px-4 py-6 text-sm text-slate-500">
+                        No contacts match "{searchTerm}".
+                    </div>
+                )}
+                {filteredContacts.map(contact => (
+                    <ContactListItem
+                        key={contact.id}
+                        contact={contact}
+                        isActive={contact.id === selectedId}
+                        onSelect={handleSelectContact}
+                    />
+                ))}
+            </div>
+        </aside>
+    );
+
+    const detailPanel = (
+        <section className="lg:col-span-2">
+            {isMobileLayout && showMobileDetail && (
+                <div className="mb-4 flex items-center">
+                    <button
+                        type="button"
+                        onClick={handleBackToList}
+                        className="inline-flex items-center gap-2 rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-700 shadow-sm hover:bg-slate-100"
+                    >
+                        <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                            <path d="M15 18l-6-6 6-6" strokeLinecap="round" strokeLinejoin="round" />
+                        </svg>
+                        Back
+                    </button>
+                </div>
+            )}
+            {contactDetail ? (
+                <ContactDetail
+                    contact={contactDetail}
+                    onSave={handleSaveContact}
+                    isSaving={isSaving}
+                    onCancelCreate={isMobileLayout ? handleBackToList : cancelCreateContact}
+                    onDelete={handleDeleteContact}
+                    isDeleting={isDeleting}
+                />
+            ) : (
+                <div className="bg-white border border-slate-200 rounded-xl shadow-sm p-10 flex items-center justify-center text-slate-500">
+                    Select a contact to get started.
+                </div>
+            )}
+        </section>
+    );
+
+    const shouldShowList = !isMobileLayout || !showMobileDetail;
+    const shouldShowDetail = !isMobileLayout || showMobileDetail;
 
     return (
         <div className="space-y-6">
@@ -1105,53 +1263,17 @@ const ContactsApp = () => {
                     {error}
                 </div>
             )}
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-                <aside className="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden">
-                    <div className="px-4 py-3 border-b border-slate-200 space-y-3">
-                        <div className="flex items-center justify-between gap-3">
-                            <h2 className="text-lg font-semibold text-slate-800">All Contacts</h2>
-                        </div>
-                        <input
-                            type="search"
-                            value={searchTerm}
-                            onChange={e => setSearchTerm(e.target.value)}
-                            placeholder="Search by name, handle, or company"
-                            className="block w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-orange-500 focus:border-orange-500"
-                        />
-                    </div>
-                    <div className="max-h-[70vh] overflow-y-auto">
-                        {filteredContacts.length === 0 && (
-                            <div className="px-4 py-6 text-sm text-slate-500">
-                                No contacts match "{searchTerm}".
-                            </div>
-                        )}
-                        {filteredContacts.map(contact => (
-                            <ContactListItem
-                                key={contact.id}
-                                contact={contact}
-                                isActive={contact.id === selectedId}
-                                onSelect={setSelectedId}
-                            />
-                        ))}
-                    </div>
-                </aside>
-                <section className="lg:col-span-2">
-                    {contactDetail ? (
-                        <ContactDetail
-                            contact={contactDetail}
-                            onSave={handleSaveContact}
-                            isSaving={isSaving}
-                            onCancelCreate={cancelCreateContact}
-                            onDelete={handleDeleteContact}
-                            isDeleting={isDeleting}
-                        />
-                    ) : (
-                        <div className="bg-white border border-slate-200 rounded-xl shadow-sm p-10 flex items-center justify-center text-slate-500">
-                            Select a contact to get started.
-                        </div>
-                    )}
-                </section>
-            </div>
+            {isMobileLayout ? (
+                <div className="space-y-4">
+                    {shouldShowList && listPanel}
+                    {shouldShowDetail && contactDetail && detailPanel}
+                </div>
+            ) : (
+                <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+                    {listPanel}
+                    {detailPanel}
+                </div>
+            )}
         </div>
     );
 };
