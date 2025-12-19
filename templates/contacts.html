@@ -7,7 +7,7 @@
     <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-    <script type="text/babel" src="/assets/js/record_mentions.jsx"></script>
+    <script type="text/babel" data-presets="env,react" src="/assets/js/record_mentions.jsx"></script>
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="icon" href="/favicon.ico" type="image/x-icon">
     <link rel="stylesheet" href="../assets/css/styles.css">
@@ -18,7 +18,7 @@
         <div id="root"></div>
     </main>
     {% raw %}
-    <script type="text/babel">
+    <script type="text/babel" data-presets="env,react">
 const { useState, useEffect, useMemo, useRef } = React;
 
 const EMPTY_CONTACT = {
