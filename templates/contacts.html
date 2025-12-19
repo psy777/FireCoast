@@ -586,37 +586,37 @@ const ContactDetail = ({ contact, onSave, isSaving, onCancelCreate, onDelete, is
         }
     };
 
-const CopyableCard = ({ title, value, isPrimary = false }) => {
-    const hasValue = Boolean(value);
-    return (
-        <button
-            type="button"
-            onClick={() => hasValue && copyToClipboard(value, title)}
-            className={`flex w-full items-center justify-between gap-3 rounded-2xl border px-4 py-3 text-left shadow-sm transition ${
-                hasValue
-                    ? 'bg-white border-slate-200 hover:border-orange-300 hover:shadow-md'
-                    : 'bg-slate-50 border-slate-200 cursor-not-allowed'
-            }`}
-            disabled={!hasValue}
-        >
-            <div className="min-w-0 space-y-1 text-left">
-                <p className="text-[12px] font-medium text-slate-500">{title}</p>
-                <p className={`text-base font-semibold break-words ${hasValue ? 'text-slate-900' : 'text-slate-400'}`}>
-                    {hasValue ? value : 'Not provided'}
-                </p>
-                {isPrimary && <span className="text-xs font-semibold text-orange-700">Primary</span>}
-            </div>
-            {hasValue && (
-                <span className="shrink-0 text-orange-600" aria-hidden="true">
-                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="h-5 w-5">
-                        <path d="M15.25 4A3.75 3.75 0 0 0 11.5 7.75v8.5A3.75 3.75 0 0 0 15.25 20h2a3.75 3.75 0 0 0 3.75-3.75v-8.5A3.75 3.75 0 0 0 17.25 4zm2 1.5A2.25 2.25 0 0 1 19.5 7.75v8.5a2.25 2.25 0 0 1-2.25 2.25h-2A2.25 2.25 0 0 1 13 16.25v-8.5A2.25 2.25 0 0 1 15.25 5.5z" />
-                        <path d="M6.75 9A3.75 3.75 0 0 1 10.5 5.25h1a.75.75 0 0 1 0 1.5h-1A2.25 2.25 0 0 0 7.25 9v8A2.25 2.25 0 0 0 9.5 19.25h1a.75.75 0 0 1 0 1.5h-1A3.75 3.75 0 0 1 5.75 17z" />
-                    </svg>
-                </span>
-            )}
-        </button>
-    );
-};
+    const CopyableCard = ({ title, value, isPrimary = false }) => {
+        const hasValue = Boolean(value);
+        return (
+            <button
+                type="button"
+                onClick={() => hasValue && copyToClipboard(value, title)}
+                className={`flex w-full items-center justify-between gap-3 rounded-2xl border px-4 py-3 text-left shadow-sm transition ${
+                    hasValue
+                        ? 'bg-white border-slate-200 hover:border-orange-300 hover:shadow-md'
+                        : 'bg-slate-50 border-slate-200 cursor-not-allowed'
+                }`}
+                disabled={!hasValue}
+            >
+                <div className="min-w-0 space-y-1 text-left">
+                    <p className="text-[12px] font-medium text-slate-500">{title}</p>
+                    <p className={`text-base font-semibold break-words ${hasValue ? 'text-slate-900' : 'text-slate-400'}`}>
+                        {hasValue ? value : 'Not provided'}
+                    </p>
+                    {isPrimary && <span className="text-xs font-semibold text-orange-700">Primary</span>}
+                </div>
+                {hasValue && (
+                    <span className="shrink-0 text-orange-600" aria-hidden="true">
+                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="h-5 w-5">
+                            <path d="M15.25 4A3.75 3.75 0 0 0 11.5 7.75v8.5A3.75 3.75 0 0 0 15.25 20h2a3.75 3.75 0 0 0 3.75-3.75v-8.5A3.75 3.75 0 0 0 17.25 4zm2 1.5A2.25 2.25 0 0 1 19.5 7.75v8.5a2.25 2.25 0 0 1-2.25 2.25h-2A2.25 2.25 0 0 1 13 16.25v-8.5A2.25 2.25 0 0 1 15.25 5.5z" />
+                            <path d="M6.75 9A3.75 3.75 0 0 1 10.5 5.25h1a.75.75 0 0 1 0 1.5h-1A2.25 2.25 0 0 0 7.25 9v8A2.25 2.25 0 0 0 9.5 19.25h1a.75.75 0 0 1 0 1.5h-1A3.75 3.75 0 0 1 5.75 17z" />
+                        </svg>
+                    </span>
+                )}
+            </button>
+        );
+    };
 
     return (
         <div className="space-y-6">
