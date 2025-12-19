@@ -591,28 +591,6 @@ const ContactDetail = ({ contact, onSave, isSaving, onCancelCreate, onDelete, is
                     </div>
                 </div>
 
-                {isViewMode && (
-                    <div className="mt-4 flex flex-wrap gap-3 text-sm text-slate-700">
-                        {primaryEmailEntry && (
-                            <div className="inline-flex items-center gap-2 rounded-full bg-slate-100 px-3 py-2">
-                                <span className="font-medium">{primaryEmailEntry.value}</span>
-                                <CopyIconButton value={primaryEmailEntry.value} label={`${primaryEmailEntry.label || 'Email'} ${primaryEmailEntry.value}`} />
-                            </div>
-                        )}
-                        {primaryPhoneEntry && (
-                            <div className="inline-flex items-center gap-2 rounded-full bg-slate-100 px-3 py-2">
-                                <span className="font-medium">{formatPhoneNumber(primaryPhoneEntry.value)}</span>
-                                <CopyIconButton value={formatPhoneNumber(primaryPhoneEntry.value)} label={`${primaryPhoneEntry.label || 'Phone'} ${formatPhoneNumber(primaryPhoneEntry.value)}`} />
-                            </div>
-                        )}
-                        {primaryAddressEntry && (
-                            <div className="inline-flex items-center gap-2 rounded-full bg-slate-100 px-3 py-2">
-                                <span className="font-medium">{formatAddress(primaryAddressEntry)}</span>
-                                <CopyIconButton value={formatAddress(primaryAddressEntry)} label={`${primaryAddressEntry.label || 'Address'} ${formatAddress(primaryAddressEntry)}`} />
-                            </div>
-                        )}
-                    </div>
-                )}
             </div>
 
             {isViewMode ? (
