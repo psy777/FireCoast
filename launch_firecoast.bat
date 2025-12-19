@@ -45,6 +45,16 @@ set "VENV_DIR=%PROJECT_ROOT%\.venv"
 set "PYTHON_EXE=%VENV_DIR%\Scripts\python.exe"
 set "ACTIVATE_BAT=%VENV_DIR%\Scripts\activate.bat"
 
+where git >nul 2>nul
+if %ERRORLEVEL% NEQ 0 (
+    echo [FireCoast] Installing Git with winget...
+    winget install --id Git.Git -e
+    if %ERRORLEVEL% NEQ 0 (
+        echo [FireCoast] Failed to install Git.
+        exit /b %ERRORLEVEL%
+    )
+)
+
 if not exist "%PYTHON_EXE%" (
     echo [FireCoast] Creating Python virtual environment...
     where py >nul 2>nul
