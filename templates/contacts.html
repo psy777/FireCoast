@@ -490,171 +490,138 @@ const ContactDetail = ({ contact, onSave, isSaving, onCancelCreate, onDelete, is
         await onDelete(formState.id);
     };
 
+    const initials = (displayName.match(/\w/g) || []).join('').slice(0, 2).toUpperCase() || 'FC';
+
     return (
-        <div className="space-y-6">
-            <div className="bg-white border border-slate-200 rounded-xl shadow-sm p-6">
-                <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
-                    <div className="space-y-2">
-                        <p className="text-xs uppercase tracking-wider text-slate-500">{isCreateMode ? 'Draft contact' : 'Contact overview'}</p>
-                        <h2 className="text-2xl font-semibold text-slate-800">{displayName}</h2>
+        <form onSubmit={handleSubmit} className="space-y-4">
+            <div className="bg-white border border-slate-200 rounded-xl shadow-sm p-5">
+                <div className="flex flex-wrap items-center gap-4">
+                    <div className="h-14 w-14 rounded-full bg-orange-100 text-orange-700 flex items-center justify-center text-lg font-semibold">
+                        {initials}
+                    </div>
+                    <div className="flex-1 min-w-[200px]">
+                        <p className="text-[11px] uppercase tracking-wide text-slate-500">{isCreateMode ? 'New contact' : 'Contact'}</p>
+                        <h2 className="text-2xl font-semibold text-slate-900 leading-tight">{displayName}</h2>
                         {showCompanyLine && <p className="text-sm text-slate-500">{formState.companyName}</p>}
-                        <div className="flex flex-wrap gap-2">
-                            {formState.handle && (
-                                <span className="inline-flex items-center space-x-1 bg-orange-100 text-orange-700 px-3 py-1 rounded-full text-sm font-semibold">
-                                    <span>@{formState.handle}</span>
-                                </span>
-                            )}
+                        <div className="flex flex-wrap items-center gap-2 text-xs text-slate-500 mt-1">
+                            {formState.handle && <span className="px-2 py-1 rounded-full bg-slate-100 text-slate-700 font-medium">@{formState.handle}</span>}
                             {primaryOrders.length > 0 && (
-                                <span className="inline-flex items-center bg-slate-100 text-slate-700 px-3 py-1 rounded-full text-xs font-semibold">
-                                    Primary for {primaryOrders.length} order{primaryOrders.length === 1 ? '' : 's'}
-                                </span>
-                            )}
-                            {primaryEmailEntry && (
-                                <span className="inline-flex items-center bg-slate-100 text-slate-700 px-3 py-1 rounded-full text-xs font-semibold">
-                                    {primaryEmailEntry.label || 'Email'} · {primaryEmailEntry.value}
-                                </span>
+                                <span className="px-2 py-1 rounded-full bg-orange-50 text-orange-700 font-medium">Primary on {primaryOrders.length} order{primaryOrders.length === 1 ? '' : 's'}</span>
                             )}
                         </div>
                     </div>
-                    <div className="flex flex-wrap gap-2 justify-start md:justify-end">
+                    <div className="flex flex-wrap justify-end gap-2">
                         {isViewMode && formState.id && (
                             <button
                                 type="button"
                                 onClick={handleStartEdit}
-                                className="inline-flex items-center px-3 py-1.5 text-sm font-semibold text-white bg-orange-600 rounded-md shadow-sm hover:bg-orange-700 transition-colors"
+                                className="px-4 py-2 text-sm font-semibold text-white bg-orange-600 rounded-md shadow-sm hover:bg-orange-700"
                             >
-                                Edit Contact
+                                Edit
                             </button>
+                        )}
+                        {!isViewMode && (
+                            <>
+                                {onDelete && formState.id && (
+                                    <button
+                                        type="button"
+                                        onClick={handleDelete}
+                                        disabled={isDeleting}
+                                        className="px-4 py-2 text-sm font-semibold text-white bg-red-600 rounded-md hover:bg-red-700 disabled:opacity-70"
+                                    >
+                                        {isDeleting ? 'Deleting…' : 'Delete'}
+                                    </button>
+                                )}
+                                <button
+                                    type="button"
+                                    onClick={isCreateMode ? (onCancelCreate || handleCancelEdit) : handleCancelEdit}
+                                    disabled={isDeleting}
+                                    className="px-4 py-2 text-sm font-semibold text-slate-700 border border-slate-300 rounded-md hover:bg-slate-100 disabled:opacity-70"
+                                >
+                                    Cancel
+                                </button>
+                                <button
+                                    type="submit"
+                                    disabled={!canSubmit}
+                                    className={`px-4 py-2 text-sm font-semibold rounded-md shadow-sm ${canSubmit ? 'bg-orange-600 text-white hover:bg-orange-700' : 'bg-slate-200 text-slate-500 cursor-not-allowed'} ${isSaving ? 'opacity-75' : ''}`}
+                                >
+                                    {isSaving ? 'Saving…' : isCreateMode ? 'Create' : 'Save'}
+                                </button>
+                            </>
                         )}
                     </div>
                 </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4 mt-6">
-                    <div className="rounded-lg border border-slate-200 bg-slate-50 p-4">
-                        <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Primary Email</p>
-                        <p className="mt-2 text-sm text-slate-800 font-semibold">{primaryEmailEntry ? primaryEmailEntry.value : 'Not provided'}</p>
-                        <p className="text-xs text-slate-500">{primaryEmailEntry?.label || 'Email'}</p>
-                    </div>
-                    <div className="rounded-lg border border-slate-200 bg-slate-50 p-4">
-                        <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Primary Phone</p>
-                        <p className="mt-2 text-sm text-slate-800 font-semibold">{primaryPhoneEntry ? formatPhoneNumber(primaryPhoneEntry.value) : 'Not provided'}</p>
-                        <p className="text-xs text-slate-500">{primaryPhoneEntry?.label || 'Phone'}</p>
-                    </div>
-                    <div className="rounded-lg border border-slate-200 bg-slate-50 p-4">
-                        <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Preferred Address</p>
-                        <p className="mt-2 text-sm text-slate-800 font-semibold">{primaryAddressEntry ? formatAddress(primaryAddressEntry) : 'Not provided'}</p>
-                        <p className="text-xs text-slate-500">{primaryAddressEntry?.label || 'Address'}</p>
-                    </div>
-                    <div className="rounded-lg border border-slate-200 bg-slate-50 p-4 space-y-2">
-                        <div className="flex items-center justify-between text-sm">
-                            <span className="text-slate-500">Mentions</span>
-                            <span className="font-semibold text-slate-800">{(contact.mentions || []).length}</span>
+                {isViewMode && (
+                    <div className="mt-4 grid grid-cols-1 sm:grid-cols-3 gap-3 text-sm">
+                        <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+                            <p className="text-xs uppercase tracking-wide text-slate-500">Email</p>
+                            <p className="mt-1 font-semibold text-slate-800">{primaryEmailEntry ? primaryEmailEntry.value : 'Not provided'}</p>
+                            <p className="text-xs text-slate-500">{primaryEmailEntry?.label || 'Primary'}</p>
                         </div>
-                        <div className="flex items-center justify-between text-sm">
-                            <span className="text-slate-500">Primary Orders</span>
-                            <span className="font-semibold text-slate-800">{primaryOrders.length}</span>
+                        <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+                            <p className="text-xs uppercase tracking-wide text-slate-500">Phone</p>
+                            <p className="mt-1 font-semibold text-slate-800">{primaryPhoneEntry ? formatPhoneNumber(primaryPhoneEntry.value) : 'Not provided'}</p>
+                            <p className="text-xs text-slate-500">{primaryPhoneEntry?.label || 'Primary'}</p>
                         </div>
-                        <p className="text-xs text-slate-500">Keep an eye on activity and ownership.</p>
+                        <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+                            <p className="text-xs uppercase tracking-wide text-slate-500">Address</p>
+                            <p className="mt-1 font-semibold text-slate-800">{primaryAddressEntry ? formatAddress(primaryAddressEntry) : 'Not provided'}</p>
+                            <p className="text-xs text-slate-500">{primaryAddressEntry?.label || 'Preferred'}</p>
+                        </div>
                     </div>
-                </div>
+                )}
             </div>
 
             {isViewMode ? (
-                <>
-                    <div className="grid lg:grid-cols-2 gap-6">
-                        <section className="bg-white border border-slate-200 rounded-xl shadow-sm p-6 space-y-6">
-                            <div className="flex items-center justify-between">
-                                <h3 className="text-lg font-semibold text-slate-800">Contact Methods</h3>
-                                <span className="text-xs text-slate-500">Primary details first</span>
-                            </div>
-                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm text-slate-700">
-                                <div className="space-y-2">
-                                    <p className="font-semibold text-slate-700">Emails</p>
-                                    {emailEntries.length === 0 ? (
-                                        <p className="text-slate-500">Not provided</p>
-                                    ) : (
-                                        <ul className="space-y-2">
-                                            {emailEntries.map(email => (
-                                                <li key={email.id} className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
-                                                    <div className="flex items-center justify-between gap-2">
-                                                        <span className="font-semibold">{email.label}</span>
-                                                        {email.isPrimary && <span className="text-xs font-semibold text-orange-600">Primary</span>}
-                                                    </div>
-                                                    <p className="text-slate-600 break-words">{email.value}</p>
-                                                </li>
-                                            ))}
-                                        </ul>
-                                    )}
+                <div className="space-y-4">
+                    <section className="bg-white border border-slate-200 rounded-xl shadow-sm p-5 space-y-3">
+                        <h3 className="text-base font-semibold text-slate-800">Contact info</h3>
+                        <div className="divide-y divide-slate-100">
+                            {emailEntries.length > 0 ? emailEntries.map(entry => (
+                                <div key={entry.id} className="py-3 flex flex-col">
+                                    <span className="text-[13px] text-slate-500">{entry.label || 'Email'}</span>
+                                    <span className="text-sm font-medium text-slate-900">{entry.value}</span>
+                                    {entry.isPrimary && <span className="text-xs text-orange-600">Primary</span>}
                                 </div>
-                                <div className="space-y-2">
-                                    <p className="font-semibold text-slate-700">Phones</p>
-                                    {phoneEntries.length === 0 ? (
-                                        <p className="text-slate-500">Not provided</p>
-                                    ) : (
-                                        <ul className="space-y-2">
-                                            {phoneEntries.map(phone => (
-                                                <li key={phone.id} className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
-                                                    <div className="flex items-center justify-between gap-2">
-                                                        <span className="font-semibold">{phone.label}</span>
-                                                        {phone.isPrimary && <span className="text-xs font-semibold text-orange-600">Primary</span>}
-                                                    </div>
-                                                    <p className="text-slate-600">{formatPhoneNumber(phone.value)}</p>
-                                                </li>
-                                            ))}
-                                        </ul>
-                                    )}
-                                </div>
-                            </div>
-                        </section>
-
-                        <section className="bg-white border border-slate-200 rounded-xl shadow-sm p-6 space-y-5">
-                            <div className="flex items-center justify-between">
-                                <h3 className="text-lg font-semibold text-slate-800">Addresses & Ownership</h3>
-                                <span className="text-xs text-slate-500">Shipping, billing, and orders</span>
-                            </div>
-                            {addressEntries.length > 0 ? (
-                                <div className="space-y-2">
-                                    {addressEntries.map(address => (
-                                        <div key={address.id} className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm">
-                                            <div className="flex items-center justify-between">
-                                                <span className="font-semibold text-slate-700">{address.label}</span>
-                                                {address.isPrimary && <span className="text-xs font-semibold text-orange-600">Primary</span>}
-                                            </div>
-                                            <p className="text-slate-600 mt-1">{formatAddress(address)}</p>
-                                        </div>
-                                    ))}
-                                </div>
-                            ) : (
-                                <p className="text-sm text-slate-500">No addresses saved yet.</p>
+                            )) : (
+                                <p className="py-3 text-sm text-slate-500">No emails yet.</p>
                             )}
-
-                            {primaryOrders.length > 0 ? (
-                                <div className="space-y-2">
-                                    <h4 className="text-sm font-semibold text-slate-700">Primary Orders</h4>
-                                    <ul className="space-y-2">
-                                        {primaryOrders.map(order => (
-                                            <li key={order.orderId} className="flex items-center justify-between rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm">
-                                                <div>
-                                                    <p className="font-semibold text-slate-700">{order.orderDisplayId}</p>
-                                                    <p className="text-xs text-slate-500">{order.status || 'Status unknown'} · Updated {formatDateTime(order.updatedAt)}</p>
-                                                </div>
-                                                <a href={`/order/${order.orderId}`} className="text-xs font-semibold text-orange-600 hover:text-orange-800">View</a>
-                                            </li>
-                                        ))}
-                                    </ul>
+                            {phoneEntries.length > 0 ? phoneEntries.map(entry => (
+                                <div key={entry.id} className="py-3 flex flex-col">
+                                    <span className="text-[13px] text-slate-500">{entry.label || 'Phone'}</span>
+                                    <span className="text-sm font-medium text-slate-900">{formatPhoneNumber(entry.value)}</span>
+                                    {entry.isPrimary && <span className="text-xs text-orange-600">Primary</span>}
                                 </div>
-                            ) : (
-                                <p className="text-sm text-slate-500">Not marked as primary on any orders.</p>
+                            )) : (
+                                <p className="py-3 text-sm text-slate-500">No phone numbers yet.</p>
                             )}
-                        </section>
-                    </div>
-
-                    <section className="bg-white border border-slate-200 rounded-xl shadow-sm p-6">
-                        <div className="flex items-center justify-between mb-4">
-                            <h3 className="text-lg font-semibold text-slate-800">Internal Notes</h3>
-                            <span className="text-xs text-slate-500">Last updated {formatDateTime(contact.updatedAt)}</span>
                         </div>
-                        <div className="rounded-lg border border-dashed border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600 min-h-[96px]">
+                    </section>
+
+                    <section className="bg-white border border-slate-200 rounded-xl shadow-sm p-5 space-y-3">
+                        <h3 className="text-base font-semibold text-slate-800">Addresses</h3>
+                        {addressEntries.length > 0 ? (
+                            <ul className="divide-y divide-slate-100">
+                                {addressEntries.map(entry => (
+                                    <li key={entry.id} className="py-3">
+                                        <p className="text-sm font-semibold text-slate-900">{entry.label || 'Address'}</p>
+                                        <p className="text-sm text-slate-600">{formatAddress(entry)}</p>
+                                        <p className="text-xs text-slate-500 uppercase tracking-wide">{(entry.kind || 'other').toUpperCase()}</p>
+                                    </li>
+                                ))}
+                            </ul>
+                        ) : (
+                            <p className="text-sm text-slate-500">No addresses saved.</p>
+                        )}
+                    </section>
+
+                    <section className="bg-white border border-slate-200 rounded-xl shadow-sm p-5 space-y-3">
+                        <div className="flex items-center justify-between">
+                            <h3 className="text-base font-semibold text-slate-800">Notes</h3>
+                            <span className="text-xs text-slate-500">Updated {formatDateTime(contact.updatedAt)}</span>
+                        </div>
+                        <div className="text-sm text-slate-700 whitespace-pre-wrap">
                             {formState.notes && formState.notes.trim() ? (
                                 MentionText ? (
                                     <MentionText
@@ -663,319 +630,187 @@ const ContactDetail = ({ contact, onSave, isSaving, onCancelCreate, onDelete, is
                                         className="block"
                                     />
                                 ) : (
-                                    <span className="whitespace-pre-wrap">{formState.notes}</span>
+                                    formState.notes
                                 )
                             ) : (
-                                'No internal notes yet.'
+                                'No notes yet.'
                             )}
                         </div>
                     </section>
-                </>
+
+                    <section className="bg-white border border-slate-200 rounded-xl shadow-sm p-5 space-y-3">
+                        <h3 className="text-base font-semibold text-slate-800">Mentions</h3>
+                        <ContactMentions mentions={contact.mentions || []} />
+                    </section>
+                </div>
             ) : (
-                <form onSubmit={handleSubmit} className="bg-white border border-slate-200 rounded-xl shadow-sm p-6 space-y-6">
-                    <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                        <h3 className="text-lg font-semibold text-slate-800">{isCreateMode ? 'Create Contact' : 'Edit Contact'}</h3>
-                        <div className="flex gap-2">
-                            {onDelete && formState.id && (
-                                <button
-                                    type="button"
-                                    onClick={handleDelete}
-                                    disabled={isDeleting}
-                                    className="px-4 py-2 rounded-md text-sm font-semibold text-white bg-red-600 hover:bg-red-700 transition-colors disabled:opacity-70 disabled:cursor-not-allowed"
-                                >
-                                    {isDeleting ? 'Deleting…' : 'Delete'}
-                                </button>
-                            )}
-                            <button
-                                type="button"
-                                onClick={isCreateMode ? (onCancelCreate || handleCancelEdit) : handleCancelEdit}
-                                disabled={isDeleting}
-                                className="px-4 py-2 rounded-md text-sm font-semibold text-slate-600 border border-slate-300 hover:bg-slate-100 transition-colors disabled:opacity-70 disabled:cursor-not-allowed"
-                            >
-                                Cancel
-                            </button>
-                            <button
-                                type="submit"
-                                disabled={!canSubmit}
-                                className={`px-4 py-2 rounded-md text-sm font-semibold ${canSubmit ? 'bg-orange-600 text-white hover:bg-orange-700' : 'bg-slate-200 text-slate-500 cursor-not-allowed'} ${isSaving ? 'opacity-75' : ''}`}
-                            >
-                                {isSaving ? 'Saving…' : isCreateMode ? 'Create Contact' : 'Save Changes'}
-                            </button>
-                        </div>
-                    </div>
-
-                    <div className="grid lg:grid-cols-3 gap-6">
-                        <div className="lg:col-span-2 space-y-6">
-                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                                <div>
-                                    <label className="block text-sm font-medium text-slate-600">Contact Name</label>
-                                    <input
-                                        value={formState.contactName}
-                                        onChange={e => handleBasicChange('contactName', e.target.value)}
-                                        className="mt-1 block w-full px-3 py-2 bg-white border border-slate-300 rounded-md focus:outline-none focus:ring-orange-500 focus:border-orange-500"
-                                    />
-                                </div>
-                                <div>
-                                    <label className="block text-sm font-medium text-slate-600">Company</label>
-                                    <input
-                                        value={formState.companyName}
-                                        onChange={e => handleBasicChange('companyName', e.target.value)}
-                                        className="mt-1 block w-full px-3 py-2 bg-white border border-slate-300 rounded-md focus:outline-none focus:ring-orange-500 focus:border-orange-500"
-                                        placeholder="Optional"
-                                    />
-                                </div>
-                                <div>
-                                    <label className="block text-sm font-medium text-slate-600">Handle</label>
-                                    <input
-                                        value={formState.handle}
-                                        onChange={e => handleBasicChange('handle', e.target.value)}
-                                        className="mt-1 block w-full px-3 py-2 bg-white border border-slate-300 rounded-md focus:outline-none focus:ring-orange-500 focus:border-orange-500"
-                                        placeholder="autogenerate"
-                                    />
-                                </div>
-                            </div>
-
-                            <section className="space-y-4">
-                                <div className="flex items-center justify-between">
-                                    <h4 className="text-sm font-semibold text-slate-700">Emails</h4>
-                                    <span className="text-xs text-slate-500">Mark the primary first</span>
-                                </div>
-                                <div className="space-y-3">
-                                    {formState.contactDetails.emails.map(email => (
-                                        <div key={email.id} className="rounded-lg border border-slate-200 bg-slate-50 p-4 space-y-3">
-                                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                                                <div>
-                                                    <label className="block text-xs font-medium text-slate-600">Label</label>
-                                                    <input
-                                                        value={email.label}
-                                                        onChange={e => handleEmailChange(email.id, 'label', e.target.value)}
-                                                        className="mt-1 block w-full px-3 py-2 bg-white border border-slate-300 rounded-md focus:outline-none focus:ring-orange-500 focus:border-orange-500"
-                                                    />
-                                                </div>
-                                                <div>
-                                                    <label className="block text-xs font-medium text-slate-600">Email</label>
-                                                    <input
-                                                        value={email.value}
-                                                        onChange={e => handleEmailChange(email.id, 'value', e.target.value)}
-                                                        className="mt-1 block w-full px-3 py-2 bg-white border border-slate-300 rounded-md focus:outline-none focus:ring-orange-500 focus:border-orange-500"
-                                                    />
-                                                </div>
-                                            </div>
-                                            <div className="flex items-center justify-between">
-                                                <button
-                                                    type="button"
-                                                    onClick={() => handleSetPrimaryEmail(email.id)}
-                                                    className={`text-xs font-semibold ${email.isPrimary ? 'text-orange-600' : 'text-slate-500 hover:text-orange-600'}`}
-                                                >
-                                                    {email.isPrimary ? 'Primary email' : 'Set as primary'}
-                                                </button>
-                                                <button
-                                                    type="button"
-                                                    onClick={() => handleRemoveEmail(email.id)}
-                                                    className="text-xs font-semibold text-red-500 hover:text-red-600"
-                                                    disabled={formState.contactDetails.emails.length <= 1}
-                                                >
-                                                    Remove
-                                                </button>
-                                            </div>
-                                        </div>
-                                    ))}
-                                </div>
-                                <button
-                                    type="button"
-                                    onClick={handleAddEmail}
-                                    className="text-sm font-semibold text-orange-600 hover:text-orange-700"
-                                >
-                                    + Add email
-                                </button>
-                            </section>
-
-                            <section className="space-y-4">
-                                <div className="flex items-center justify-between">
-                                    <h4 className="text-sm font-semibold text-slate-700">Phone Numbers</h4>
-                                    <span className="text-xs text-slate-500">Numbers format automatically</span>
-                                </div>
-                                <div className="space-y-3">
-                                    {formState.contactDetails.phones.map(phone => (
-                                        <div key={phone.id} className="rounded-lg border border-slate-200 bg-slate-50 p-4 space-y-3">
-                                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                                                <div>
-                                                    <label className="block text-xs font-medium text-slate-600">Label</label>
-                                                    <input
-                                                        value={phone.label}
-                                                        onChange={e => handlePhoneChange(phone.id, 'label', e.target.value)}
-                                                        className="mt-1 block w-full px-3 py-2 bg-white border border-slate-300 rounded-md focus:outline-none focus:ring-orange-500 focus:border-orange-500"
-                                                    />
-                                                </div>
-                                                <div>
-                                                    <label className="block text-xs font-medium text-slate-600">Phone</label>
-                                                    <input
-                                                        value={phone.value}
-                                                        onChange={e => handlePhoneChange(phone.id, 'value', e.target.value)}
-                                                        className="mt-1 block w-full px-3 py-2 bg-white border border-slate-300 rounded-md focus:outline-none focus:ring-orange-500 focus:border-orange-500"
-                                                    />
-                                                </div>
-                                            </div>
-                                            <div className="flex items-center justify-between">
-                                                <button
-                                                    type="button"
-                                                    onClick={() => handleSetPrimaryPhone(phone.id)}
-                                                    className={`text-xs font-semibold ${phone.isPrimary ? 'text-orange-600' : 'text-slate-500 hover:text-orange-600'}`}
-                                                >
-                                                    {phone.isPrimary ? 'Primary phone' : 'Set as primary'}
-                                                </button>
-                                                <button
-                                                    type="button"
-                                                    onClick={() => handleRemovePhone(phone.id)}
-                                                    className="text-xs font-semibold text-red-500 hover:text-red-600"
-                                                    disabled={formState.contactDetails.phones.length <= 1}
-                                                >
-                                                    Remove
-                                                </button>
-                                            </div>
-                                        </div>
-                                    ))}
-                                </div>
-                                <button
-                                    type="button"
-                                    onClick={handleAddPhone}
-                                    className="text-sm font-semibold text-orange-600 hover:text-orange-700"
-                                >
-                                    + Add phone
-                                </button>
-                            </section>
-
-                            <section className="space-y-4">
-                                <div className="flex items-center justify-between">
-                                    <h4 className="text-sm font-semibold text-slate-700">Addresses</h4>
-                                    <span className="text-xs text-slate-500">Shipping, billing, or other</span>
-                                </div>
-                                <div className="space-y-3">
-                                    {formState.contactDetails.addresses.map(address => (
-                                        <div key={address.id} className="rounded-lg border border-slate-200 bg-slate-50 p-4 space-y-3">
-                                            <div>
-                                                <label className="block text-xs font-medium text-slate-600">Label</label>
-                                                <input
-                                                    value={address.label}
-                                                    onChange={e => handleAddressChange(address.id, 'label', e.target.value)}
-                                                    className="mt-1 block w-full px-3 py-2 bg-white border border-slate-300 rounded-md focus:outline-none focus:ring-orange-500 focus:border-orange-500"
-                                                />
-                                            </div>
-                                            <div>
-                                                <label className="block text-xs font-medium text-slate-600">Street</label>
-                                                <textarea
-                                                    value={address.street}
-                                                    onChange={e => handleAddressChange(address.id, 'street', e.target.value)}
-                                                    rows={2}
-                                                    className="mt-1 block w-full px-3 py-2 bg-white border border-slate-300 rounded-md focus:outline-none focus:ring-orange-500 focus:border-orange-500"
-                                                ></textarea>
-                                            </div>
-                                            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                                                <div>
-                                                    <label className="block text-xs font-medium text-slate-600">City</label>
-                                                    <input
-                                                        value={address.city}
-                                                        onChange={e => handleAddressChange(address.id, 'city', e.target.value)}
-                                                        className="mt-1 block w-full px-3 py-2 bg-white border border-slate-300 rounded-md focus:outline-none focus:ring-orange-500 focus:border-orange-500"
-                                                    />
-                                                </div>
-                                                <div>
-                                                    <label className="block text-xs font-medium text-slate-600">State</label>
-                                                    <input
-                                                        value={address.state}
-                                                        onChange={e => handleAddressChange(address.id, 'state', e.target.value)}
-                                                        className="mt-1 block w-full px-3 py-2 bg-white border border-slate-300 rounded-md focus:outline-none focus:ring-orange-500 focus:border-orange-500"
-                                                    />
-                                                </div>
-                                                <div>
-                                                    <label className="block text-xs font-medium text-slate-600">Zip</label>
-                                                    <input
-                                                        value={address.postalCode}
-                                                        onChange={e => handleAddressChange(address.id, 'postalCode', e.target.value)}
-                                                        className="mt-1 block w-full px-3 py-2 bg-white border border-slate-300 rounded-md focus:outline-none focus:ring-orange-500 focus:border-orange-500"
-                                                    />
-                                                </div>
-                                            </div>
-                                            <div className="flex items-center justify-between">
-                                                <button
-                                                    type="button"
-                                                    onClick={() => handleSetPrimaryAddress(address.id)}
-                                                    className={`text-xs font-semibold ${address.isPrimary ? 'text-orange-600' : 'text-slate-500 hover:text-orange-600'}`}
-                                                >
-                                                    {address.isPrimary ? 'Primary address' : 'Set as primary'}
-                                                </button>
-                                                <button
-                                                    type="button"
-                                                    onClick={() => handleRemoveAddress(address.id)}
-                                                    className="text-xs font-semibold text-red-500 hover:text-red-600"
-                                                    disabled={formState.contactDetails.addresses.length <= 1}
-                                                >
-                                                    Remove
-                                                </button>
-                                            </div>
-                                        </div>
-                                    ))}
-                                </div>
-                                <button
-                                    type="button"
-                                    onClick={handleAddAddress}
-                                    className="text-sm font-semibold text-orange-600 hover:text-orange-700"
-                                >
-                                    + Add address
-                                </button>
-                            </section>
-
-                            <ContactMentionTextarea
-                                label="Internal Notes"
-                                placeholder="Keep shared notes and mention teammates with @handle"
-                                value={formState.notes}
-                                onChange={value => handleBasicChange('notes', value)}
-                                entityTypes={['contact', 'order', 'note', 'calendar_event', 'reminder']}
-                                rows={4}
+                <div className="bg-white border border-slate-200 rounded-xl shadow-sm p-5 space-y-5">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        <div className="space-y-1">
+                            <label className="text-sm font-medium text-slate-700">Contact Name</label>
+                            <input
+                                value={formState.contactName}
+                                onChange={e => handleBasicChange('contactName', e.target.value)}
+                                className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-orange-500"
                             />
                         </div>
-
-                        <aside className="space-y-4 rounded-lg border border-slate-200 bg-slate-50 p-4">
-                            <div className="flex items-center justify-between">
-                                <h4 className="text-sm font-semibold text-slate-700">Live Preview</h4>
-                                <span className="text-xs text-slate-500">How others will see it</span>
-                            </div>
-                            <div className="space-y-3 text-sm text-slate-700">
-                                <div>
-                                    <p className="text-xs uppercase tracking-wide text-slate-500">Name</p>
-                                    <p className="font-semibold text-slate-800">{displayName}</p>
-                                    {showCompanyLine && <p className="text-slate-500">{formState.companyName}</p>}
-                                </div>
-                                <div>
-                                    <p className="text-xs uppercase tracking-wide text-slate-500">Primary Email</p>
-                                    <p className="font-semibold text-slate-800">{primaryEmailEntry ? primaryEmailEntry.value : 'Not provided'}</p>
-                                </div>
-                                <div>
-                                    <p className="text-xs uppercase tracking-wide text-slate-500">Primary Phone</p>
-                                    <p className="font-semibold text-slate-800">{primaryPhoneEntry ? formatPhoneNumber(primaryPhoneEntry.value) : 'Not provided'}</p>
-                                </div>
-                                <div>
-                                    <p className="text-xs uppercase tracking-wide text-slate-500">Preferred Address</p>
-                                    <p className="font-semibold text-slate-800">{primaryAddressEntry ? formatAddress(primaryAddressEntry) : 'Not provided'}</p>
-                                </div>
-                                <div>
-                                    <p className="text-xs uppercase tracking-wide text-slate-500">Handle</p>
-                                    <p className="font-semibold text-slate-800">{formState.handle || 'Optional'}</p>
-                                </div>
-                            </div>
-                        </aside>
+                        <div className="space-y-1">
+                            <label className="text-sm font-medium text-slate-700">Company</label>
+                            <input
+                                value={formState.companyName}
+                                onChange={e => handleBasicChange('companyName', e.target.value)}
+                                className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-orange-500"
+                                placeholder="Optional"
+                            />
+                        </div>
+                        <div className="space-y-1">
+                            <label className="text-sm font-medium text-slate-700">Handle</label>
+                            <input
+                                value={formState.handle}
+                                onChange={e => handleBasicChange('handle', e.target.value)}
+                                className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-orange-500"
+                                placeholder="autogenerate"
+                            />
+                        </div>
                     </div>
-                </form>
-            )}
 
-            <section className="bg-white border border-slate-200 rounded-xl shadow-sm p-6">
-                <div className="flex items-center justify-between mb-4">
-                    <h3 className="text-lg font-semibold text-slate-800">Mention Activity</h3>
-                    <span className="text-xs text-slate-500">Last updated {formatDateTime(contact.updatedAt)}</span>
+                    <div className="space-y-3">
+                        <div className="flex items-center justify-between">
+                            <h4 className="text-sm font-semibold text-slate-800">Emails</h4>
+                            <button type="button" onClick={handleAddEmail} className="text-sm font-semibold text-orange-600">Add</button>
+                        </div>
+                        <div className="space-y-3">
+                            {formState.contactDetails.emails.map(email => (
+                                <div key={email.id} className="rounded-lg border border-slate-200 p-3 space-y-2 bg-slate-50">
+                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                                        <input
+                                            value={email.label}
+                                            onChange={e => handleEmailChange(email.id, 'label', e.target.value)}
+                                            className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-orange-500"
+                                            placeholder="Label"
+                                        />
+                                        <input
+                                            value={email.value}
+                                            onChange={e => handleEmailChange(email.id, 'value', e.target.value)}
+                                            className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-orange-500"
+                                            placeholder="Email"
+                                        />
+                                    </div>
+                                    <div className="flex items-center justify-between text-xs">
+                                        <button type="button" onClick={() => handleSetPrimaryEmail(email.id)} className={email.isPrimary ? 'text-orange-600 font-semibold' : 'text-slate-500 font-semibold'}>
+                                            {email.isPrimary ? 'Primary' : 'Set primary'}
+                                        </button>
+                                        <button type="button" onClick={() => handleRemoveEmail(email.id)} className="text-red-500 font-semibold" disabled={formState.contactDetails.emails.length <= 1}>
+                                            Remove
+                                        </button>
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+
+                    <div className="space-y-3">
+                        <div className="flex items-center justify-between">
+                            <h4 className="text-sm font-semibold text-slate-800">Phones</h4>
+                            <button type="button" onClick={handleAddPhone} className="text-sm font-semibold text-orange-600">Add</button>
+                        </div>
+                        <div className="space-y-3">
+                            {formState.contactDetails.phones.map(phone => (
+                                <div key={phone.id} className="rounded-lg border border-slate-200 p-3 space-y-2 bg-slate-50">
+                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                                        <input
+                                            value={phone.label}
+                                            onChange={e => handlePhoneChange(phone.id, 'label', e.target.value)}
+                                            className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-orange-500"
+                                            placeholder="Label"
+                                        />
+                                        <input
+                                            value={phone.value}
+                                            onChange={e => handlePhoneChange(phone.id, 'value', e.target.value)}
+                                            className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-orange-500"
+                                            placeholder="Phone"
+                                        />
+                                    </div>
+                                    <div className="flex items-center justify-between text-xs">
+                                        <button type="button" onClick={() => handleSetPrimaryPhone(phone.id)} className={phone.isPrimary ? 'text-orange-600 font-semibold' : 'text-slate-500 font-semibold'}>
+                                            {phone.isPrimary ? 'Primary' : 'Set primary'}
+                                        </button>
+                                        <button type="button" onClick={() => handleRemovePhone(phone.id)} className="text-red-500 font-semibold" disabled={formState.contactDetails.phones.length <= 1}>
+                                            Remove
+                                        </button>
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+
+                    <div className="space-y-3">
+                        <div className="flex items-center justify-between">
+                            <h4 className="text-sm font-semibold text-slate-800">Addresses</h4>
+                            <button type="button" onClick={handleAddAddress} className="text-sm font-semibold text-orange-600">Add</button>
+                        </div>
+                        <div className="space-y-3">
+                            {formState.contactDetails.addresses.map(address => (
+                                <div key={address.id} className="rounded-lg border border-slate-200 p-3 space-y-2 bg-slate-50">
+                                    <input
+                                        value={address.label}
+                                        onChange={e => handleAddressChange(address.id, 'label', e.target.value)}
+                                        className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-orange-500"
+                                        placeholder="Label"
+                                    />
+                                    <textarea
+                                        value={address.street}
+                                        onChange={e => handleAddressChange(address.id, 'street', e.target.value)}
+                                        className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-orange-500"
+                                        rows={2}
+                                        placeholder="Street"
+                                    />
+                                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                                        <input
+                                            value={address.city}
+                                            onChange={e => handleAddressChange(address.id, 'city', e.target.value)}
+                                            className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-orange-500"
+                                            placeholder="City"
+                                        />
+                                        <input
+                                            value={address.state}
+                                            onChange={e => handleAddressChange(address.id, 'state', e.target.value)}
+                                            className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-orange-500"
+                                            placeholder="State"
+                                        />
+                                        <input
+                                            value={address.postalCode}
+                                            onChange={e => handleAddressChange(address.id, 'postalCode', e.target.value)}
+                                            className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-orange-500"
+                                            placeholder="ZIP"
+                                        />
+                                    </div>
+                                    <div className="flex items-center justify-between text-xs">
+                                        <button type="button" onClick={() => handleSetPrimaryAddress(address.id)} className={address.isPrimary ? 'text-orange-600 font-semibold' : 'text-slate-500 font-semibold'}>
+                                            {address.isPrimary ? 'Primary' : 'Set primary'}
+                                        </button>
+                                        <button type="button" onClick={() => handleRemoveAddress(address.id)} className="text-red-500 font-semibold" disabled={formState.contactDetails.addresses.length <= 1}>
+                                            Remove
+                                        </button>
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+
+                    <div className="space-y-2">
+                        <label className="text-sm font-medium text-slate-800">Notes</label>
+                        <ContactMentionTextarea
+                            className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-orange-500"
+                            placeholder="Shared notes and @mentions"
+                            value={formState.notes}
+                            onChange={value => handleBasicChange('notes', value)}
+                            rows={6}
+                        />
+                    </div>
                 </div>
-                <ContactMentions mentions={contact.mentions} />
-            </section>
-        </div>
+            )}
+        </form>
     );
 };
 
