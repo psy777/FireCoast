@@ -529,15 +529,11 @@ const ContactDetail = ({ contact, onSave, isSaving, onCancelCreate, onDelete, is
         await onDelete(formState.id);
     };
 
-    const initials = (displayName.match(/\w/g) || []).join('').slice(0, 2).toUpperCase() || 'FC';
 
     return (
         <form onSubmit={handleSubmit} className="space-y-4">
             <div className="bg-white border border-slate-200 rounded-xl shadow-sm p-5">
                 <div className="flex flex-wrap items-center gap-4">
-                    <div className="h-14 w-14 rounded-full bg-orange-100 text-orange-700 flex items-center justify-center text-lg font-semibold">
-                        {initials}
-                    </div>
                     <div className="flex-1 min-w-[200px]">
                         <p className="text-[11px] uppercase tracking-wide text-slate-500">{isCreateMode ? 'New contact' : 'Contact'}</p>
                         <h2 className="text-2xl font-semibold text-slate-900 leading-tight">{displayName}</h2>
@@ -1223,18 +1219,16 @@ const ContactsApp = () => {
 
     return (
         <div className="space-y-6">
-            <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex flex-wrap items-center justify-between gap-3">
                 <h1 className="text-3xl font-bold text-slate-800">Contacts</h1>
-                <div className="flex flex-col sm:flex-row gap-3 w-full sm:w-auto">
-                    <button
-                        type="button"
-                        onClick={startCreateContact}
-                        disabled={isNewButtonDisabled}
-                        className={`inline-flex items-center justify-center gap-2 rounded-md px-4 py-2 text-sm font-semibold shadow transition-colors ${isNewButtonDisabled ? 'bg-slate-300 text-slate-500 cursor-not-allowed' : 'bg-orange-600 text-white hover:bg-orange-700'}`}
-                    >
-                        + New Contact
-                    </button>
-                </div>
+                <button
+                    type="button"
+                    onClick={startCreateContact}
+                    disabled={isNewButtonDisabled}
+                    className={`inline-flex items-center justify-center gap-2 rounded-md px-3 py-2 text-sm font-semibold shadow transition-colors ${isNewButtonDisabled ? 'bg-slate-300 text-slate-500 cursor-not-allowed' : 'bg-orange-600 text-white hover:bg-orange-700'}`}
+                >
+                    + New Contact
+                </button>
             </div>
             {error && (
                 <div className="bg-red-50 border border-red-200 text-red-600 px-4 py-3 rounded-lg text-sm">
