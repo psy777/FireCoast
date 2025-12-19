@@ -461,6 +461,9 @@ const ContactDetail = ({ contact, onSave, isSaving, onCancelCreate, onDelete, is
     const primaryEmailEntry = formState.contactDetails.emails.find(email => email.isPrimary && email.value.trim()) || formState.contactDetails.emails.find(email => email.value.trim());
     const primaryPhoneEntry = formState.contactDetails.phones.find(phone => phone.isPrimary && normalizePhoneDigits(phone.value).length) || formState.contactDetails.phones.find(phone => normalizePhoneDigits(phone.value).length);
     const addressList = formState.contactDetails.addresses || [];
+    const emailEntries = formState.contactDetails.emails.filter(email => email.value && email.value.trim());
+    const phoneEntries = formState.contactDetails.phones.filter(phone => normalizePhoneDigits(phone.value).length);
+    const addressEntries = dedupeAddresses(addressList).filter(addressHasFields);
     const displayName = (formState.contactName && formState.contactName.trim()) || (formState.companyName && formState.companyName.trim()) || (primaryEmailEntry && primaryEmailEntry.value.trim()) || 'Unnamed contact';
     const primaryAddressEntry = addressEntries[0];
     const showCompanyLine = Boolean(formState.companyName && formState.companyName.trim() && formState.companyName.trim() !== formState.contactName?.trim());
@@ -486,10 +489,6 @@ const ContactDetail = ({ contact, onSave, isSaving, onCancelCreate, onDelete, is
         }
         await onDelete(formState.id);
     };
-
-    const emailEntries = formState.contactDetails.emails.filter(email => email.value && email.value.trim());
-    const phoneEntries = formState.contactDetails.phones.filter(phone => normalizePhoneDigits(phone.value).length);
-    const addressEntries = dedupeAddresses(addressList).filter(addressHasFields);
 
     return (
         <div className="space-y-6">
