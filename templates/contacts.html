@@ -415,6 +415,7 @@ const ContactDetail = ({ contact, onSave, isSaving, onCancelCreate, onDelete, is
     const [mode, setMode] = useState(contact?.id ? 'view' : 'create');
     const [copyNotice, setCopyNotice] = useState(null);
     const copyTimerRef = useRef(null);
+    const nameInputRef = useRef(null);
 
     useEffect(() => {
         setFormState(mapContactToFormState(contact));
@@ -430,6 +431,13 @@ const ContactDetail = ({ contact, onSave, isSaving, onCancelCreate, onDelete, is
             }
         };
     }, []);
+
+    useEffect(() => {
+        if (mode === 'create' && nameInputRef.current) {
+            nameInputRef.current.focus();
+            nameInputRef.current.select();
+        }
+    }, [mode]);
 
     if (!contact) {
         return (
@@ -578,9 +586,8 @@ const ContactDetail = ({ contact, onSave, isSaving, onCancelCreate, onDelete, is
         }
     };
 
-const CopyableCard = ({ title, value, helperText, hint, isPrimary = false, icon }) => {
+const CopyableCard = ({ title, value, isPrimary = false }) => {
     const hasValue = Boolean(value);
-    const Icon = icon;
     return (
         <button
             type="button"
@@ -592,33 +599,21 @@ const CopyableCard = ({ title, value, helperText, hint, isPrimary = false, icon 
             }`}
             disabled={!hasValue}
         >
-            <div className="flex items-start gap-3 min-w-0">
-                <span
-                    className={`mt-0.5 inline-flex h-9 w-9 items-center justify-center rounded-xl border ${
-                        hasValue ? 'bg-orange-50 border-orange-100 text-orange-700' : 'bg-white border-slate-200 text-slate-300'
-                    }`}
-                    aria-hidden="true"
-                >
-                    {Icon ? <Icon className="h-5 w-5" /> : <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.5">
-                        <path strokeLinecap="round" strokeLinejoin="round" d="M6.75 7.5h10.5m-10.5 4h10.5m-10.5 4H12" />
-                    </svg>}
-                </span>
-                <div className="space-y-1 min-w-0">
-                    <div className="flex items-center gap-2">
-                        <p className="text-[11px] uppercase tracking-wide text-slate-500">{title}</p>
-                        {isPrimary && <span className="text-[10px] font-semibold text-orange-800 bg-orange-100 px-2 py-0.5 rounded-full">Primary</span>}
-                    </div>
-                    <p className={`text-sm font-semibold break-words ${hasValue ? 'text-slate-900' : 'text-slate-400'}`}>{hasValue ? value : 'Not provided'}</p>
-                    {helperText && <p className="text-xs text-slate-500">{helperText}</p>}
-                </div>
+            <div className="min-w-0 space-y-1 text-left">
+                <p className="text-[12px] font-medium text-slate-500">{title}</p>
+                <p className={`text-base font-semibold break-words ${hasValue ? 'text-slate-900' : 'text-slate-400'}`}>
+                    {hasValue ? value : 'Not provided'}
+                </p>
+                {isPrimary && <span className="text-xs font-semibold text-orange-700">Primary</span>}
             </div>
-            <span
-                className={`shrink-0 self-center rounded-full border px-3 py-1 text-[11px] font-semibold ${
-                    hasValue ? 'border-orange-200 text-orange-700 bg-orange-50' : 'border-slate-200 text-slate-400 bg-white'
-                }`}
-            >
-                {hasValue ? hint || 'Copy' : 'Unavailable'}
-            </span>
+            {hasValue && (
+                <span className="shrink-0 text-orange-600" aria-hidden="true">
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="h-5 w-5">
+                        <path d="M15.25 4A3.75 3.75 0 0 0 11.5 7.75v8.5A3.75 3.75 0 0 0 15.25 20h2a3.75 3.75 0 0 0 3.75-3.75v-8.5A3.75 3.75 0 0 0 17.25 4zm2 1.5A2.25 2.25 0 0 1 19.5 7.75v8.5a2.25 2.25 0 0 1-2.25 2.25h-2A2.25 2.25 0 0 1 13 16.25v-8.5A2.25 2.25 0 0 1 15.25 5.5z" />
+                        <path d="M6.75 9A3.75 3.75 0 0 1 10.5 5.25h1a.75.75 0 0 1 0 1.5h-1A2.25 2.25 0 0 0 7.25 9v8A2.25 2.25 0 0 0 9.5 19.25h1a.75.75 0 0 1 0 1.5h-1A3.75 3.75 0 0 1 5.75 17z" />
+                    </svg>
+                </span>
+            )}
         </button>
     );
 };
@@ -626,6 +621,7 @@ const CopyableCard = ({ title, value, helperText, hint, isPrimary = false, icon 
     return (
         <div className="space-y-6">
             <CopyToast notice={copyNotice} />
+            {!isCreateMode && (
             <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-md">
                 <div className="relative bg-gradient-to-r from-orange-50 via-white to-white px-6 py-6 sm:px-8 sm:py-7">
                     <div className="absolute inset-y-0 right-0 w-32 bg-[radial-gradient(circle_at_top,#fed7aa_0,#fff_60%)] opacity-70 pointer-events-none" aria-hidden="true"></div>
@@ -673,13 +669,7 @@ const CopyableCard = ({ title, value, helperText, hint, isPrimary = false, icon 
                     <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                         <div className="space-y-3">
                             <div className="flex items-center justify-between">
-                                <div className="flex items-center gap-2">
-                                    <span className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-orange-50 text-orange-700 border border-orange-100">
-                                        <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor"><path d="M2.94 6.34A2.5 2.5 0 0 1 4.962 5h6.077a2.5 2.5 0 0 1 2.023 1.06l2.998 4.345a.5.5 0 0 1-.41.795H3.39a.5.5 0 0 1-.41-.795z" /><path d="M3 5.5A2.5 2.5 0 0 1 5.5 3h8A2.5 2.5 0 0 1 16 5.5v9A2.5 2.5 0 0 1 13.5 17h-8A2.5 2.5 0 0 1 3 14.5zm2.5-1.5a1.5 1.5 0 0 0-1.5 1.5v9A1.5 1.5 0 0 0 5.5 16h8a1.5 1.5 0 0 0 1.5-1.5v-9A1.5 1.5 0 0 0 13.5 4z" /></svg>
-                                    </span>
-                                    <h3 className="text-sm font-semibold text-slate-800">Emails</h3>
-                                </div>
-                                <span className="text-xs text-slate-500">Tap to copy</span>
+                                <h3 className="text-sm font-semibold text-slate-800">Emails</h3>
                             </div>
                             {emailEntries.length === 0 ? (
                                 <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-500">
@@ -692,14 +682,7 @@ const CopyableCard = ({ title, value, helperText, hint, isPrimary = false, icon 
                                             key={email.id}
                                             title={email.label || 'Email'}
                                             value={email.value}
-                                            helperText={email.isPrimary ? 'Primary email' : undefined}
-                                            hint="Copy email"
                                             isPrimary={email.isPrimary}
-                                            icon={(props) => (
-                                                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" {...props}>
-                                                    <path d="M3 6.75A2.75 2.75 0 0 1 5.75 4h12.5A2.75 2.75 0 0 1 21 6.75v10.5A2.75 2.75 0 0 1 18.25 20H5.75A2.75 2.75 0 0 1 3 17.25zm2.75-1.25a1.25 1.25 0 0 0-1.25 1.25v.114l7.09 4.437a.75.75 0 0 0 .82 0l7.09-4.437V6.75a1.25 1.25 0 0 0-1.25-1.25z" />
-                                                </svg>
-                                            )}
                                         />
                                     ))}
                                 </div>
@@ -707,13 +690,7 @@ const CopyableCard = ({ title, value, helperText, hint, isPrimary = false, icon 
                         </div>
                         <div className="space-y-3">
                             <div className="flex items-center justify-between">
-                                <div className="flex items-center gap-2">
-                                    <span className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-orange-50 text-orange-700 border border-orange-100">
-                                        <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M3.5 2A1.5 1.5 0 0 0 2 3.5v13A1.5 1.5 0 0 0 3.5 18h13a1.5 1.5 0 0 0 1.5-1.5v-13A1.5 1.5 0 0 0 16.5 2zm.75 2.75a.75.75 0 0 1 .75-.75h1a.75.75 0 1 1 0 1.5H5v8.75c0 .138.112.25.25.25H8a.75.75 0 0 1 0 1.5H5.25A1.75 1.75 0 0 1 3.5 14.25z" clipRule="evenodd" /><path d="M9.25 4.75a.75.75 0 0 1 .75-.75h3.5A1.5 1.5 0 0 1 15 5.5v4c0 .43-.175.818-.458 1.1l-1.683 1.684a.25.25 0 0 0-.059.1l-.38 1.14a.75.75 0 1 1-1.424-.475l.381-1.142a1.75 1.75 0 0 1 .412-.663l1.684-1.684a.25.25 0 0 0 .067-.172v-4a.25.25 0 0 0-.25-.25H10a.75.75 0 0 1-.75-.75" /></svg>
-                                    </span>
-                                    <h3 className="text-sm font-semibold text-slate-800">Phones</h3>
-                                </div>
-                                <span className="text-xs text-slate-500">Tap to copy</span>
+                                <h3 className="text-sm font-semibold text-slate-800">Phones</h3>
                             </div>
                             {phoneEntries.length === 0 ? (
                                 <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-500">
@@ -726,15 +703,7 @@ const CopyableCard = ({ title, value, helperText, hint, isPrimary = false, icon 
                                             key={phone.id}
                                             title={phone.label || 'Phone'}
                                             value={formatPhoneNumber(phone.value)}
-                                            helperText={phone.isPrimary ? 'Primary phone' : undefined}
-                                            hint="Copy phone"
                                             isPrimary={phone.isPrimary}
-                                            icon={(props) => (
-                                                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" {...props}>
-                                                    <path fillRule="evenodd" d="M7.75 3A1.75 1.75 0 0 0 6 4.75v1.5A1.75 1.75 0 0 0 7.75 8h1.5A1.75 1.75 0 0 0 11 6.25v-1.5A1.75 1.75 0 0 0 9.25 3zm0 9.5A1.75 1.75 0 0 0 6 14.25v1.5A1.75 1.75 0 0 0 7.75 17h1.5A1.75 1.75 0 0 0 11 15.25v-1.5A1.75 1.75 0 0 0 9.25 12.5zm6.5-9.5A1.75 1.75 0 0 0 12 4.75v1.5A1.75 1.75 0 0 0 13.75 8h1.5A1.75 1.75 0 0 0 17 6.25v-1.5A1.75 1.75 0 0 0 15.25 3zm0 9.5A1.75 1.75 0 0 0 12 14.25v1.5A1.75 1.75 0 0 0 13.75 17h1.5A1.75 1.75 0 0 0 17 15.25v-1.5A1.75 1.75 0 0 0 15.25 12.5z" clipRule="evenodd" />
-                                                    <path d="M4.5 4.75a3.25 3.25 0 0 1 3.25-3.25h8.5A3.25 3.25 0 0 1 19.5 4.75v14.5A3.25 3.25 0 0 1 16.25 22h-8.5A3.25 3.25 0 0 1 4.5 19.25z" />
-                                                </svg>
-                                            )}
                                         />
                                     ))}
                                 </div>
@@ -742,42 +711,30 @@ const CopyableCard = ({ title, value, helperText, hint, isPrimary = false, icon 
                         </div>
                     </div>
 
-                    <div className="space-y-3">
-                        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                            <div className="flex items-center gap-2">
-                                <span className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-orange-50 text-orange-700 border border-orange-100">
-                                    <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor"><path d="M10.75 2.75a.75.75 0 0 0-1.5 0V4H5a2.5 2.5 0 0 0-2.5 2.5v8A2.5 2.5 0 0 0 5 17h10a2.5 2.5 0 0 0 2.5-2.5v-8A2.5 2.5 0 0 0 15 4h-4.25z" /><path d="M7 6.75A.75.75 0 0 0 6.25 6v-.25H4.5A1 1 0 0 0 3.5 6.75v8A1 1 0 0 0 4.5 15.75h11a1 1 0 0 0 1-1v-8a1 1 0 0 0-1-1h-1.75V6A.75.75 0 0 0 12 6.75z" /></svg>
-                                </span>
+                        <div className="space-y-3">
+                            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                                 <h3 className="text-sm font-semibold text-slate-800">Addresses</h3>
                             </div>
-                            <span className="text-xs text-slate-500">Tap to copy full address</span>
+                            {addressEntries.length === 0 ? (
+                                <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-500">
+                                    No addresses on file yet.
+                                </div>
+                            ) : (
+                                <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                                    {addressEntries.map(address => {
+                                        const prettyAddress = formatAddress(address);
+                                        return (
+                                            <CopyableCard
+                                                key={address.id}
+                                                title={address.label || 'Address'}
+                                                value={prettyAddress}
+                                                isPrimary={address.isPrimary}
+                                            />
+                                        );
+                                    })}
+                                </div>
+                            )}
                         </div>
-                        {addressEntries.length === 0 ? (
-                            <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-500">
-                                No addresses on file yet.
-                            </div>
-                        ) : (
-                            <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-                                {addressEntries.map(address => {
-                                    const prettyAddress = formatAddress(address);
-                                    return (
-                                        <CopyableCard
-                                            key={address.id}
-                                            title={address.label || 'Address'}
-                                            value={prettyAddress}
-                                            helperText={address.kind ? `${address.kind.charAt(0).toUpperCase()}${address.kind.slice(1)} address` : undefined}
-                                            hint="Copy address"
-                                            isPrimary={address.isPrimary}
-                                            icon={(props) => (
-                                                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" {...props}>
-                                                    <path fillRule="evenodd" d="M12 2.25a6.75 6.75 0 0 0-6.75 6.75c0 1.482.38 2.871 1.086 4.034 1.31 2.178 3.473 4.61 4.99 6.203.272.289.516.55.732.78.065.07.13.136.194.201a.75.75 0 0 0 1.088 0c.064-.065.129-.132.194-.2.216-.232.46-.492.732-.782 1.518-1.593 3.682-4.026 4.99-6.204A7.583 7.583 0 0 0 18.75 9 6.75 6.75 0 0 0 12 2.25Zm0 9.75a3 3 0 1 0 0-6 3 3 0 0 0 0 6Z" clipRule="evenodd" />
-                                                </svg>
-                                            )}
-                                        />
-                                    );
-                                })}
-                            </div>
-                        )}
                     </div>
 
                     {primaryOrders.length > 0 && (
@@ -800,6 +757,7 @@ const CopyableCard = ({ title, value, helperText, hint, isPrimary = false, icon 
                     )}
                 </div>
             </div>
+            )}
 
             {isViewMode ? (
                 <section className="bg-white border border-slate-200 rounded-xl shadow-sm p-6">
@@ -860,6 +818,7 @@ const CopyableCard = ({ title, value, helperText, hint, isPrimary = false, icon 
                         <div>
                             <label className="block text-sm font-medium text-slate-600">Contact Name</label>
                             <input
+                                ref={nameInputRef}
                                 value={formState.contactName}
                                 onChange={e => handleBasicChange('contactName', e.target.value)}
                                 className="mt-1 block w-full px-3 py-2 bg-white border border-slate-300 rounded-md focus:outline-none focus:ring-orange-500 focus:border-orange-500"
@@ -909,13 +868,17 @@ const CopyableCard = ({ title, value, helperText, hint, isPrimary = false, icon 
                                         </div>
                                     </div>
                                     <div className="flex items-center justify-between">
-                                        <button
-                                            type="button"
-                                            onClick={() => handleSetPrimaryEmail(email.id)}
-                                            className={`text-xs font-semibold ${email.isPrimary ? 'text-orange-600' : 'text-slate-500 hover:text-orange-600'}`}
-                                        >
-                                            {email.isPrimary ? 'Primary email' : 'Set as primary'}
-                                        </button>
+                                        {email.isPrimary ? (
+                                            <span className="text-xs font-semibold text-orange-600">Primary email</span>
+                                        ) : (
+                                            <button
+                                                type="button"
+                                                onClick={() => handleSetPrimaryEmail(email.id)}
+                                                className="text-xs font-semibold text-slate-500 hover:text-orange-600"
+                                            >
+                                                Set as primary
+                                            </button>
+                                        )}
                                         <button
                                             type="button"
                                             onClick={() => handleRemoveEmail(email.id)}
@@ -961,13 +924,17 @@ const CopyableCard = ({ title, value, helperText, hint, isPrimary = false, icon 
                                         </div>
                                     </div>
                                     <div className="flex items-center justify-between">
-                                        <button
-                                            type="button"
-                                            onClick={() => handleSetPrimaryPhone(phone.id)}
-                                            className={`text-xs font-semibold ${phone.isPrimary ? 'text-orange-600' : 'text-slate-500 hover:text-orange-600'}`}
-                                        >
-                                            {phone.isPrimary ? 'Primary phone' : 'Set as primary'}
-                                        </button>
+                                        {phone.isPrimary ? (
+                                            <span className="text-xs font-semibold text-orange-600">Primary phone</span>
+                                        ) : (
+                                            <button
+                                                type="button"
+                                                onClick={() => handleSetPrimaryPhone(phone.id)}
+                                                className="text-xs font-semibold text-slate-500 hover:text-orange-600"
+                                            >
+                                                Set as primary
+                                            </button>
+                                        )}
                                         <button
                                             type="button"
                                             onClick={() => handleRemovePhone(phone.id)}
@@ -1038,13 +1005,17 @@ const CopyableCard = ({ title, value, helperText, hint, isPrimary = false, icon 
                                         </div>
                                     </div>
                                     <div className="flex items-center justify-between">
-                                        <button
-                                            type="button"
-                                            onClick={() => handleSetPrimaryAddress(address.id)}
-                                            className={`text-xs font-semibold ${address.isPrimary ? 'text-orange-600' : 'text-slate-500 hover:text-orange-600'}`}
-                                        >
-                                            {address.isPrimary ? 'Primary address' : 'Set as primary'}
-                                        </button>
+                                        {address.isPrimary ? (
+                                            <span className="text-xs font-semibold text-orange-600">Primary address</span>
+                                        ) : (
+                                            <button
+                                                type="button"
+                                                onClick={() => handleSetPrimaryAddress(address.id)}
+                                                className="text-xs font-semibold text-slate-500 hover:text-orange-600"
+                                            >
+                                                Set as primary
+                                            </button>
+                                        )}
                                         <button
                                             type="button"
                                             onClick={() => handleRemoveAddress(address.id)}
