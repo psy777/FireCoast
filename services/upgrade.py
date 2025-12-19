@@ -242,6 +242,17 @@ def _run_with_error_handling(
 ) -> subprocess.CompletedProcess[str]:
     try:
         return runner(args, cwd=cwd)
+    except FileNotFoundError as exc:
+        missing = args[0] if args else "executable"
+        LOGGER.error(
+            "Failed to %s: required executable '%s' was not found on PATH",
+            action_description,
+            missing,
+        )
+        raise UpgradeError(
+            f"Failed to {action_description}: required executable '{missing}' was not found. "
+            "Please install it and ensure it is available on the system PATH."
+        ) from exc
     except subprocess.CalledProcessError as exc:
         LOGGER.error("Failed to %s: %s", action_description, exc.stderr or exc.stdout)
         raise UpgradeError(f"Failed to {action_description}.") from exc

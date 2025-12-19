@@ -190,6 +190,18 @@ def test_is_git_repository_handles_broken_worktree_reference(tmp_path):
     assert not upgrade._is_git_repository(repo_root)
 
 
+def test_run_with_error_handling_reports_missing_executable(tmp_path):
+    def missing_runner(args, *, cwd=None):
+        raise FileNotFoundError('No such file or directory')
+
+    with pytest.raises(upgrade.UpgradeError) as excinfo:
+        upgrade._run_with_error_handling(
+            missing_runner, ['git', 'status'], tmp_path, 'run git status'
+        )
+
+    assert "required executable 'git' was not found" in str(excinfo.value)
+
+
 def test_schedule_restart_launches_new_process(monkeypatch):
     firenotes_app.app.config['TESTING'] = False
 
