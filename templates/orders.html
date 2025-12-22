@@ -9,6 +9,7 @@
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
     <script type="text/babel" src="/assets/js/record_mentions.jsx"></script>
     <script src="https://cdn.tailwindcss.com"></script>
+    <script src="/assets/js/timezone_utils.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.23/jspdf.plugin.autotable.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
@@ -23,16 +24,8 @@
     {% raw %}
     <script type="text/babel">
 // --- FORMATTERS ---
-const defaultTimeZone = (() => {
-    if (window.fireCoastTimezone) {
-        return window.fireCoastTimezone;
-    }
-    try {
-        return Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
-    } catch (error) {
-        return 'UTC';
-    }
-})();
+const { resolveDefaultTimezone, formatDateTime } = window.fireCoastTimezoneUtils;
+const defaultTimeZone = resolveDefaultTimezone();
 
 const formatInTimeZone = (dateString, timeZone, options = {}) => {
     try {
