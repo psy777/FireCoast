@@ -2454,10 +2454,15 @@ def _format_datetime_for_display(
         return value
     try:
         tz = pytz.timezone(timezone_name)
-        parsed = parsed.astimezone(tz)
+        if parsed.tzinfo is None:
+            parsed = tz.localize(parsed)
+        else:
+            parsed = parsed.astimezone(tz)
     except Exception:
         if parsed.tzinfo is None:
             parsed = parsed.replace(tzinfo=timezone.utc)
+        else:
+            parsed = parsed.astimezone(timezone.utc)
     if include_time:
         return parsed.strftime('%b %d, %Y %I:%M %p %Z')
     return parsed.strftime('%b %d, %Y')
