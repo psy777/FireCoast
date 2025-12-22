@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Device Access Control | FireCoast</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    <script src="/assets/js/timezone_utils.js"></script>
     <link rel="icon" href="/favicon.ico" type="image/x-icon">
     <link rel="stylesheet" href="/assets/css/styles.css">
 </head>
@@ -107,16 +108,8 @@
             host: { label: 'Host', classes: 'bg-slate-200 text-slate-700' },
         };
 
-        const defaultTimeZone = (() => {
-            if (window.fireCoastTimezone) {
-                return window.fireCoastTimezone;
-            }
-            try {
-                return Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
-            } catch (error) {
-                return 'UTC';
-            }
-        })();
+        const { resolveDefaultTimezone, formatDateTime } = window.fireCoastTimezoneUtils;
+        const defaultTimeZone = resolveDefaultTimezone();
 
         const formatDateTime = (value) => {
             if (!value) {

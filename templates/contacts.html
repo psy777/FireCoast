@@ -7,6 +7,7 @@
     <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script src="/assets/js/timezone_utils.js"></script>
     <script type="text/babel" src="/assets/js/record_mentions.jsx"></script>
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="icon" href="/favicon.ico" type="image/x-icon">
@@ -20,7 +21,7 @@
     {% raw %}
     <script type="text/babel">
 const { useState, useEffect, useMemo, useCallback } = React;
-
+const { resolveDefaultTimezone, formatDateTime: formatDateTimeWithZone } = window.fireCoastTimezoneUtils;
 const defaultTimeZone = resolveDefaultTimezone();
 
 const EMPTY_CONTACT = {
@@ -58,28 +59,7 @@ const sortContactsByName = (list) => {
     });
 };
 
-const formatDateTime = (dateString, timeZone) => {
-    if (!dateString) return 'Unknown';
-    try {
-        const resolvedTimeZone = timeZone || defaultTimeZone;
-        return new Date(dateString).toLocaleString(undefined, { timeZone: resolvedTimeZone });
-    } catch (error) {
-        console.error('Failed to format date', error);
-        return dateString;
-    }
-};
-
-const resolveDefaultTimezone = () => {
-    if (window.fireCoastTimezone) {
-        return window.fireCoastTimezone;
-    }
-    try {
-        return Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
-    } catch (error) {
-        console.error('Failed to resolve browser timezone', error);
-        return 'UTC';
-    }
-};
+const formatDateTime = (dateString, timeZone) => formatDateTimeWithZone(dateString, timeZone);
 
 const normalizePhoneDigits = (value = '') => (value || '').replace(/\D/g, '').slice(0, 10);
 

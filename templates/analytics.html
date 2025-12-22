@@ -8,6 +8,7 @@
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
     <script src="https://cdn.tailwindcss.com"></script>
+    <script src="/assets/js/timezone_utils.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@3.0.0/dist/chartjs-adapter-date-fns.umd.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
@@ -31,16 +32,8 @@
     <script type="text/babel">
 const { useEffect, useState, useMemo, useCallback } = React;
 
-const defaultTimeZone = (() => {
-    if (window.fireCoastTimezone) {
-        return window.fireCoastTimezone;
-    }
-    try {
-        return Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
-    } catch (error) {
-        return 'UTC';
-    }
-})();
+const { resolveDefaultTimezone, formatDateTime } = window.fireCoastTimezoneUtils;
+const defaultTimeZone = resolveDefaultTimezone();
 
 const formatValue = (value, formatHint) => {
     if (value === undefined || value === null || value === '') {
