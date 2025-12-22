@@ -346,7 +346,7 @@ def _synchronise_application_tree(source: Path, destination: Path) -> None:
         if entry.is_dir():
             if target.exists():
                 shutil.rmtree(target, ignore_errors=True)
-            shutil.copytree(entry, target)
+            shutil.copytree(entry, target, exist_ok=True)
         else:
             target.parent.mkdir(parents=True, exist_ok=True)
             shutil.copy2(entry, target)
