@@ -67,6 +67,18 @@ const formatDateTime = (dateString, timeZone) => {
     }
 };
 
+const resolveDefaultTimezone = () => {
+    if (window.fireCoastTimezone) {
+        return window.fireCoastTimezone;
+    }
+    try {
+        return Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
+    } catch (error) {
+        console.error('Failed to resolve browser timezone', error);
+        return 'UTC';
+    }
+};
+
 const normalizePhoneDigits = (value = '') => (value || '').replace(/\D/g, '').slice(0, 10);
 
 const formatPhoneNumber = (value = '') => {
@@ -855,14 +867,7 @@ const ContactsApp = () => {
     const [previousSelectedId, setPreviousSelectedId] = useState(null);
     const [isMobileLayout, setIsMobileLayout] = useState(() => window.innerWidth < 1024);
     const [showMobileDetail, setShowMobileDetail] = useState(false);
-    const [timezone, setTimezone] = useState(() => {
-        try {
-            return Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
-        } catch (error) {
-            console.error('Failed to resolve browser timezone', error);
-            return 'UTC';
-        }
-    });
+    const [timezone, setTimezone] = useState(() => resolveDefaultTimezone());
 
     useEffect(() => {
         const handleResize = () => setIsMobileLayout(window.innerWidth < 1024);

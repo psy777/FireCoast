@@ -107,6 +107,17 @@
             host: { label: 'Host', classes: 'bg-slate-200 text-slate-700' },
         };
 
+        const defaultTimeZone = (() => {
+            if (window.fireCoastTimezone) {
+                return window.fireCoastTimezone;
+            }
+            try {
+                return Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
+            } catch (error) {
+                return 'UTC';
+            }
+        })();
+
         const formatDateTime = (value) => {
             if (!value) {
                 return '—';
@@ -115,7 +126,11 @@
             if (Number.isNaN(stamp.getTime())) {
                 return value;
             }
-            return stamp.toLocaleString();
+            try {
+                return stamp.toLocaleString(undefined, { timeZone: defaultTimeZone });
+            } catch (error) {
+                return stamp.toLocaleString();
+            }
         };
 
         const formatTokenPreview = (token) => {

@@ -31,6 +31,17 @@
     <script type="text/babel">
 const { useEffect, useState, useMemo, useCallback } = React;
 
+const defaultTimeZone = (() => {
+    if (window.fireCoastTimezone) {
+        return window.fireCoastTimezone;
+    }
+    try {
+        return Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
+    } catch (error) {
+        return 'UTC';
+    }
+})();
+
 const formatValue = (value, formatHint) => {
     if (value === undefined || value === null || value === '') {
         return '—';
@@ -74,7 +85,11 @@ const formatValue = (value, formatHint) => {
     if (typeof value === 'string' && /\d{4}-\d{2}-\d{2}/.test(value)) {
         const parsed = new Date(value);
         if (!Number.isNaN(parsed.getTime())) {
-            return parsed.toLocaleString();
+            try {
+                return parsed.toLocaleString(undefined, { timeZone: defaultTimeZone });
+            } catch (error) {
+                return parsed.toLocaleString();
+            }
         }
     }
     return `${value}`;
@@ -415,7 +430,7 @@ const exportReportToPdf = (report, chartRefs) => {
     cursorY += 18;
     doc.setFontSize(10);
     doc.setFont('helvetica', 'normal');
-    doc.text(`Generated ${new Date(report.generatedAt || Date.now()).toLocaleString()}`, 60, cursorY);
+    doc.text(`Generated ${new Date(report.generatedAt || Date.now()).toLocaleString(undefined, { timeZone: defaultTimeZone })}`, 60, cursorY);
     cursorY += 24;
 
     if (report.summary && report.summary.length) {
