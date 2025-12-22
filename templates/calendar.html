@@ -60,6 +60,9 @@
         const MentionText = mentionComponents.RecordMentionText;
 
         const defaultTimeZone = (() => {
+            if (window.fireCoastTimezone) {
+                return window.fireCoastTimezone;
+            }
             try {
                 return Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
             } catch (error) {

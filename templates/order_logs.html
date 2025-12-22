@@ -36,15 +36,26 @@
         const Textarea = ({ label, placeholder, value, onChange, rows = 3 }) => (
             <div>
                 <label className="block text-sm font-medium text-slate-600">{label}</label>
-                <textarea 
-                    rows={rows} 
-                    placeholder={placeholder} 
-                    value={value} 
+                <textarea
+                    rows={rows}
+                    placeholder={placeholder}
+                    value={value}
                     onChange={onChange}
                     className="mt-1 block w-full text-sm px-3 py-2 bg-white border border-slate-300 rounded-md shadow-sm placeholder-slate-400 focus:outline-none focus:ring-orange-500 focus:border-orange-500"
                 ></textarea>
             </div>
         );
+
+        const defaultTimeZone = (() => {
+            if (window.fireCoastTimezone) {
+                return window.fireCoastTimezone;
+            }
+            try {
+                return Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
+            } catch (error) {
+                return 'UTC';
+            }
+        })();
 
         const OrderLogsPage = () => {
             const { useState, useEffect } = React;
@@ -108,7 +119,7 @@
                                 <tbody>
                                     {logs.map(log => (
                                         <tr key={log.log_id} className="bg-white border-b hover:bg-slate-50">
-                                            <td className="px-4 py-3 font-medium text-slate-800">{new Date(log.timestamp).toLocaleString()}</td>
+                                            <td className="px-4 py-3 font-medium text-slate-800">{new Date(log.timestamp).toLocaleString(undefined, { timeZone: defaultTimeZone })}</td>
                                             <td className="px-4 py-3">{log.action}</td>
                                             <td className="px-4 py-3">{log.details || ''}</td>
                                             <td className="px-4 py-3">

@@ -7011,6 +7011,7 @@ def render_with_navigation(template_name: str, active_nav: Optional[str] = None,
     context.setdefault('active_nav', active_nav)
     context.setdefault('current_device', getattr(g, 'current_device', None))
     context.setdefault('firewall_status', _get_firewall_status())
+    context.setdefault('user_timezone', _resolve_timezone_setting())
     return render_template(template_name, **context)
 
 @app.route('/api/settings', methods=['POST'])

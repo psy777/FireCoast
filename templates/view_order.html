@@ -22,6 +22,17 @@
 
     {% raw %}
     <script type="text/babel">
+        const defaultTimeZone = (() => {
+            if (window.fireCoastTimezone) {
+                return window.fireCoastTimezone;
+            }
+            try {
+                return Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
+            } catch (error) {
+                return 'UTC';
+            }
+        })();
+
         const formatInTimeZone = (dateString, timeZone, options = {}) => {
             try {
                 const date = new Date(dateString);
@@ -355,7 +366,7 @@ const formatContactAddress = (address, city, state, zip) => {
             const orderIdentifier = displayId || orderTitle || '';
             const baseFileLabel = orderIdentifier || 'Order';
             const sanitizedFileLabel = baseFileLabel.replace(/[^a-z0-9-_]+/gi, '_') || 'Order';
-            const timeZone = "America/Chicago";
+            const timeZone = defaultTimeZone;
             const dateOptions = { year: 'numeric', month: 'long', day: 'numeric' };
             const formattedDate = safeOrder.date ? formatInTimeZone(safeOrder.date, timeZone, dateOptions) : '—';
 
@@ -983,7 +994,7 @@ const formatContactAddress = (address, city, state, zip) => {
                                         <tbody>
                                             {order.orderLogs.map(log => (
                                                 <tr key={log.log_id} className="bg-white border-b hover:bg-slate-50">
-                                                    <td className="px-4 py-3 font-medium text-slate-800">{log.timestamp ? new Date(log.timestamp).toLocaleString() : '—'}</td>
+                                                    <td className="px-4 py-3 font-medium text-slate-800">{log.timestamp ? new Date(log.timestamp).toLocaleString(undefined, { timeZone: defaultTimeZone }) : '—'}</td>
                                                     <td className="px-4 py-3">{log.action || '—'}</td>
                                                     <td className="px-4 py-3">
                                                         {MentionText ? (

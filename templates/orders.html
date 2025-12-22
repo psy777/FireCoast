@@ -23,6 +23,17 @@
     {% raw %}
     <script type="text/babel">
 // --- FORMATTERS ---
+const defaultTimeZone = (() => {
+    if (window.fireCoastTimezone) {
+        return window.fireCoastTimezone;
+    }
+    try {
+        return Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
+    } catch (error) {
+        return 'UTC';
+    }
+})();
+
 const formatInTimeZone = (dateString, timeZone, options = {}) => {
     try {
         const date = new Date(dateString);
@@ -542,7 +553,7 @@ const OrderLogsSection = ({ orderId, canEdit, allContacts = [], onContactsChange
                             <tbody>
                                 {logs.map(log => (
                                     <tr key={log.log_id} className="bg-white border-b last:border-b-0 hover:bg-slate-50">
-                                        <td className="px-4 py-3 font-medium text-slate-800">{log.timestamp ? new Date(log.timestamp).toLocaleString() : '—'}</td>
+                                        <td className="px-4 py-3 font-medium text-slate-800">{log.timestamp ? new Date(log.timestamp).toLocaleString(undefined, { timeZone: defaultTimeZone }) : '—'}</td>
                                         <td className="px-4 py-3">{log.action || '—'}</td>
                                         <td className="px-4 py-3">
                                             {MentionText ? (
@@ -624,7 +635,7 @@ const generateInvoicePdf = (order, allItems, action = 'save', brandingOverride =
     const orderIdentifier = displayId || orderTitle || '';
     const baseFileLabel = orderIdentifier || 'Order';
     const sanitizedFileLabel = baseFileLabel.replace(/[^a-z0-9-_]+/gi, '_') || 'Order';
-    const timeZone = "America/Chicago";
+    const timeZone = defaultTimeZone;
     const dateOptions = { year: 'numeric', month: 'long', day: 'numeric' };
     const formattedDate = safeOrder.date ? formatInTimeZone(safeOrder.date, timeZone, dateOptions) : '—';
 
@@ -1851,7 +1862,7 @@ const Dashboard = ({ orders, navigateTo, viewOrder, allContacts, allSelectableIt
                 </div>
                 <div className="overflow-x-auto"><table className="w-full text-sm text-left text-slate-500"><thead className="text-xs text-slate-700 uppercase bg-slate-100"><tr><th className="px-4 py-3">Order</th><th className="px-4 py-3">Customer</th><th className="px-4 py-3">Date</th><th className="px-4 py-3">Total</th><th className="px-4 py-3">Status</th><th className="px-4 py-3 text-center">Actions</th></tr></thead>
                     <tbody>{filteredOrders.map(order => {
-                        const timeZone = "America/Chicago";
+                        const timeZone = defaultTimeZone;
                         const dateOptions = { year: 'numeric', month: 'long', day: 'numeric' };
                         const orderTitle = (order.title || '').trim();
                         const displayIdValue = typeof order.display_id === 'string' ? order.display_id : '';
