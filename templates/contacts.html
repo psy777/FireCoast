@@ -273,7 +273,7 @@ const ContactListItem = ({ contact, isActive, onSelect }) => {
     );
 };
 
-const ContactMentions = ({ mentions }) => {
+const ContactMentions = ({ mentions, formatDateTimeWithTimezone = formatDateTime }) => {
     if (!mentions || mentions.length === 0) {
         return <p className="text-sm text-slate-500">No mentions yet. Encourage your team to @mention this contact when they collaborate.</p>;
     }
@@ -324,7 +324,7 @@ const ContactMentions = ({ mentions }) => {
     );
 };
 
-const ContactDetail = ({ contact, onSave, isSaving, onCancelCreate, onDelete, isDeleting }) => {
+const ContactDetail = ({ contact, onSave, isSaving, onCancelCreate, onDelete, isDeleting, formatDateTimeWithTimezone = formatDateTime }) => {
     const createBlankEmail = () => ({ id: generateLocalId('email'), label: 'Email', value: '', isPrimary: false });
     const createBlankPhone = () => ({ id: generateLocalId('phone'), label: 'Phone', value: '', isPrimary: false });
     const createBlankAddress = (kind = 'other', options = {}) => {
@@ -681,7 +681,10 @@ const ContactDetail = ({ contact, onSave, isSaving, onCancelCreate, onDelete, is
 
                     <section className="bg-white border border-slate-200 rounded-xl shadow-sm p-5 space-y-3">
                         <h3 className="text-base font-semibold text-slate-800">Mentions</h3>
-                        <ContactMentions mentions={contact.mentions || []} />
+                        <ContactMentions
+                            mentions={contact.mentions || []}
+                            formatDateTimeWithTimezone={formatDateTimeWithTimezone}
+                        />
                     </section>
                 </div>
             ) : (
@@ -1243,6 +1246,7 @@ const ContactsApp = () => {
                     onCancelCreate={isMobileLayout ? handleBackToList : cancelCreateContact}
                     onDelete={handleDeleteContact}
                     isDeleting={isDeleting}
+                    formatDateTimeWithTimezone={formatDateTimeWithTimezone}
                 />
             ) : (
                 <div className="bg-white border border-slate-200 rounded-xl shadow-sm p-10 flex items-center justify-center text-slate-500">
