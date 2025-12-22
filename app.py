@@ -2454,10 +2454,15 @@ def _format_datetime_for_display(
         return value
     try:
         tz = pytz.timezone(timezone_name)
-        parsed = parsed.astimezone(tz)
+        if parsed.tzinfo is None:
+            parsed = tz.localize(parsed)
+        else:
+            parsed = parsed.astimezone(tz)
     except Exception:
         if parsed.tzinfo is None:
             parsed = parsed.replace(tzinfo=timezone.utc)
+        else:
+            parsed = parsed.astimezone(timezone.utc)
     if include_time:
         return parsed.strftime('%b %d, %Y %I:%M %p %Z')
     return parsed.strftime('%b %d, %Y')
@@ -7006,6 +7011,7 @@ def render_with_navigation(template_name: str, active_nav: Optional[str] = None,
     context.setdefault('active_nav', active_nav)
     context.setdefault('current_device', getattr(g, 'current_device', None))
     context.setdefault('firewall_status', _get_firewall_status())
+    context.setdefault('user_timezone', _resolve_timezone_setting())
     return render_template(template_name, **context)
 
 @app.route('/api/settings', methods=['POST'])

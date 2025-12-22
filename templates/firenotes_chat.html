@@ -292,6 +292,83 @@
             const STICKY_SCROLL_THRESHOLD = 48;
             const MESSAGE_GROUP_WINDOW_MS = 5 * 60 * 1000;
             const MAX_PING_RECIPIENTS = 8;
+            const timezoneUtils = window.fireCoastTimezoneUtils || {};
+            const resolveDefaultTimezone = timezoneUtils.resolveDefaultTimezone || (() => 'UTC');
+            const formatDateTime = timezoneUtils.formatDateTime
+                || ((value, timeZone, options) => new Date(value).toLocaleString(undefined, { timeZone, ...(options || {}) }));
+            const defaultTimeZone = resolveDefaultTimezone();
+
+            const normalizeDateInput = (value) => {
+                if (!value) {
+                    return null;
+                }
+                try {
+                    if (value instanceof Date) {
+                        return Number.isNaN(value.getTime()) ? null : value;
+                    }
+                    let input = value;
+                    if (typeof value === 'string') {
+                        const trimmed = value.trim();
+                        const hasTimezone = /[zZ]$/.test(trimmed) || /[+-]\d{2}:?\d{2}$/.test(trimmed);
+                        input = hasTimezone ? trimmed : `${trimmed.replace(' ', 'T')}Z`;
+                    }
+                    const parsed = new Date(input);
+                    return Number.isNaN(parsed.getTime()) ? null : parsed;
+                } catch (error) {
+                    console.error('Failed to normalize date input', error);
+                    return null;
+                }
+            };
+
+            const isSameCalendarDay = (left, right) => {
+                const dateLeft = normalizeDateInput(left);
+                const dateRight = normalizeDateInput(right);
+                if (!dateLeft || !dateRight) {
+                    return false;
+                }
+                const formatter = new Intl.DateTimeFormat(undefined, {
+                    year: 'numeric',
+                    month: '2-digit',
+                    day: '2-digit',
+                    timeZone: defaultTimeZone,
+                });
+                return formatter.format(dateLeft) === formatter.format(dateRight);
+            };
+
+            const getTimePartsInZone = (value) => {
+                const date = normalizeDateInput(value);
+                if (!date) {
+                    return { hour: null, minute: null };
+                }
+                const parts = new Intl.DateTimeFormat('en-US', {
+                    hour12: false,
+                    hour: 'numeric',
+                    minute: 'numeric',
+                    timeZone: defaultTimeZone,
+                }).formatToParts(date);
+                const hour = Number(parts.find((part) => part.type === 'hour')?.value || '0');
+                const minute = Number(parts.find((part) => part.type === 'minute')?.value || '0');
+                return { hour, minute };
+            };
+
+            const formatDateOnly = (value) => formatDateTime(value, defaultTimeZone, {
+                year: 'numeric',
+                month: 'short',
+                day: 'numeric',
+            });
+
+            const formatDateTimeWithClock = (value) => formatDateTime(value, defaultTimeZone, {
+                year: 'numeric',
+                month: 'short',
+                day: 'numeric',
+                hour: 'numeric',
+                minute: '2-digit',
+            });
+
+            const formatTimeOnly = (value) => formatDateTime(value, defaultTimeZone, {
+                hour: 'numeric',
+                minute: '2-digit',
+            });
 
             const getCurrentDeviceId = () => {
                 const context = window.fireCoastCurrentDevice || {};
@@ -318,7 +395,8 @@
                 if (!message || !message.created_at) {
                     return null;
                 }
-                const timestamp = new Date(message.created_at).getTime();
+                const normalized = normalizeDateInput(message.created_at);
+                const timestamp = normalized ? normalized.getTime() : Number.NaN;
                 return Number.isNaN(timestamp) ? null : timestamp;
             };
 
@@ -1219,14 +1297,10 @@
                 if (!value) {
                     return '';
                 }
-                const date = new Date(value);
-                if (Number.isNaN(date.getTime())) {
-                    return '';
-                }
                 const options = withTime
                     ? { year: 'numeric', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }
                     : { year: 'numeric', month: 'short', day: 'numeric' };
-                return new Intl.DateTimeFormat(undefined, options).format(date);
+                return formatDateTime(value, defaultTimeZone, options) || '';
             };
 
             const formatTimerLabel = (seconds) => {
@@ -1257,25 +1331,23 @@
                 if (!event || !event.start_at) {
                     return '';
                 }
-                const start = new Date(event.start_at);
-                const end = new Date(event.end_at || event.start_at);
-                if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) {
+                const start = normalizeDateInput(event.start_at);
+                const end = normalizeDateInput(event.end_at || event.start_at);
+                if (!start || !end) {
                     return formatTimestamp(event.start_at, !event.all_day);
                 }
-                const sameDay = start.toDateString() === end.toDateString();
-                if (event.all_day || (start.getHours() === 0 && start.getMinutes() === 0 && sameDay)) {
+                const sameDay = isSameCalendarDay(start, end);
+                const { hour: startHour, minute: startMinute } = getTimePartsInZone(start);
+                const isAllDayLike = event.all_day || (startHour === 0 && startMinute === 0 && sameDay);
+                if (isAllDayLike) {
                     return sameDay
-                        ? formatTimestamp(start.toISOString(), false)
-                        : `${formatTimestamp(start.toISOString(), false)} – ${formatTimestamp(end.toISOString(), false)}`;
+                        ? formatDateOnly(start)
+                        : `${formatDateOnly(start)} – ${formatDateOnly(end)}`;
                 }
                 if (sameDay) {
-                    const timeFormatter = new Intl.DateTimeFormat(undefined, {
-                        hour: 'numeric',
-                        minute: '2-digit',
-                    });
-                    return `${formatTimestamp(start.toISOString(), true)} – ${timeFormatter.format(end)}`;
+                    return `${formatDateTimeWithClock(start)} – ${formatTimeOnly(end)}`;
                 }
-                return `${formatTimestamp(start.toISOString(), true)} – ${formatTimestamp(end.toISOString(), true)}`;
+                return `${formatDateTimeWithClock(start)} – ${formatDateTimeWithClock(end)}`;
             };
 
             const setBusy = (value) => {
@@ -1351,8 +1423,8 @@
 
             const sortNotes = () => {
                 state.notes.sort((a, b) => {
-                    const left = new Date(a.updated_at || a.last_message_at || a.created_at || 0).getTime();
-                    const right = new Date(b.updated_at || b.last_message_at || b.created_at || 0).getTime();
+                    const left = normalizeDateInput(a.updated_at || a.last_message_at || a.created_at || 0)?.getTime() || 0;
+                    const right = normalizeDateInput(b.updated_at || b.last_message_at || b.created_at || 0)?.getTime() || 0;
                     return right - left;
                 });
             };

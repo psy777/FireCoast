@@ -72,6 +72,10 @@
     </div>
 </nav>
 <script>
+    window.fireCoastTimezone = {{ user_timezone|tojson }} || 'UTC';
+</script>
+<script src="/assets/js/timezone_utils.js"></script>
+<script>
     document.addEventListener('DOMContentLoaded', () => {
         const brandLink = document.getElementById('nav-home-link');
         if (brandLink) {

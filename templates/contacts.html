@@ -7,6 +7,7 @@
     <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script src="/assets/js/timezone_utils.js"></script>
     <script type="text/babel" src="/assets/js/record_mentions.jsx"></script>
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="icon" href="/favicon.ico" type="image/x-icon">
@@ -19,7 +20,9 @@
     </main>
     {% raw %}
     <script type="text/babel">
-const { useState, useEffect, useMemo } = React;
+const { useState, useEffect, useMemo, useCallback } = React;
+const { resolveDefaultTimezone, formatDateTime: formatDateTimeWithZone } = window.fireCoastTimezoneUtils;
+const defaultTimeZone = resolveDefaultTimezone();
 
 const EMPTY_CONTACT = {
     id: null,
@@ -56,15 +59,7 @@ const sortContactsByName = (list) => {
     });
 };
 
-const formatDateTime = (dateString) => {
-    if (!dateString) return 'Unknown';
-    try {
-        return new Date(dateString).toLocaleString();
-    } catch (error) {
-        console.error('Failed to format date', error);
-        return dateString;
-    }
-};
+const formatDateTime = (dateString, timeZone) => formatDateTimeWithZone(dateString, timeZone);
 
 const normalizePhoneDigits = (value = '') => (value || '').replace(/\D/g, '').slice(0, 10);
 
@@ -260,7 +255,7 @@ const ContactListItem = ({ contact, isActive, onSelect }) => {
     );
 };
 
-const ContactMentions = ({ mentions }) => {
+const ContactMentions = ({ mentions, formatDateTimeWithTimezone = formatDateTime }) => {
     if (!mentions || mentions.length === 0) {
         return <p className="text-sm text-slate-500">No mentions yet. Encourage your team to @mention this contact when they collaborate.</p>;
     }
@@ -278,7 +273,7 @@ const ContactMentions = ({ mentions }) => {
                             {mention.isPrimaryContact && (
                                 <span className="text-xs font-semibold text-green-700 bg-green-100 px-2 py-0.5 rounded-full">Primary contact</span>
                             )}
-                            <span className="text-xs text-slate-400">{formatDateTime(mention.createdAt)}</span>
+                            <span className="text-xs text-slate-400">{formatDateTimeWithTimezone(mention.createdAt)}</span>
                         </div>
                     </div>
                     {MentionText ? (
@@ -311,7 +306,7 @@ const ContactMentions = ({ mentions }) => {
     );
 };
 
-const ContactDetail = ({ contact, onSave, isSaving, onCancelCreate, onDelete, isDeleting }) => {
+const ContactDetail = ({ contact, onSave, isSaving, onCancelCreate, onDelete, isDeleting, formatDateTimeWithTimezone = formatDateTime }) => {
     const createBlankEmail = () => ({ id: generateLocalId('email'), label: 'Email', value: '', isPrimary: false });
     const createBlankPhone = () => ({ id: generateLocalId('phone'), label: 'Phone', value: '', isPrimary: false });
     const createBlankAddress = (kind = 'other', options = {}) => {
@@ -647,7 +642,7 @@ const ContactDetail = ({ contact, onSave, isSaving, onCancelCreate, onDelete, is
                     <section className="bg-white border border-slate-200 rounded-xl shadow-sm p-5 space-y-3">
                         <div className="flex items-center justify-between">
                             <h3 className="text-base font-semibold text-slate-800">Notes</h3>
-                            <span className="text-xs text-slate-500">Updated {formatDateTime(contact.updatedAt)}</span>
+                            <span className="text-xs text-slate-500">Updated {formatDateTimeWithTimezone(contact.updatedAt)}</span>
                         </div>
                         <div className="text-sm text-slate-700 whitespace-pre-wrap">
                             {formState.notes && formState.notes.trim() ? (
@@ -668,7 +663,10 @@ const ContactDetail = ({ contact, onSave, isSaving, onCancelCreate, onDelete, is
 
                     <section className="bg-white border border-slate-200 rounded-xl shadow-sm p-5 space-y-3">
                         <h3 className="text-base font-semibold text-slate-800">Mentions</h3>
-                        <ContactMentions mentions={contact.mentions || []} />
+                        <ContactMentions
+                            mentions={contact.mentions || []}
+                            formatDateTimeWithTimezone={formatDateTimeWithTimezone}
+                        />
                     </section>
                 </div>
             ) : (
@@ -854,6 +852,7 @@ const ContactsApp = () => {
     const [previousSelectedId, setPreviousSelectedId] = useState(null);
     const [isMobileLayout, setIsMobileLayout] = useState(() => window.innerWidth < 1024);
     const [showMobileDetail, setShowMobileDetail] = useState(false);
+    const [timezone, setTimezone] = useState(() => resolveDefaultTimezone());
 
     useEffect(() => {
         const handleResize = () => setIsMobileLayout(window.innerWidth < 1024);
@@ -862,6 +861,25 @@ const ContactsApp = () => {
         return () => window.removeEventListener('resize', handleResize);
     }, []);
 
+
+    useEffect(() => {
+        const fetchTimezone = async () => {
+            try {
+                const response = await fetch('/api/settings');
+                if (!response.ok) {
+                    throw new Error('Failed to load settings');
+                }
+                const data = await response.json();
+                if (data.timezone) {
+                    setTimezone(data.timezone);
+                }
+            } catch (error) {
+                console.error('Failed to load timezone setting', error);
+            }
+        };
+
+        fetchTimezone();
+    }, []);
 
     useEffect(() => {
         const fetchContacts = async () => {
@@ -918,6 +936,11 @@ const ContactsApp = () => {
             setShowMobileDetail(false);
         }
     }, [isMobileLayout, selectedId]);
+
+    const formatDateTimeWithTimezone = useCallback(
+        (dateString) => formatDateTime(dateString, timezone),
+        [timezone]
+    );
 
     const filteredContacts = useMemo(() => {
         const term = searchTerm.trim().toLowerCase();
@@ -1205,6 +1228,7 @@ const ContactsApp = () => {
                     onCancelCreate={isMobileLayout ? handleBackToList : cancelCreateContact}
                     onDelete={handleDeleteContact}
                     isDeleting={isDeleting}
+                    formatDateTimeWithTimezone={formatDateTimeWithTimezone}
                 />
             ) : (
                 <div className="bg-white border border-slate-200 rounded-xl shadow-sm p-10 flex items-center justify-center text-slate-500">

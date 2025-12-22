@@ -9,6 +9,7 @@
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
     <script type="text/babel" src="/assets/js/record_mentions.jsx"></script>
     <script src="https://cdn.tailwindcss.com"></script>
+    <script src="/assets/js/timezone_utils.js"></script>
     <link rel="icon" href="/favicon.ico" type="image/x-icon">
     <link rel="stylesheet" href="../assets/css/styles.css">
 </head>
@@ -28,13 +29,8 @@
         const MentionTextarea = mentionComponents.RecordMentionTextarea;
         const MentionText = mentionComponents.RecordMentionText;
 
-        const defaultTimeZone = (() => {
-            try {
-                return Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
-            } catch (error) {
-                return 'UTC';
-            }
-        })();
+        const { resolveDefaultTimezone, formatDateTime } = window.fireCoastTimezoneUtils;
+        const defaultTimeZone = resolveDefaultTimezone();
 
         const sanitizeHandle = (text) => {
             if (!text) return '';

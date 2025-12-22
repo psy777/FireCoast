@@ -9,6 +9,7 @@
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
     <script type="text/babel" src="/assets/js/record_mentions.jsx"></script>
     <script src="https://cdn.tailwindcss.com"></script>
+    <script src="/assets/js/timezone_utils.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.23/jspdf.plugin.autotable.min.js"></script>
     <link rel="icon" href="/favicon.ico" type="image/x-icon">
@@ -22,6 +23,9 @@
 
     {% raw %}
     <script type="text/babel">
+        const { resolveDefaultTimezone, formatDateTime } = window.fireCoastTimezoneUtils;
+        const defaultTimeZone = resolveDefaultTimezone();
+
         const formatInTimeZone = (dateString, timeZone, options = {}) => {
             try {
                 const date = new Date(dateString);
@@ -355,7 +359,7 @@ const formatContactAddress = (address, city, state, zip) => {
             const orderIdentifier = displayId || orderTitle || '';
             const baseFileLabel = orderIdentifier || 'Order';
             const sanitizedFileLabel = baseFileLabel.replace(/[^a-z0-9-_]+/gi, '_') || 'Order';
-            const timeZone = "America/Chicago";
+            const timeZone = defaultTimeZone;
             const dateOptions = { year: 'numeric', month: 'long', day: 'numeric' };
             const formattedDate = safeOrder.date ? formatInTimeZone(safeOrder.date, timeZone, dateOptions) : '—';
 
@@ -983,7 +987,7 @@ const formatContactAddress = (address, city, state, zip) => {
                                         <tbody>
                                             {order.orderLogs.map(log => (
                                                 <tr key={log.log_id} className="bg-white border-b hover:bg-slate-50">
-                                                    <td className="px-4 py-3 font-medium text-slate-800">{log.timestamp ? new Date(log.timestamp).toLocaleString() : '—'}</td>
+                                                    <td className="px-4 py-3 font-medium text-slate-800">{log.timestamp ? new Date(log.timestamp).toLocaleString(undefined, { timeZone: defaultTimeZone }) : '—'}</td>
                                                     <td className="px-4 py-3">{log.action || '—'}</td>
                                                     <td className="px-4 py-3">
                                                         {MentionText ? (

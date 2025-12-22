@@ -8,13 +8,8 @@
 
     const MAX_TIMEOUT = 2147483647; // ~24 days
 
-    const defaultTimeZone = (() => {
-        try {
-            return Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
-        } catch (error) {
-            return 'UTC';
-        }
-    })();
+    const { resolveDefaultTimezone, formatDateTime } = window.fireCoastTimezoneUtils;
+    const defaultTimeZone = resolveDefaultTimezone();
 
     const state = {
         timers: new Map(),
