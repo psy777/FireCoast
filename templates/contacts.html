@@ -59,8 +59,8 @@ const sortContactsByName = (list) => {
 const formatDateTime = (dateString, timeZone) => {
     if (!dateString) return 'Unknown';
     try {
-        const options = timeZone ? { timeZone } : undefined;
-        return new Date(dateString).toLocaleString(undefined, options);
+        const resolvedTimeZone = timeZone || defaultTimeZone;
+        return new Date(dateString).toLocaleString(undefined, { timeZone: resolvedTimeZone });
     } catch (error) {
         console.error('Failed to format date', error);
         return dateString;

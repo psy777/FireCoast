@@ -129,7 +129,7 @@
             try {
                 return stamp.toLocaleString(undefined, { timeZone: defaultTimeZone });
             } catch (error) {
-                return stamp.toLocaleString();
+                return stamp.toLocaleString(undefined, { timeZone: defaultTimeZone });
             }
         };
 
