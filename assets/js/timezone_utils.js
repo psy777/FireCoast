@@ -15,7 +15,21 @@
     function formatDateTime(value, timeZone, options) {
         if (!value) return 'Unknown';
         try {
-            const date = new Date(value);
+            let input = value;
+
+            if (typeof value === 'string') {
+                const trimmed = value.trim();
+                const hasTimezone = /[zZ]$/.test(trimmed) || /[+-]\d{2}:?\d{2}$/.test(trimmed);
+
+                if (!hasTimezone) {
+                    const isoLike = trimmed.replace(' ', 'T');
+                    input = `${isoLike}Z`;
+                } else {
+                    input = trimmed;
+                }
+            }
+
+            const date = new Date(input);
             if (Number.isNaN(date.getTime())) return value;
             const tz = timeZone || resolveDefaultTimezone();
             return date.toLocaleString(undefined, { timeZone: tz, ...(options || {}) });
