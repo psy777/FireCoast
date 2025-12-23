@@ -321,16 +321,91 @@ hello@firenotes.com</p>
                 return String(value);
             };
 
+            const UPDATE_NOTIFICATION_KEY = 'firecoast:lastUpdateNotificationVersion';
+
+            const rememberNotifiedVersion = (versionLabel) => {
+                if (!versionLabel) return;
+                try {
+                    localStorage.setItem(UPDATE_NOTIFICATION_KEY, versionLabel);
+                } catch (error) {
+                    console.debug('Unable to persist update notification state', error);
+                }
+            };
+
+            const shouldNotifyVersion = (versionLabel) => {
+                if (!versionLabel) return false;
+                try {
+                    return localStorage.getItem(UPDATE_NOTIFICATION_KEY) !== versionLabel;
+                } catch (error) {
+                    console.debug('Unable to read update notification state', error);
+                    return true;
+                }
+            };
+
+            const notifyUpdateAvailable = (title, body, versionLabel) => {
+                if (typeof window === 'undefined' || !('Notification' in window)) {
+                    return;
+                }
+
+                const sendNotification = () => {
+                    try {
+                        new Notification(title, { body });
+                        rememberNotifiedVersion(versionLabel);
+                    } catch (error) {
+                        console.debug('Update notification error', error);
+                    }
+                };
+
+                if (Notification.permission === 'granted') {
+                    sendNotification();
+                    return;
+                }
+
+                if (Notification.permission === 'default') {
+                    Notification.requestPermission()
+                        .then((result) => {
+                            if (result === 'granted') {
+                                sendNotification();
+                            }
+                        })
+                        .catch((error) => console.debug('Notification permission error', error));
+                }
+            };
+
             const showSystemVersion = (payload) => {
                 if (!systemVersionLabel) return;
+
                 const versionText = formatVersion(payload?.localVersion);
-                if (versionText) {
-                    const updateHint = payload?.updateAvailable ? ' (update available)' : '';
-                    systemVersionLabel.textContent = `Version ${versionText}${updateHint}`;
-                    systemVersionLabel.className = 'text-sm text-slate-500';
-                } else {
+                if (!versionText) {
                     systemVersionLabel.textContent = 'Unable to determine current version.';
                     systemVersionLabel.className = 'text-sm text-red-600';
+                    setStatus(upgradeStatus, 'Unable to check for updates.', 'error');
+                    return;
+                }
+
+                const updateAvailable = Boolean(payload?.updateAvailable);
+                const updateHint = updateAvailable ? ' (update available)' : '';
+                systemVersionLabel.textContent = `Version ${versionText}${updateHint}`;
+                systemVersionLabel.className = 'text-sm text-slate-500';
+
+                if (!updateAvailable) {
+                    setStatus(upgradeStatus, '');
+                    return;
+                }
+
+                const remoteVersionLabel = formatVersion(payload?.remoteVersion) || 'latest release';
+                setStatus(
+                    upgradeStatus,
+                    'Update available. Click “Upgrade to Latest” to install the newest release.',
+                    'success'
+                );
+
+                if (shouldNotifyVersion(remoteVersionLabel)) {
+                    notifyUpdateAvailable(
+                        'FireCoast update available',
+                        `Version ${remoteVersionLabel} is ready to install. Open Settings → System Update to upgrade.`,
+                        remoteVersionLabel
+                    );
                 }
             };
 
