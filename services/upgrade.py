@@ -14,12 +14,14 @@ from pathlib import Path
 from typing import Iterator, Optional, Protocol, Sequence
 
 from data_paths import ensure_data_root
+from services.versioning import EpochSemVer, read_version_file
 from services.backup import BackupError, create_backup_archive
 
 LOGGER = logging.getLogger(__name__)
 
 DEFAULT_REPOSITORY_URL = "https://github.com/psy777/FireCoast.git"
 REVISION_MARKER = ".firecoast_revision"
+VERSION_FILE = "VERSION"
 PRESERVED_PATHS: frozenset[str] = frozenset(
     {
         "data",
@@ -52,6 +54,17 @@ class UpgradeResult:
     backup_path: Path
     previous_revision: str
     current_revision: str
+
+
+@dataclass(frozen=True)
+class UpdateStatus:
+    """Status snapshot describing whether an update is available."""
+
+    local_version: EpochSemVer
+    remote_version: Optional[EpochSemVer]
+    current_revision: Optional[str]
+    remote_revision: Optional[str]
+    update_available: bool
 
 
 def perform_upgrade(
@@ -96,6 +109,68 @@ def perform_upgrade(
         result.current_revision,
     )
     return result
+
+
+def check_update_status(
+    remote: str = "origin",
+    branch: str = "master",
+    *,
+    runner: Optional[CommandRunner] = None,
+    repository_url: Optional[str] = None,
+) -> UpdateStatus:
+    """Return the local/remote version metadata and update availability.
+
+    Parameters
+    ----------
+    remote:
+        Remote name or URL used to fetch the latest version metadata.
+    branch:
+        Branch name to compare against.
+    runner:
+        Optional command runner used for git invocations (primarily for tests).
+    repository_url:
+        Explicit repository URL override. Only used when git metadata is
+        missing and a temporary clone is required to inspect the remote
+        version file.
+    """
+
+    repo_root = _resolve_repo_root()
+    runner = runner or _run_command
+
+    local_version = _read_local_version(repo_root)
+    current_revision: Optional[str] = None
+    remote_version: Optional[EpochSemVer] = None
+    remote_revision: Optional[str] = None
+
+    if _is_git_repository(repo_root):
+        current_revision = _get_revision(
+            runner, repo_root, context="determine current revision"
+        )
+        _run_with_error_handling(
+            runner,
+            ["git", "fetch", remote, branch],
+            repo_root,
+            f"fetch version metadata from {remote}/{branch}",
+        )
+        remote_version = _read_remote_version(runner, repo_root, remote, branch)
+        remote_revision = _get_remote_revision(runner, repo_root, remote, branch)
+    else:
+        remote_url = _coerce_remote_to_url(remote, repository_url)
+        remote_version = _read_remote_version_via_clone(
+            remote_url, branch, runner, repo_root
+        )
+
+    update_available = False
+    if remote_version is not None:
+        update_available = remote_version > local_version
+
+    return UpdateStatus(
+        local_version=local_version,
+        remote_version=remote_version,
+        current_revision=current_revision,
+        remote_revision=remote_revision,
+        update_available=update_available,
+    )
 
 
 def _upgrade_via_git_checkout(
@@ -259,6 +334,18 @@ def _get_revision(
     return result.stdout.strip()
 
 
+def _get_remote_revision(
+    runner: CommandRunner, cwd: Path, remote: str, branch: str
+) -> str:
+    result = _run_with_error_handling(
+        runner,
+        ["git", "rev-parse", f"{remote}/{branch}"],
+        cwd,
+        f"determine remote revision {remote}/{branch}",
+    )
+    return result.stdout.strip()
+
+
 def _create_data_backup() -> Path:
     data_root = ensure_data_root()
     destination = data_root.parent / "upgrade_backups"
@@ -285,6 +372,18 @@ def _coerce_remote_to_url(remote: str, repository_url: Optional[str]) -> str:
         return env_override.strip()
 
     return DEFAULT_REPOSITORY_URL
+
+
+def _read_local_version(repo_root: Path) -> EpochSemVer:
+    version_path = repo_root / VERSION_FILE
+    try:
+        return read_version_file(version_path)
+    except FileNotFoundError as exc:
+        raise UpgradeError(
+            f"Version file not found at {version_path}. Ensure the application was installed correctly."
+        ) from exc
+    except ValueError as exc:
+        raise UpgradeError(f"Invalid version file at {version_path}: {exc}") from exc
 
 
 def _looks_like_url(candidate: str) -> bool:
@@ -322,6 +421,36 @@ def _clone_repository(
         yield clone_target
     finally:
         shutil.rmtree(tmp_dir, ignore_errors=True)
+
+
+def _read_remote_version(
+    runner: CommandRunner, repo_root: Path, remote: str, branch: str
+) -> EpochSemVer:
+    result = _run_with_error_handling(
+        runner,
+        ["git", "show", f"{remote}/{branch}:{VERSION_FILE}"],
+        repo_root,
+        f"read {VERSION_FILE} from {remote}/{branch}",
+    )
+    try:
+        return EpochSemVer.parse(result.stdout.strip())
+    except ValueError as exc:
+        raise UpgradeError(f"Remote version file is invalid: {exc}") from exc
+
+
+def _read_remote_version_via_clone(
+    remote_url: str, branch: str, runner: CommandRunner, repo_root: Path
+) -> EpochSemVer:
+    with _clone_repository(remote_url, branch, runner, repo_root) as clone_dir:
+        version_path = clone_dir / VERSION_FILE
+        try:
+            return read_version_file(version_path)
+        except FileNotFoundError as exc:
+            raise UpgradeError(
+                f"Remote repository at {remote_url} is missing a {VERSION_FILE} file"
+            ) from exc
+        except ValueError as exc:  # pragma: no cover - defensive
+            raise UpgradeError(f"Remote version file is invalid: {exc}") from exc
 
 
 def _synchronise_application_tree(source: Path, destination: Path) -> None:

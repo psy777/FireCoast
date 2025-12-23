@@ -8,6 +8,7 @@ import pytest
 
 import app as firenotes_app
 from services import upgrade
+from services.versioning import EpochSemVer
 
 
 class DummyResult:
@@ -351,3 +352,51 @@ def test_upgrade_endpoint_returns_error_on_failure(monkeypatch):
     payload = response.get_json()
     assert payload['status'] == 'error'
     assert 'dirty tree detected' in payload['message']
+
+
+def test_check_update_status_reports_remote_version(monkeypatch, tmp_path):
+    repo_root = tmp_path / 'firecoast'
+    repo_root.mkdir()
+    (repo_root / 'VERSION').write_text('1.0.0.0')
+
+    def fake_repo_root() -> Path:
+        return repo_root
+
+    monkeypatch.setattr(upgrade, '_resolve_repo_root', fake_repo_root)
+    monkeypatch.setattr(upgrade, '_is_git_repository', lambda path: True)
+
+    rev_outputs = iter(['localrev\n', 'remoterev\n'])
+
+    class DummyResult:
+        def __init__(self, stdout: str = "") -> None:
+            self.stdout = stdout
+            self.stderr = ""
+
+    def fake_runner(args, *, cwd=None):
+        assert cwd == repo_root
+        if tuple(args[:2]) == ('git', 'fetch'):
+            return DummyResult('')
+        if tuple(args[:2]) == ('git', 'rev-parse'):
+            return DummyResult(next(rev_outputs))
+        if tuple(args[:2]) == ('git', 'show'):
+            return DummyResult('1.1.0.0')
+        raise AssertionError(f'Unexpected command: {args}')
+
+    status = upgrade.check_update_status(runner=fake_runner)
+
+    assert status.local_version == EpochSemVer(1, 0, 0, 0)
+    assert status.remote_version == EpochSemVer(1, 1, 0, 0)
+    assert status.update_available is True
+    assert status.current_revision == 'localrev'
+    assert status.remote_revision == 'remoterev'
+
+
+def test_check_update_status_raises_for_missing_version(monkeypatch, tmp_path):
+    repo_root = tmp_path / 'firecoast'
+    repo_root.mkdir()
+
+    monkeypatch.setattr(upgrade, '_resolve_repo_root', lambda: repo_root)
+    monkeypatch.setattr(upgrade, '_is_git_repository', lambda path: False)
+
+    with pytest.raises(upgrade.UpgradeError):
+        upgrade.check_update_status(runner=lambda *_, **__: None)

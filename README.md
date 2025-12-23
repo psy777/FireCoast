@@ -58,6 +58,15 @@ On success the command prints where the backup archive lives (under
 wrong you can restore the backup through the `/api/import-data` endpoint or the
 `services.backup` helpers.
 
+## Versioning (Epoch SemVer)
+
+FireCoast tracks releases with an epoch-based semantic version in the repository
+root `VERSION` file using the format `epoch.major.minor.patch`. Bump the
+smallest component that reflects your change (patch for fixes, minor for
+backwards-compatible features, major for breaking changes, epoch for rare,
+public milestones) and reset lower components to zero when a higher one changes.
+See `docs/epoch_semver.md` for detailed bump rules and usage examples.
+
 Installations deployed without Git metadata (for example from a ZIP archive)
 will still upgrade successfully: the helper clones the
 `https://github.com/psy777/FireCoast.git` repository, replaces the application
