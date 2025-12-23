@@ -247,6 +247,7 @@ hello@firenotes.com</p>
                 <div>
                     <h2 class="text-xl font-semibold text-slate-800">System Update</h2>
                     <p class="text-sm text-slate-500">Pull the latest FireCoast release, back up your data, and refresh the app.</p>
+                    <p id="systemVersionLabel" class="text-sm text-slate-500">Checking version…</p>
                 </div>
                 <span id="upgradeStatus" class="text-sm text-slate-400"></span>
             </div>
@@ -304,6 +305,48 @@ hello@firenotes.com</p>
                 if (!node) return;
                 node.textContent = message || '';
                 node.className = `text-sm ${tone === 'error' ? 'text-red-600' : tone === 'success' ? 'text-green-600' : 'text-slate-400'}`;
+            };
+
+            const systemVersionLabel = document.getElementById('systemVersionLabel');
+
+            const formatVersion = (value) => {
+                if (!value) return null;
+                if (typeof value === 'string') return value;
+                if (
+                    typeof value === 'object' &&
+                    ['epoch', 'major', 'minor', 'patch'].every((key) => typeof value[key] !== 'undefined')
+                ) {
+                    return `${value.epoch}.${value.major}.${value.minor}.${value.patch}`;
+                }
+                return String(value);
+            };
+
+            const showSystemVersion = (payload) => {
+                if (!systemVersionLabel) return;
+                const versionText = formatVersion(payload?.localVersion);
+                if (versionText) {
+                    const updateHint = payload?.updateAvailable ? ' (update available)' : '';
+                    systemVersionLabel.textContent = `Version ${versionText}${updateHint}`;
+                    systemVersionLabel.className = 'text-sm text-slate-500';
+                } else {
+                    systemVersionLabel.textContent = 'Unable to determine current version.';
+                    systemVersionLabel.className = 'text-sm text-red-600';
+                }
+            };
+
+            const fetchSystemVersion = async () => {
+                if (!systemVersionLabel) return;
+                try {
+                    const response = await fetch('/api/system/version?refresh=1');
+                    if (!response.ok) {
+                        throw new Error('Unable to load system version.');
+                    }
+                    const payload = await response.json();
+                    showSystemVersion(payload);
+                } catch (error) {
+                    console.error(error);
+                    showSystemVersion(null);
+                }
             };
 
             const normalizeNavPositions = () => {
@@ -901,6 +944,7 @@ hello@firenotes.com</p>
 
             loadSettings();
             fetchNavigationOptions();
+            fetchSystemVersion();
         });
     </script>
 </body>
