@@ -1032,10 +1032,12 @@
                         },
                         disabled: state.composerDisabled,
                         rows: 1,
+                        maxHeight: MAX_COMPOSER_HEIGHT,
                         placeholder: 'Write a message',
                         entityTypes: mentionEntityTypes,
                         className: 'fc-composer__mention',
                         textareaClassName: 'fc-composer__mention-input',
+                        onPaste: handleComposerPaste,
                     })
                 );
                 scheduleFrame(() => {
@@ -3041,13 +3043,20 @@
                     return;
                 }
                 textarea.style.height = 'auto';
-                const targetHeight = Math.min(MAX_COMPOSER_HEIGHT, textarea.scrollHeight || 0);
+                const scrollHeight = textarea.scrollHeight || 0;
+                const targetHeight = Math.min(MAX_COMPOSER_HEIGHT, scrollHeight);
                 const finalHeight = Math.max(targetHeight, 44);
                 textarea.style.height = `${finalHeight}px`;
+                textarea.style.overflowY = scrollHeight > MAX_COMPOSER_HEIGHT ? 'auto' : 'hidden';
                 if (mentionComposer.useMentionComponent && mentionRootEl) {
                     const overlay = mentionRootEl.querySelector('.record-mention-textarea__overlay');
                     if (overlay) {
                         overlay.style.height = `${finalHeight}px`;
+                        overlay.style.maxHeight = `${MAX_COMPOSER_HEIGHT}px`;
+                        overlay.style.overflowY = scrollHeight > MAX_COMPOSER_HEIGHT ? 'auto' : 'hidden';
+                        overlay.style.overflowX = 'hidden';
+                        overlay.style.overscrollBehavior = 'contain';
+                        overlay.scrollTop = textarea.scrollTop;
                     }
                 }
             };
@@ -3162,6 +3171,18 @@
                     state.pendingFiles.push({ id, file });
                 });
                 renderAttachmentChips();
+            };
+
+            const handleComposerPaste = (event) => {
+                if (!event || !event.clipboardData) {
+                    return;
+                }
+                const files = Array.from(event.clipboardData.files || [])
+                    .filter((file) => file && file.type && file.type.startsWith('image/'));
+                if (!files.length) {
+                    return;
+                }
+                addPendingFiles(files);
             };
 
             const loadMessages = async (noteId, options = {}) => {
@@ -3500,6 +3521,7 @@
                     autoResizeInput();
                     notifyTypingActivity();
                 });
+                inputEl.addEventListener('paste', handleComposerPaste);
                 inputEl.addEventListener('keydown', (event) => {
                     if (event.key === 'Enter' && !event.shiftKey) {
                         event.preventDefault();
