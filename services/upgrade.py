@@ -345,8 +345,15 @@ def _synchronise_application_tree(source: Path, destination: Path) -> None:
         target = destination / entry.name
         if entry.is_dir():
             if target.exists():
-                shutil.rmtree(target, ignore_errors=True)
-            shutil.copytree(entry, target)
+                try:
+                    shutil.rmtree(target)
+                except OSError as exc:
+                    LOGGER.warning(
+                        "Unable to fully remove existing directory %s: %s; merging contents during upgrade",
+                        target,
+                        exc,
+                    )
+            shutil.copytree(entry, target, dirs_exist_ok=True)
         else:
             target.parent.mkdir(parents=True, exist_ok=True)
             shutil.copy2(entry, target)
