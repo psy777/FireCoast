@@ -196,7 +196,8 @@ main {
     border-radius: 0.65rem;
     border: 1px solid var(--slate-200);
     padding: 0.65rem 0.75rem;
-    font-size: 0.95rem;
+    /* Keep inputs at 16px+ to prevent mobile browsers from zooming when focusing text fields. */
+    font-size: 1rem;
     background: #ffffff;
     transition: border-color 0.15s ease, box-shadow 0.15s ease;
 }
