@@ -1480,6 +1480,10 @@ body.fc-notes-locked {
     transition: border-color 0.16s ease, box-shadow 0.16s ease, background-color 0.16s ease;
     white-space: pre-wrap;
     word-break: break-word;
+    overflow: hidden;
+    max-height: 220px;
+    scrollbar-gutter: stable;
+    overscroll-behavior: contain;
 }
 
 .firenotes-chat .record-mention-textarea__overlay.border-slate-200 {
@@ -1528,6 +1532,10 @@ body.fc-notes-locked {
     resize: none;
     font-size: 16px;
     line-height: 1.5;
+    overflow: hidden;
+    max-height: 220px;
+    scrollbar-gutter: stable;
+    overscroll-behavior: contain;
 }
 
 .firenotes-chat .record-mention-textarea__input::placeholder {
