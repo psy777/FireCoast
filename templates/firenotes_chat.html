@@ -734,6 +734,15 @@
                 if (!chatLogEl) {
                     return;
                 }
+                renderedMessages.forEach((entry) => {
+                    if (entry && entry.root) {
+                        try {
+                            entry.root.unmount();
+                        } catch (error) {
+                            console.debug('Failed to unmount mention renderer', error);
+                        }
+                    }
+                });
                 renderedMessages.clear();
                 while (chatLogEl.firstChild) {
                     chatLogEl.removeChild(chatLogEl.firstChild);
@@ -758,54 +767,18 @@
                 return distanceToBottom <= STICKY_SCROLL_THRESHOLD;
             };
 
-            const scrollAnchorIntoView = () => {
+            const jumpToBottom = () => {
                 if (!chatBottomAnchor || typeof chatBottomAnchor.scrollIntoView !== 'function') {
-                    return false;
+                    return;
                 }
                 try {
-                    chatBottomAnchor.scrollIntoView({ block: 'end' });
+                    chatBottomAnchor.scrollIntoView({
+                        behavior: 'auto',
+                        block: 'end',
+                    });
                 } catch (error) {
                     chatBottomAnchor.scrollIntoView(false);
                 }
-                return true;
-            };
-
-            const jumpToBottom = () => {
-                if (!scrollPort) {
-                    return;
-                }
-                const settle = () => {
-                    const maxScrollTop = Math.max(0, scrollPort.scrollHeight - scrollPort.clientHeight);
-                    const anchorUsed = scrollAnchorIntoView();
-                    if (!anchorUsed) {
-                        scrollPort.scrollTop = maxScrollTop;
-                    }
-                };
-                if (typeof ResizeObserver === 'function' && chatLogEl instanceof HTMLElement) {
-                    let handled = false;
-                    const finish = () => {
-                        if (handled) {
-                            return;
-                        }
-                        handled = true;
-                        settle();
-                    };
-                    const observer = new ResizeObserver(() => {
-                        observer.disconnect();
-                        finish();
-                    });
-                    observer.observe(chatLogEl);
-                    setTimeout(() => {
-                        observer.disconnect();
-                        finish();
-                    }, 140);
-                    return;
-                }
-                if (typeof requestAnimationFrame === 'function') {
-                    requestAnimationFrame(() => requestAnimationFrame(settle));
-                    return;
-                }
-                setTimeout(settle, 80);
             };
 
             const state = {
@@ -1027,7 +1000,6 @@
             const mentionEntityTypes = null;
 
             let handleCopyResetTimer = null;
-            const activeMentionTextRoots = [];
 
             const scheduleFrame = (callback) => {
                 if (typeof window !== 'undefined' && typeof window.requestAnimationFrame === 'function') {
@@ -1049,17 +1021,6 @@
                 handles: [],
                 isLoading: false,
                 error: null,
-            };
-
-            const cleanupMentionTextRoots = () => {
-                while (activeMentionTextRoots.length) {
-                    const root = activeMentionTextRoots.pop();
-                    try {
-                        root.unmount();
-                    } catch (error) {
-                        console.debug('Failed to unmount mention renderer', error);
-                    }
-                }
             };
 
             const getActiveTextarea = () => {
@@ -1852,7 +1813,7 @@
 
             const renderMentionText = (container, content) => {
                 if (!content) {
-                    return false;
+                    return null;
                 }
                 const components = window.RecordMentionComponents || {};
                 if (
@@ -1861,7 +1822,7 @@
                     !window.ReactDOM ||
                     typeof window.ReactDOM.createRoot !== 'function'
                 ) {
-                    return false;
+                    return null;
                 }
                 try {
                     const root = window.ReactDOM.createRoot(container);
@@ -1872,11 +1833,10 @@
                             className: 'fc-message__text-content',
                         })
                     );
-                    activeMentionTextRoots.push(root);
-                    return true;
+                    return root;
                 } catch (error) {
                     console.debug('Failed to render mention text', error);
-                    return false;
+                    return null;
                 }
             };
 
@@ -2921,6 +2881,8 @@
                 const body = document.createElement('div');
                 body.className = 'fc-message__body';
 
+                let mentionRoot = null;
+
                 const appendAttachments = () => {
                     if (!Array.isArray(message.attachments) || !message.attachments.length) {
                         return;
@@ -2970,7 +2932,8 @@
                     if (message.content) {
                         const text = document.createElement('div');
                         text.className = 'fc-message__text';
-                        if (!renderMentionText(text, message.content)) {
+                        mentionRoot = renderMentionText(text, message.content);
+                        if (!mentionRoot) {
                             text.textContent = message.content;
                         }
                         body.appendChild(text);
@@ -2997,7 +2960,7 @@
                 bubble.appendChild(toolbar);
 
                 wrapper.appendChild(bubble);
-                return wrapper;
+                return { element: wrapper, root: mentionRoot };
             };
 
             const matchesMessageSearch = (message, query) => {
@@ -3035,7 +2998,6 @@
                 ) {
                     state.activeMessageEdit = null;
                 }
-                cleanupMentionTextRoots();
                 closeActivePopover();
                 const previousScrollTop = scrollPort ? scrollPort.scrollTop : 0;
                 const shouldStickToBottom = isNearBottom(scrollPort);
@@ -3105,18 +3067,32 @@
                     ) {
                         return;
                     }
-                    const element = createMessageElement(message, previousMessage);
+                    const { element, root } = createMessageElement(message, previousMessage);
                     if (existing && existing.element && existing.element.parentNode === chatLogEl) {
+                        if (existing.root) {
+                            try {
+                                existing.root.unmount();
+                            } catch (error) {
+                                console.debug('Failed to unmount mention renderer', error);
+                            }
+                        }
                         existing.element.replaceWith(element);
                     } else if (chatBottomAnchor && chatBottomAnchor.parentNode === chatLogEl) {
                         chatLogEl.insertBefore(element, chatBottomAnchor);
                     } else {
                         chatLogEl.appendChild(element);
                     }
-                    renderedMessages.set(key, { element, signature });
+                    renderedMessages.set(key, { element, signature, root });
                 });
                 renderedMessages.forEach((entry, key) => {
                     if (!visibleKeys.has(key)) {
+                        if (entry.root) {
+                            try {
+                                entry.root.unmount();
+                            } catch (error) {
+                                console.debug('Failed to unmount mention renderer', error);
+                            }
+                        }
                         if (entry.element && entry.element.parentNode === chatLogEl) {
                             entry.element.remove();
                         }
