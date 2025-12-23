@@ -91,10 +91,10 @@
                                 <div id="fc-mention-root" class="fc-composer__mention-root" hidden></div>
                             </div>
                             <div class="fc-composer__actions">
-                                <button type="button" id="fc-ping-button" class="fc-icon-button" aria-label="Notify someone" disabled>
-                                    <span aria-hidden="true">🔔</span>
-                                </button>
                                 <input type="file" id="fc-attachment-input" class="fc-composer__file-input" multiple hidden>
+                                <button type="button" id="fc-send-button" class="fc-icon-button fc-icon-button--primary" aria-label="Send message" disabled>
+                                    <span aria-hidden="true">➤</span>
+                                </button>
                                 <button type="button" id="fc-attach-button" class="fc-icon-button" aria-label="Add files" disabled>
                                     <span aria-hidden="true">＋</span>
                                 </button>
@@ -136,6 +136,7 @@
             const composerEl = document.querySelector('.fc-composer');
             const mentionRootEl = document.getElementById('fc-mention-root');
             const errorEl = document.getElementById('fc-error');
+            const sendButtonEl = document.getElementById('fc-send-button');
             const pingButtonEl = document.getElementById('fc-ping-button');
             const typingIndicatorEl = document.getElementById('fc-typing-indicator');
             const chatWrapperEl = document.querySelector('.fc-chat-wrapper');
@@ -147,6 +148,20 @@
             const mobileLayoutQuery = typeof window !== 'undefined' && typeof window.matchMedia === 'function'
                 ? window.matchMedia('(max-width: 768px)')
                 : null;
+
+            const setViewportHeightVar = () => {
+                const viewportHeight = window.visualViewport && typeof window.visualViewport.height === 'number'
+                    ? window.visualViewport.height
+                    : window.innerHeight;
+                if (viewportHeight > 0) {
+                    document.documentElement.style.setProperty('--fc-safe-viewport', `${viewportHeight}px`);
+                }
+            };
+            setViewportHeightVar();
+            window.addEventListener('resize', setViewportHeightVar);
+            if (window.visualViewport && typeof window.visualViewport.addEventListener === 'function') {
+                window.visualViewport.addEventListener('resize', setViewportHeightVar);
+            }
 
             const focusNoteSearch = () => {
                 if (!noteSearchEl) {
@@ -233,6 +248,9 @@
             const handleMobileLayoutChange = (event) => {
                 if (!event.matches) {
                     closeMobileNotes();
+                }
+                if (mentionComposer.useMentionComponent) {
+                    scheduleMentionComposerRender({ immediate: true });
                 }
             };
 
@@ -706,15 +724,36 @@
             };
 
             const scrollPort = chatScrollEl || chatLogEl;
+            const renderedMessages = new Map();
+            let lastRenderedNoteId = null;
+            let lastRenderedSearch = '';
+            const clearChatLog = () => {
+                if (!chatLogEl) {
+                    return;
+                }
+                renderedMessages.forEach((entry) => {
+                    if (entry && entry.root) {
+                        try {
+                            entry.root.unmount();
+                        } catch (error) {
+                            console.debug('Failed to unmount mention renderer', error);
+                        }
+                    }
+                });
+                renderedMessages.clear();
+                while (chatLogEl.firstChild) {
+                    chatLogEl.removeChild(chatLogEl.firstChild);
+                }
+            };
             const setChatLogContent = (...nodes) => {
                 if (!chatLogEl) {
                     return;
                 }
+                clearChatLog();
+                nodes.forEach((node) => chatLogEl.appendChild(node));
                 if (chatBottomAnchor) {
-                    chatLogEl.replaceChildren(...nodes, chatBottomAnchor);
-                    return;
+                    chatLogEl.appendChild(chatBottomAnchor);
                 }
-                chatLogEl.replaceChildren(...nodes);
             };
 
             const isNearBottom = (element) => {
@@ -725,34 +764,18 @@
                 return distanceToBottom <= STICKY_SCROLL_THRESHOLD;
             };
 
-            const scrollAnchorIntoView = () => {
+            const jumpToBottom = () => {
                 if (!chatBottomAnchor || typeof chatBottomAnchor.scrollIntoView !== 'function') {
-                    return false;
+                    return;
                 }
                 try {
-                    chatBottomAnchor.scrollIntoView({ block: 'end' });
+                    chatBottomAnchor.scrollIntoView({
+                        behavior: 'auto',
+                        block: 'end',
+                    });
                 } catch (error) {
                     chatBottomAnchor.scrollIntoView(false);
                 }
-                return true;
-            };
-
-            const jumpToBottom = () => {
-                if (!scrollPort) {
-                    return;
-                }
-                const settle = () => {
-                    const maxScrollTop = Math.max(0, scrollPort.scrollHeight - scrollPort.clientHeight);
-                    const anchorUsed = scrollAnchorIntoView();
-                    if (!anchorUsed) {
-                        scrollPort.scrollTop = maxScrollTop;
-                    }
-                };
-                if (typeof requestAnimationFrame === 'function') {
-                    requestAnimationFrame(settle);
-                    return;
-                }
-                settle();
             };
 
             const state = {
@@ -974,7 +997,6 @@
             const mentionEntityTypes = null;
 
             let handleCopyResetTimer = null;
-            const activeMentionTextRoots = [];
 
             const scheduleFrame = (callback) => {
                 if (typeof window !== 'undefined' && typeof window.requestAnimationFrame === 'function') {
@@ -996,17 +1018,6 @@
                 handles: [],
                 isLoading: false,
                 error: null,
-            };
-
-            const cleanupMentionTextRoots = () => {
-                while (activeMentionTextRoots.length) {
-                    const root = activeMentionTextRoots.pop();
-                    try {
-                        root.unmount();
-                    } catch (error) {
-                        console.debug('Failed to unmount mention renderer', error);
-                    }
-                }
             };
 
             const getActiveTextarea = () => {
@@ -1032,10 +1043,13 @@
                         },
                         disabled: state.composerDisabled,
                         rows: 1,
+                        maxHeight: MAX_COMPOSER_HEIGHT,
                         placeholder: 'Write a message',
                         entityTypes: mentionEntityTypes,
                         className: 'fc-composer__mention',
                         textareaClassName: 'fc-composer__mention-input',
+                        onPaste: handleComposerPaste,
+                        submitOnEnter: !isMobileLayout(),
                     })
                 );
                 scheduleFrame(() => {
@@ -1142,6 +1156,15 @@
                 return inputEl ? inputEl.value || '' : '';
             };
 
+            const updateSendButtonState = () => {
+                if (!sendButtonEl) {
+                    return;
+                }
+                const hasText = Boolean(normalizePreview(getComposerValue()));
+                const hasFiles = state.pendingFiles.length > 0;
+                sendButtonEl.disabled = state.composerDisabled || state.isSending || (!hasText && !hasFiles);
+            };
+
             function setComposerValue(value, options = {}) {
                 const next = value === null || value === undefined ? '' : String(value);
                 const forceRender = Boolean(options.forceRender);
@@ -1161,6 +1184,7 @@
                 if (hasChanged && !state.composerDisabled) {
                     notifyTypingActivity();
                 }
+                updateSendButtonState();
                 if (!options.skipResize) {
                     scheduleFrame(() => {
                         autoResizeInput();
@@ -1499,11 +1523,13 @@
 
             const renderAttachmentChips = () => {
                 if (!attachmentChipsEl) {
+                    updateSendButtonState();
                     return;
                 }
                 attachmentChipsEl.innerHTML = '';
                 if (!state.pendingFiles.length) {
                     attachmentChipsEl.hidden = true;
+                    updateSendButtonState();
                     return;
                 }
                 attachmentChipsEl.hidden = false;
@@ -1525,6 +1551,7 @@
                     fragment.appendChild(chip);
                 });
                 attachmentChipsEl.appendChild(fragment);
+                updateSendButtonState();
             };
 
             const renderReplyPreview = () => {
@@ -1783,7 +1810,7 @@
 
             const renderMentionText = (container, content) => {
                 if (!content) {
-                    return false;
+                    return null;
                 }
                 const components = window.RecordMentionComponents || {};
                 if (
@@ -1792,7 +1819,7 @@
                     !window.ReactDOM ||
                     typeof window.ReactDOM.createRoot !== 'function'
                 ) {
-                    return false;
+                    return null;
                 }
                 try {
                     const root = window.ReactDOM.createRoot(container);
@@ -1803,11 +1830,10 @@
                             className: 'fc-message__text-content',
                         })
                     );
-                    activeMentionTextRoots.push(root);
-                    return true;
+                    return root;
                 } catch (error) {
                     console.debug('Failed to render mention text', error);
-                    return false;
+                    return null;
                 }
             };
 
@@ -2852,6 +2878,8 @@
                 const body = document.createElement('div');
                 body.className = 'fc-message__body';
 
+                let mentionRoot = null;
+
                 const appendAttachments = () => {
                     if (!Array.isArray(message.attachments) || !message.attachments.length) {
                         return;
@@ -2901,7 +2929,8 @@
                     if (message.content) {
                         const text = document.createElement('div');
                         text.className = 'fc-message__text';
-                        if (!renderMentionText(text, message.content)) {
+                        mentionRoot = renderMentionText(text, message.content);
+                        if (!mentionRoot) {
                             text.textContent = message.content;
                         }
                         body.appendChild(text);
@@ -2928,7 +2957,7 @@
                 bubble.appendChild(toolbar);
 
                 wrapper.appendChild(bubble);
-                return wrapper;
+                return { element: wrapper, root: mentionRoot };
             };
 
             const matchesMessageSearch = (message, query) => {
@@ -2966,7 +2995,6 @@
                 ) {
                     state.activeMessageEdit = null;
                 }
-                cleanupMentionTextRoots();
                 closeActivePopover();
                 const previousScrollTop = scrollPort ? scrollPort.scrollTop : 0;
                 const shouldStickToBottom = isNearBottom(scrollPort);
@@ -2975,6 +3003,8 @@
                     placeholder.className = 'fc-chat-placeholder';
                     placeholder.textContent = message;
                     setChatLogContent(placeholder);
+                    lastRenderedNoteId = state.activeNoteId || null;
+                    lastRenderedSearch = '';
                 };
                 if (!state.activeNoteId) {
                     replaceWithPlaceholder('Create a note to start chatting.');
@@ -3002,15 +3032,78 @@
                     if (scrollPort) {
                         scrollPort.scrollTop = 0;
                     }
+                    lastRenderedNoteId = state.activeNoteId || null;
+                    lastRenderedSearch = trimmedQuery;
                     return;
                 }
-                const fragment = document.createDocumentFragment();
-                visible.forEach((message) => {
-                    const messageIndex = state.messages.indexOf(message);
-                    const previousMessage = messageIndex > 0 ? state.messages[messageIndex - 1] : null;
-                    fragment.appendChild(createMessageElement(message, previousMessage));
+                const noteChanged = lastRenderedNoteId !== state.activeNoteId;
+                const searchChanged = lastRenderedSearch !== trimmedQuery;
+                if (noteChanged || searchChanged) {
+                    clearChatLog();
+                }
+                const visibleKeys = new Set();
+                visible.forEach((message, index) => {
+                    const key = message && message.id ? String(message.id) : `row-${index}`;
+                    visibleKeys.add(key);
+                    const signature = JSON.stringify({
+                        content: message.content || '',
+                        metadata: message.metadata || {},
+                        attachments: message.attachments || [],
+                        editedAt: message.metadata ? (message.metadata.edited_at || message.metadata.editedAt || '') : '',
+                        createdAt: message.created_at || '',
+                        pending: isMessageActionPending(message.id),
+                        editing: isMessageBeingEdited(message.id),
+                    });
+                    const previousMessage = index > 0 ? visible[index - 1] : null;
+                    const existing = renderedMessages.get(key);
+                    if (
+                        existing &&
+                        existing.signature === signature &&
+                        existing.element &&
+                        existing.element.parentNode === chatLogEl
+                    ) {
+                        return;
+                    }
+                    const { element, root } = createMessageElement(message, previousMessage);
+                    if (existing && existing.element && existing.element.parentNode === chatLogEl) {
+                        if (existing.root) {
+                            try {
+                                existing.root.unmount();
+                            } catch (error) {
+                                console.debug('Failed to unmount mention renderer', error);
+                            }
+                        }
+                        existing.element.replaceWith(element);
+                    } else if (chatBottomAnchor && chatBottomAnchor.parentNode === chatLogEl) {
+                        chatLogEl.insertBefore(element, chatBottomAnchor);
+                    } else {
+                        chatLogEl.appendChild(element);
+                    }
+                    renderedMessages.set(key, { element, signature, root });
                 });
-                setChatLogContent(fragment);
+                renderedMessages.forEach((entry, key) => {
+                    if (!visibleKeys.has(key)) {
+                        if (entry.root) {
+                            try {
+                                entry.root.unmount();
+                            } catch (error) {
+                                console.debug('Failed to unmount mention renderer', error);
+                            }
+                        }
+                        if (entry.element && entry.element.parentNode === chatLogEl) {
+                            entry.element.remove();
+                        }
+                        renderedMessages.delete(key);
+                    }
+                });
+                if (chatBottomAnchor) {
+                    if (chatBottomAnchor.parentNode === chatLogEl) {
+                        chatBottomAnchor.remove();
+                    }
+                    chatLogEl.appendChild(chatBottomAnchor);
+                }
+                lastRenderedNoteId = state.activeNoteId || null;
+                lastRenderedSearch = trimmedQuery;
                 if (focusMessageIfNeeded()) {
                     return;
                 }
@@ -3041,13 +3134,23 @@
                     return;
                 }
                 textarea.style.height = 'auto';
-                const targetHeight = Math.min(MAX_COMPOSER_HEIGHT, textarea.scrollHeight || 0);
+                const scrollHeight = textarea.scrollHeight || 0;
+                const targetHeight = Math.min(MAX_COMPOSER_HEIGHT, scrollHeight);
                 const finalHeight = Math.max(targetHeight, 44);
                 textarea.style.height = `${finalHeight}px`;
+                textarea.style.overflowY = scrollHeight > MAX_COMPOSER_HEIGHT ? 'auto' : 'hidden';
+                if (scrollHeight > textarea.clientHeight) {
+                    textarea.scrollTop = textarea.scrollHeight;
+                }
                 if (mentionComposer.useMentionComponent && mentionRootEl) {
                     const overlay = mentionRootEl.querySelector('.record-mention-textarea__overlay');
                     if (overlay) {
                         overlay.style.height = `${finalHeight}px`;
+                        overlay.style.maxHeight = `${MAX_COMPOSER_HEIGHT}px`;
+                        overlay.style.overflowY = scrollHeight > MAX_COMPOSER_HEIGHT ? 'auto' : 'hidden';
+                        overlay.style.overflowX = 'hidden';
+                        overlay.style.overscrollBehavior = 'contain';
+                        overlay.scrollTop = textarea.scrollTop;
                     }
                 }
             };
@@ -3060,6 +3163,7 @@
                 if (pingButtonEl) {
                     pingButtonEl.disabled = !enabled;
                 }
+                updateSendButtonState();
                 if (composerEl) {
                     composerEl.setAttribute('data-disabled', enabled ? 'false' : 'true');
                 }
@@ -3162,6 +3266,18 @@
                     state.pendingFiles.push({ id, file });
                 });
                 renderAttachmentChips();
+            };
+
+            const handleComposerPaste = (event) => {
+                if (!event || !event.clipboardData) {
+                    return;
+                }
+                const files = Array.from(event.clipboardData.files || [])
+                    .filter((file) => file && file.type && file.type.startsWith('image/'));
+                if (!files.length) {
+                    return;
+                }
+                addPendingFiles(files);
             };
 
             const loadMessages = async (noteId, options = {}) => {
@@ -3336,6 +3452,7 @@
                     return;
                 }
                 state.isSending = true;
+                updateSendButtonState();
                 clearError();
                 try {
                     let response;
@@ -3408,6 +3525,7 @@
                     if (attachmentInputEl) {
                         attachmentInputEl.value = '';
                     }
+                    updateSendButtonState();
                 }
             };
 
@@ -3499,15 +3617,25 @@
                     state.composerValue = inputEl.value || '';
                     autoResizeInput();
                     notifyTypingActivity();
+                    updateSendButtonState();
                 });
+                inputEl.addEventListener('paste', handleComposerPaste);
                 inputEl.addEventListener('keydown', (event) => {
-                    if (event.key === 'Enter' && !event.shiftKey) {
+                    if (!isMobileLayout() && event.key === 'Enter' && !event.shiftKey) {
                         event.preventDefault();
                         sendMessage(inputEl.value || '');
                     }
                 });
                 inputEl.addEventListener('blur', () => {
                     stopTyping();
+                });
+            }
+
+            if (sendButtonEl) {
+                sendButtonEl.addEventListener('click', () => {
+                    if (!sendButtonEl.disabled) {
+                        sendMessage();
+                    }
                 });
             }
 
