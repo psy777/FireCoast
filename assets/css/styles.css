@@ -134,7 +134,7 @@ main {
     width: 100%;
     min-width: 640px;
     border-collapse: collapse;
-    font-size: 0.95rem;
+    font-size: 1rem;
 }
 
 .table-container thead {
