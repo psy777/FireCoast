@@ -92,6 +92,9 @@
                             </div>
                             <div class="fc-composer__actions">
                                 <input type="file" id="fc-attachment-input" class="fc-composer__file-input" multiple hidden>
+                                <button type="button" id="fc-send-button" class="fc-icon-button fc-icon-button--primary" aria-label="Send message" disabled>
+                                    <span aria-hidden="true">➤</span>
+                                </button>
                                 <button type="button" id="fc-attach-button" class="fc-icon-button" aria-label="Add files" disabled>
                                     <span aria-hidden="true">＋</span>
                                 </button>
@@ -724,15 +727,27 @@
             };
 
             const scrollPort = chatScrollEl || chatLogEl;
+            const renderedMessages = new Map();
+            let lastRenderedNoteId = null;
+            let lastRenderedSearch = '';
+            const clearChatLog = () => {
+                if (!chatLogEl) {
+                    return;
+                }
+                renderedMessages.clear();
+                while (chatLogEl.firstChild) {
+                    chatLogEl.removeChild(chatLogEl.firstChild);
+                }
+            };
             const setChatLogContent = (...nodes) => {
                 if (!chatLogEl) {
                     return;
                 }
+                clearChatLog();
+                nodes.forEach((node) => chatLogEl.appendChild(node));
                 if (chatBottomAnchor) {
-                    chatLogEl.replaceChildren(...nodes, chatBottomAnchor);
-                    return;
+                    chatLogEl.appendChild(chatBottomAnchor);
                 }
-                chatLogEl.replaceChildren(...nodes);
             };
 
             const isNearBottom = (element) => {
@@ -766,11 +781,31 @@
                         scrollPort.scrollTop = maxScrollTop;
                     }
                 };
-                if (typeof requestAnimationFrame === 'function') {
-                    requestAnimationFrame(settle);
+                if (typeof ResizeObserver === 'function' && chatLogEl instanceof HTMLElement) {
+                    let handled = false;
+                    const finish = () => {
+                        if (handled) {
+                            return;
+                        }
+                        handled = true;
+                        settle();
+                    };
+                    const observer = new ResizeObserver(() => {
+                        observer.disconnect();
+                        finish();
+                    });
+                    observer.observe(chatLogEl);
+                    setTimeout(() => {
+                        observer.disconnect();
+                        finish();
+                    }, 140);
                     return;
                 }
-                settle();
+                if (typeof requestAnimationFrame === 'function') {
+                    requestAnimationFrame(() => requestAnimationFrame(settle));
+                    return;
+                }
+                setTimeout(settle, 80);
             };
 
             const state = {
@@ -3009,6 +3044,8 @@
                     placeholder.className = 'fc-chat-placeholder';
                     placeholder.textContent = message;
                     setChatLogContent(placeholder);
+                    lastRenderedNoteId = state.activeNoteId || null;
+                    lastRenderedSearch = '';
                 };
                 if (!state.activeNoteId) {
                     replaceWithPlaceholder('Create a note to start chatting.');
@@ -3036,15 +3073,64 @@
                     if (scrollPort) {
                         scrollPort.scrollTop = 0;
                     }
+                    lastRenderedNoteId = state.activeNoteId || null;
+                    lastRenderedSearch = trimmedQuery;
                     return;
                 }
-                const fragment = document.createDocumentFragment();
-                visible.forEach((message) => {
-                    const messageIndex = state.messages.indexOf(message);
-                    const previousMessage = messageIndex > 0 ? state.messages[messageIndex - 1] : null;
-                    fragment.appendChild(createMessageElement(message, previousMessage));
+                const noteChanged = lastRenderedNoteId !== state.activeNoteId;
+                const searchChanged = lastRenderedSearch !== trimmedQuery;
+                if (noteChanged || searchChanged) {
+                    clearChatLog();
+                }
+                const visibleKeys = new Set();
+                visible.forEach((message, index) => {
+                    const key = message && message.id ? String(message.id) : `row-${index}`;
+                    visibleKeys.add(key);
+                    const signature = JSON.stringify({
+                        content: message.content || '',
+                        metadata: message.metadata || {},
+                        attachments: message.attachments || [],
+                        editedAt: message.metadata ? (message.metadata.edited_at || message.metadata.editedAt || '') : '',
+                        createdAt: message.created_at || '',
+                        pending: isMessageActionPending(message.id),
+                        editing: isMessageBeingEdited(message.id),
+                    });
+                    const previousMessage = index > 0 ? visible[index - 1] : null;
+                    const existing = renderedMessages.get(key);
+                    if (
+                        existing &&
+                        existing.signature === signature &&
+                        existing.element &&
+                        existing.element.parentNode === chatLogEl
+                    ) {
+                        return;
+                    }
+                    const element = createMessageElement(message, previousMessage);
+                    if (existing && existing.element && existing.element.parentNode === chatLogEl) {
+                        existing.element.replaceWith(element);
+                    } else if (chatBottomAnchor && chatBottomAnchor.parentNode === chatLogEl) {
+                        chatLogEl.insertBefore(element, chatBottomAnchor);
+                    } else {
+                        chatLogEl.appendChild(element);
+                    }
+                    renderedMessages.set(key, { element, signature });
                 });
-                setChatLogContent(fragment);
+                renderedMessages.forEach((entry, key) => {
+                    if (!visibleKeys.has(key)) {
+                        if (entry.element && entry.element.parentNode === chatLogEl) {
+                            entry.element.remove();
+                        }
+                        renderedMessages.delete(key);
+                    }
+                });
+                if (chatBottomAnchor) {
+                    if (chatBottomAnchor.parentNode === chatLogEl) {
+                        chatBottomAnchor.remove();
+                    }
+                    chatLogEl.appendChild(chatBottomAnchor);
+                }
+                lastRenderedNoteId = state.activeNoteId || null;
+                lastRenderedSearch = trimmedQuery;
                 if (focusMessageIfNeeded()) {
                     return;
                 }
