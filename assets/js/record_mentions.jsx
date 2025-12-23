@@ -676,6 +676,41 @@ function RecordMentionTextarea({
         overlay.scrollLeft = textarea.scrollLeft;
     }, []);
 
+    const ensureCaretVisibility = useCallback(() => {
+        const textarea = textareaRef.current;
+        const overlay = overlayRef.current;
+        if (!textarea) return;
+
+        const caretIndex = textarea.selectionStart ?? lastCaretRef.current ?? 0;
+        const computed = typeof window !== 'undefined' && textarea instanceof HTMLElement
+            ? window.getComputedStyle(textarea)
+            : null;
+        const lineHeight = computed ? parseFloat(computed.lineHeight) : null;
+        const paddingTop = computed ? parseFloat(computed.paddingTop) : 0;
+        const paddingBottom = computed ? parseFloat(computed.paddingBottom) : 0;
+        const resolvedLineHeight = Number.isFinite(lineHeight) && lineHeight > 0 ? lineHeight : 20;
+        const textBeforeCaret = textarea.value.slice(0, caretIndex);
+        const lineCount = textBeforeCaret ? textBeforeCaret.split('\n').length : 1;
+        const caretTop = (lineCount - 1) * resolvedLineHeight + paddingTop;
+        const caretBottom = caretTop + resolvedLineHeight;
+        const viewTop = textarea.scrollTop;
+        const viewBottom = textarea.scrollTop + textarea.clientHeight - paddingBottom;
+
+        let targetScrollTop = viewTop;
+        if (caretTop < viewTop) {
+            targetScrollTop = caretTop;
+        } else if (caretBottom > viewBottom) {
+            targetScrollTop = caretBottom - textarea.clientHeight + paddingBottom;
+        }
+
+        if (targetScrollTop !== viewTop) {
+            textarea.scrollTop = targetScrollTop;
+            if (overlay) {
+                overlay.scrollTop = targetScrollTop;
+            }
+        }
+    }, []);
+
     const resizeTextarea = useCallback(() => {
         const textarea = textareaRef.current;
         const overlay = overlayRef.current;
@@ -712,7 +747,8 @@ function RecordMentionTextarea({
         }
 
         syncOverlayScroll();
-    }, [maxHeight, minHeight, syncOverlayScroll]);
+        ensureCaretVisibility();
+    }, [ensureCaretVisibility, maxHeight, minHeight, syncOverlayScroll]);
 
     useLayoutEffect(() => {
         resizeTextarea();
@@ -735,7 +771,8 @@ function RecordMentionTextarea({
             }
             return { start, end };
         });
-    }, []);
+        ensureCaretVisibility();
+    }, [ensureCaretVisibility]);
 
     const closeSuggestions = () => {
         setSuggestions([]);
@@ -855,12 +892,8 @@ function RecordMentionTextarea({
                 return;
             }
         }
-        if (event.key === 'Enter' && !event.shiftKey) {
-            if (typeof onSubmit === 'function') {
-                event.preventDefault();
-                const textarea = textareaRef.current;
-                onSubmit(textarea ? textarea.value : event.target.value);
-            }
+        if (event.key === 'Enter' && typeof onSubmit === 'function') {
+            requestAnimationFrame(() => ensureCaretVisibility());
         }
     };
 
