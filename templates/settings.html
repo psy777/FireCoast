@@ -374,34 +374,38 @@ hello@firenotes.com</p>
 
             const showSystemVersion = (payload) => {
                 if (!systemVersionLabel) return;
+
                 const versionText = formatVersion(payload?.localVersion);
-                if (versionText) {
-                    const updateHint = payload?.updateAvailable ? ' (update available)' : '';
-                    systemVersionLabel.textContent = `Version ${versionText}${updateHint}`;
-                    systemVersionLabel.className = 'text-sm text-slate-500';
-
-                    if (payload?.updateAvailable) {
-                        const remoteVersionLabel = formatVersion(payload?.remoteVersion) || 'latest release';
-                        setStatus(
-                            upgradeStatus,
-                            'Update available. Click “Upgrade to Latest” to install the newest release.',
-                            'success'
-                        );
-
-                        if (shouldNotifyVersion(remoteVersionLabel)) {
-                            notifyUpdateAvailable(
-                                'FireCoast update available',
-                                `Version ${remoteVersionLabel} is ready to install. Open Settings → System Update to upgrade.`,
-                                remoteVersionLabel
-                            );
-                        }
-                    } else {
-                        setStatus(upgradeStatus, '');
-                    }
-                } else {
+                if (!versionText) {
                     systemVersionLabel.textContent = 'Unable to determine current version.';
                     systemVersionLabel.className = 'text-sm text-red-600';
                     setStatus(upgradeStatus, 'Unable to check for updates.', 'error');
+                    return;
+                }
+
+                const updateAvailable = Boolean(payload?.updateAvailable);
+                const updateHint = updateAvailable ? ' (update available)' : '';
+                systemVersionLabel.textContent = `Version ${versionText}${updateHint}`;
+                systemVersionLabel.className = 'text-sm text-slate-500';
+
+                if (!updateAvailable) {
+                    setStatus(upgradeStatus, '');
+                    return;
+                }
+
+                const remoteVersionLabel = formatVersion(payload?.remoteVersion) || 'latest release';
+                setStatus(
+                    upgradeStatus,
+                    'Update available. Click “Upgrade to Latest” to install the newest release.',
+                    'success'
+                );
+
+                if (shouldNotifyVersion(remoteVersionLabel)) {
+                    notifyUpdateAvailable(
+                        'FireCoast update available',
+                        `Version ${remoteVersionLabel} is ready to install. Open Settings → System Update to upgrade.`,
+                        remoteVersionLabel
+                    );
                 }
             };
 
