@@ -1630,6 +1630,49 @@ def _format_clear_target_label(author: Optional[str]) -> str:
     return f"@{normalized}"
 
 
+def _normalize_timestamp(value: Optional[Any], *, timezone_name: Optional[str] = None) -> Optional[str]:
+    if value is None:
+        return None
+
+    resolved_timezone = timezone_name or _resolve_timezone_setting()
+    try:
+        target_timezone = pytz.timezone(resolved_timezone)
+    except Exception:
+        target_timezone = timezone.utc
+
+    if isinstance(value, datetime):
+        timestamp = value
+    elif isinstance(value, (int, float)):
+        timestamp = datetime.fromtimestamp(value, tz=timezone.utc)
+    elif isinstance(value, str):
+        cleaned = value.strip()
+        if not cleaned:
+            return None
+        try:
+            timestamp = datetime.fromisoformat(cleaned.replace('Z', '+00:00'))
+        except ValueError:
+            try:
+                timestamp = datetime.strptime(cleaned, "%Y-%m-%d %H:%M:%S")
+            except ValueError:
+                try:
+                    timestamp = datetime.strptime(cleaned, "%Y-%m-%d %H:%M:%S.%f")
+                except ValueError:
+                    return cleaned
+    else:
+        return str(value)
+
+    if timestamp.tzinfo is None:
+        timestamp = timestamp.replace(tzinfo=timezone.utc)
+    else:
+        timestamp = timestamp.astimezone(timezone.utc)
+
+    localized = timestamp.astimezone(target_timezone)
+    rendered = localized.isoformat()
+    if localized.utcoffset() == timedelta(0):
+        rendered = rendered.replace('+00:00', 'Z')
+    return rendered
+
+
 def _format_clear_category_label(category: str, count: int) -> str:
     singular, plural = CLEAR_CATEGORY_LABELS.get(category, (category, f"{category}s"))
     return singular if count == 1 else plural
@@ -1695,6 +1738,8 @@ def _collect_messages_for_clear(
 def _serialize_chat_row(
     row: sqlite3.Row,
     reaction_map: Optional[Dict[str, List[Dict[str, Any]]]] = None,
+    *,
+    timezone_name: Optional[str] = None,
 ) -> Dict[str, Any]:
     if isinstance(row, sqlite3.Row):
         row = dict(row)
@@ -1715,7 +1760,7 @@ def _serialize_chat_row(
         'content': row.get('content'),
         'metadata': metadata,
         'attachments': attachments,
-        'created_at': row.get('created_at'),
+        'created_at': _normalize_timestamp(row.get('created_at'), timezone_name=timezone_name),
     }
     if reaction_map and message['id']:
         message['reactions'] = reaction_map.get(message['id'], [])
@@ -1873,7 +1918,8 @@ def _store_chat_message(
     row = cursor.fetchone()
     _refresh_note_mentions(conn, note_id)
     reaction_map = _collect_chat_reactions(conn, [message_id], DEFAULT_CHAT_REACTOR)
-    return _serialize_chat_row(row, reaction_map)
+    timezone_name = _resolve_timezone_setting()
+    return _serialize_chat_row(row, reaction_map, timezone_name=timezone_name)
 
 
 def _list_chat_messages(conn: sqlite3.Connection, note_id: str, limit: int) -> List[Dict[str, Any]]:
@@ -1896,7 +1942,8 @@ def _list_chat_messages(conn: sqlite3.Connection, note_id: str, limit: int) -> L
         else:
             message_ids.append(str(row[0]))
     reaction_map = _collect_chat_reactions(conn, message_ids, DEFAULT_CHAT_REACTOR)
-    return [_serialize_chat_row(row, reaction_map) for row in rows]
+    timezone_name = _resolve_timezone_setting()
+    return [_serialize_chat_row(row, reaction_map, timezone_name=timezone_name) for row in rows]
 
 
 def _toggle_chat_reaction(
@@ -2253,17 +2300,17 @@ def _upsert_note_handle(conn: sqlite3.Connection, note_id: str, title: str) -> s
     return handle
 
 
-def _serialize_note_row(row: sqlite3.Row) -> Dict[str, Any]:
+def _serialize_note_row(row: sqlite3.Row, *, timezone_name: Optional[str] = None) -> Dict[str, Any]:
     if isinstance(row, sqlite3.Row):
         row = dict(row)
     return {
         'id': row.get('id'),
         'title': row.get('title'),
         'handle': row.get('handle'),
-        'created_at': row.get('created_at'),
-        'updated_at': row.get('updated_at'),
+        'created_at': _normalize_timestamp(row.get('created_at'), timezone_name=timezone_name),
+        'updated_at': _normalize_timestamp(row.get('updated_at'), timezone_name=timezone_name),
         'last_message_preview': row.get('last_message_preview'),
-        'last_message_at': row.get('last_message_at'),
+        'last_message_at': _normalize_timestamp(row.get('last_message_at'), timezone_name=timezone_name),
     }
 
 
@@ -2299,7 +2346,8 @@ def _get_note(conn: sqlite3.Connection, note_id: str) -> Optional[Dict[str, Any]
     row = cursor.fetchone()
     if not row:
         return None
-    return _serialize_note_row(row)
+    timezone_name = _resolve_timezone_setting()
+    return _serialize_note_row(row, timezone_name=timezone_name)
 
 
 def _create_note(conn: sqlite3.Connection, title: str) -> Dict[str, Any]:
@@ -2404,7 +2452,8 @@ def _list_notes(conn: sqlite3.Connection, query: Optional[str], limit: int = 200
     sql.append("ORDER BY datetime(n.updated_at) DESC, datetime(n.created_at) DESC LIMIT ?")
     params.append(max(1, limit))
     cursor = conn.execute("\n".join(sql), params)
-    return [_serialize_note_row(row) for row in cursor.fetchall()]
+    timezone_name = _resolve_timezone_setting()
+    return [_serialize_note_row(row, timezone_name=timezone_name) for row in cursor.fetchall()]
 
 
 def _save_note_attachments(files: List[Any]) -> List[Dict[str, Any]]:

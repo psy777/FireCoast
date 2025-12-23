@@ -214,6 +214,49 @@ def test_typing_endpoint_tracks_active_typers(configure_chat_environment):
     assert payload['typers'] == []
 
 
+def test_firenotes_timestamps_follow_timezone_setting(configure_chat_environment):
+    client = firenotes_app.app.test_client()
+    note = _create_note(client, 'Timezone note')
+
+    pathlib.Path(firenotes_app.SETTINGS_FILE).write_text(
+        json.dumps({'timezone': 'America/New_York'})
+    )
+
+    conn = get_db_connection()
+    try:
+        stored = firenotes_app._store_chat_message(conn, note['id'], 'Tester', 'Hello timezone')
+        conn.execute(
+            "UPDATE firecoast_chat_messages SET created_at = ? WHERE id = ?",
+            ("2024-01-01 12:00:00", stored['id']),
+        )
+        conn.execute(
+            """
+            UPDATE firecoast_notes
+            SET created_at = ?, updated_at = ?
+            WHERE id = ?
+            """,
+            (
+                "2024-01-02 00:00:00",
+                "2024-01-03 06:30:00",
+                note['id'],
+            ),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+    messages = _list_note_messages(client, note['id'])
+    assert messages[0]['created_at'] == '2024-01-01T07:00:00-05:00'
+
+    response = client.get('/api/firenotes/notes')
+    assert response.status_code == 200
+    payload = response.get_json()
+    serialized_note = next(entry for entry in payload['notes'] if entry['id'] == note['id'])
+    assert serialized_note['created_at'] == '2024-01-01T19:00:00-05:00'
+    assert serialized_note['updated_at'] == '2024-01-03T01:30:00-05:00'
+    assert serialized_note['last_message_at'] == '2024-01-01T07:00:00-05:00'
+
+
 def test_participants_endpoint_returns_trusted_devices(configure_chat_environment):
     conn = get_db_connection()
     try:
