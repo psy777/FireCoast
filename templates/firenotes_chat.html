@@ -998,6 +998,7 @@
             const MAX_COMPOSER_HEIGHT = 220;
             let autoCreatingNote = false;
             const mentionEntityTypes = null;
+            const ENABLE_MENTION_COMPOSER = false;
 
             let handleCopyResetTimer = null;
 
@@ -1080,6 +1081,9 @@
             };
 
             const ensureMentionComposer = (attempt = 0) => {
+                if (!ENABLE_MENTION_COMPOSER) {
+                    return;
+                }
                 if (!mentionRootEl || mentionComposer.useMentionComponent) {
                     return;
                 }
@@ -3786,7 +3790,6 @@
             renderPingChips();
             renderReplyPreview();
             renderTypingIndicators();
-            ensureMentionComposer();
             loadParticipants();
             loadNotes();
         })();
