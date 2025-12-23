@@ -247,6 +247,7 @@ hello@firenotes.com</p>
                 <div>
                     <h2 class="text-xl font-semibold text-slate-800">System Update</h2>
                     <p class="text-sm text-slate-500">Pull the latest FireCoast release, back up your data, and refresh the app.</p>
+                    <p id="systemVersionLabel" class="text-sm text-slate-500">Checking version…</p>
                 </div>
                 <span id="upgradeStatus" class="text-sm text-slate-400"></span>
             </div>
@@ -304,6 +305,119 @@ hello@firenotes.com</p>
                 if (!node) return;
                 node.textContent = message || '';
                 node.className = `text-sm ${tone === 'error' ? 'text-red-600' : tone === 'success' ? 'text-green-600' : 'text-slate-400'}`;
+            };
+
+            const systemVersionLabel = document.getElementById('systemVersionLabel');
+
+            const formatVersion = (value) => {
+                if (!value) return null;
+                if (typeof value === 'string') return value;
+                if (
+                    typeof value === 'object' &&
+                    ['epoch', 'major', 'minor', 'patch'].every((key) => typeof value[key] !== 'undefined')
+                ) {
+                    return `${value.epoch}.${value.major}.${value.minor}.${value.patch}`;
+                }
+                return String(value);
+            };
+
+            const UPDATE_NOTIFICATION_KEY = 'firecoast:lastUpdateNotificationVersion';
+
+            const rememberNotifiedVersion = (versionLabel) => {
+                if (!versionLabel) return;
+                try {
+                    localStorage.setItem(UPDATE_NOTIFICATION_KEY, versionLabel);
+                } catch (error) {
+                    console.debug('Unable to persist update notification state', error);
+                }
+            };
+
+            const shouldNotifyVersion = (versionLabel) => {
+                if (!versionLabel) return false;
+                try {
+                    return localStorage.getItem(UPDATE_NOTIFICATION_KEY) !== versionLabel;
+                } catch (error) {
+                    console.debug('Unable to read update notification state', error);
+                    return true;
+                }
+            };
+
+            const notifyUpdateAvailable = (title, body, versionLabel) => {
+                if (typeof window === 'undefined' || !('Notification' in window)) {
+                    return;
+                }
+
+                const sendNotification = () => {
+                    try {
+                        new Notification(title, { body });
+                        rememberNotifiedVersion(versionLabel);
+                    } catch (error) {
+                        console.debug('Update notification error', error);
+                    }
+                };
+
+                if (Notification.permission === 'granted') {
+                    sendNotification();
+                    return;
+                }
+
+                if (Notification.permission === 'default') {
+                    Notification.requestPermission()
+                        .then((result) => {
+                            if (result === 'granted') {
+                                sendNotification();
+                            }
+                        })
+                        .catch((error) => console.debug('Notification permission error', error));
+                }
+            };
+
+            const showSystemVersion = (payload) => {
+                if (!systemVersionLabel) return;
+                const versionText = formatVersion(payload?.localVersion);
+                if (versionText) {
+                    const updateHint = payload?.updateAvailable ? ' (update available)' : '';
+                    systemVersionLabel.textContent = `Version ${versionText}${updateHint}`;
+                    systemVersionLabel.className = 'text-sm text-slate-500';
+
+                    if (payload?.updateAvailable) {
+                        const remoteVersionLabel = formatVersion(payload?.remoteVersion) || 'latest release';
+                        setStatus(
+                            upgradeStatus,
+                            'Update available. Click “Upgrade to Latest” to install the newest release.',
+                            'success'
+                        );
+
+                        if (shouldNotifyVersion(remoteVersionLabel)) {
+                            notifyUpdateAvailable(
+                                'FireCoast update available',
+                                `Version ${remoteVersionLabel} is ready to install. Open Settings → System Update to upgrade.`,
+                                remoteVersionLabel
+                            );
+                        }
+                    } else {
+                        setStatus(upgradeStatus, '');
+                    }
+                } else {
+                    systemVersionLabel.textContent = 'Unable to determine current version.';
+                    systemVersionLabel.className = 'text-sm text-red-600';
+                    setStatus(upgradeStatus, 'Unable to check for updates.', 'error');
+                }
+            };
+
+            const fetchSystemVersion = async () => {
+                if (!systemVersionLabel) return;
+                try {
+                    const response = await fetch('/api/system/version?refresh=1');
+                    if (!response.ok) {
+                        throw new Error('Unable to load system version.');
+                    }
+                    const payload = await response.json();
+                    showSystemVersion(payload);
+                } catch (error) {
+                    console.error(error);
+                    showSystemVersion(null);
+                }
             };
 
             const normalizeNavPositions = () => {
@@ -901,6 +1015,7 @@ hello@firenotes.com</p>
 
             loadSettings();
             fetchNavigationOptions();
+            fetchSystemVersion();
         });
     </script>
 </body>
