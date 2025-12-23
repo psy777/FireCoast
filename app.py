@@ -56,7 +56,7 @@ from database import (
 from data_paths import DATA_ROOT, ensure_data_root
 from services.analytics import get_analytics_engine
 from services.backup import BackupError, create_backup_archive, restore_backup_from_stream
-from services.upgrade import UpgradeError, perform_upgrade
+from services.upgrade import UpgradeError, check_update_status, perform_upgrade
 from services.records import (
     RecordValidationError,
     bootstrap_record_service,
@@ -130,10 +130,22 @@ def _default_firewall_status() -> Dict[str, Any]:
 _firewall_status_lock = Lock()
 _firewall_status: Dict[str, Any] = _default_firewall_status()
 
+_update_status_lock = Lock()
+_update_status_snapshot: Dict[str, Any] = {
+    'status': 'pending',
+    'localVersion': None,
+    'remoteVersion': None,
+    'updateAvailable': False,
+    'currentRevision': None,
+    'remoteRevision': None,
+}
+_update_status_initialized = False
+
 
 @app.before_request
 def _ensure_persistent_session() -> None:
     session.permanent = True
+    _ensure_update_status_initialized()
 
 
 def _update_firewall_status(**kwargs: Any) -> None:
@@ -159,6 +171,66 @@ def reset_firewall_status_for_testing() -> None:
 
 def get_firewall_status() -> Dict[str, Any]:
     return _get_firewall_status()
+
+
+def _ensure_update_status_initialized() -> None:
+    global _update_status_initialized
+    if _update_status_initialized:
+        return
+    with _update_status_lock:
+        if _update_status_initialized:
+            return
+        _update_status_initialized = True
+    _refresh_update_status()
+
+
+def snapshot_or_none(key: str) -> Optional[Any]:
+    with _update_status_lock:
+        return _update_status_snapshot.get(key)
+
+
+def _refresh_update_status(
+    *, remote: str = 'origin', branch: str = 'master', repository_url: Optional[str] = None
+) -> None:
+    snapshot: Dict[str, Any]
+    try:
+        status = check_update_status(
+            remote=remote,
+            branch=branch,
+            repository_url=repository_url,
+        )
+        snapshot = {
+            'status': 'ok',
+            'localVersion': str(status.local_version),
+            'remoteVersion': str(status.remote_version) if status.remote_version else None,
+            'updateAvailable': status.update_available,
+            'currentRevision': status.current_revision,
+            'remoteRevision': status.remote_revision,
+        }
+    except UpgradeError as exc:
+        snapshot = {
+            'status': 'error',
+            'message': str(exc),
+            'updateAvailable': False,
+            'localVersion': snapshot_or_none('localVersion'),
+            'remoteVersion': None,
+            'currentRevision': snapshot_or_none('currentRevision'),
+            'remoteRevision': None,
+        }
+    except Exception:  # pragma: no cover - defensive
+        app.logger.exception('Unexpected error while checking for updates')
+        snapshot = {
+            'status': 'error',
+            'message': 'Failed to check for updates due to an unexpected error.',
+            'updateAvailable': False,
+            'localVersion': snapshot_or_none('localVersion'),
+            'remoteVersion': None,
+            'currentRevision': snapshot_or_none('currentRevision'),
+            'remoteRevision': None,
+        }
+
+    with _update_status_lock:
+        _update_status_snapshot.update(snapshot)
 
 
 def _firewall_automation_disabled() -> bool:
@@ -7150,6 +7222,28 @@ def update_invoice_settings():
 
     write_json_file(SETTINGS_FILE, existing_settings)
     return jsonify({"message": "Invoice appearance updated.", "settings": existing_settings}), 200
+
+
+@app.route('/api/system/version', methods=['GET'])
+def system_version_status():
+    query = request.args or {}
+    remote = (query.get('remote') or 'origin').strip() or 'origin'
+    branch = (query.get('branch') or 'master').strip() or 'master'
+    repository_url = (query.get('repositoryUrl') or '').strip() or None
+
+    refresh_requested = str(query.get('refresh', '')).lower() in {'1', 'true', 'yes', 'on'}
+
+    with _update_status_lock:
+        current_status = dict(_update_status_snapshot)
+
+    if refresh_requested or current_status.get('status') == 'pending':
+        _refresh_update_status(
+            remote=remote, branch=branch, repository_url=repository_url
+        )
+        with _update_status_lock:
+            current_status = dict(_update_status_snapshot)
+
+    return jsonify(current_status)
 
 
 @app.route('/api/system/upgrade', methods=['POST'])
