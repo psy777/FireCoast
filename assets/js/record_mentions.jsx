@@ -698,6 +698,9 @@ function RecordMentionTextarea({
         const finalHeight = Math.max(resolvedMin, cappedHeight || resolvedMin);
         textarea.style.height = `${finalHeight}px`;
         textarea.style.overflowY = resolvedMax && scrollHeight > resolvedMax ? 'auto' : 'hidden';
+        if (resolvedMax && scrollHeight > resolvedMax) {
+            textarea.scrollTop = textarea.scrollHeight;
+        }
 
         if (overlay) {
             overlay.style.height = `${finalHeight}px`;
@@ -705,6 +708,7 @@ function RecordMentionTextarea({
             overlay.style.overflowY = resolvedMax ? 'auto' : 'hidden';
             overlay.style.overflowX = 'hidden';
             overlay.style.overscrollBehavior = 'contain';
+            overlay.scrollTop = textarea.scrollTop;
         }
 
         syncOverlayScroll();
