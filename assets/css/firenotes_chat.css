@@ -1,5 +1,12 @@
 :root {
     color-scheme: light;
+    --fc-safe-viewport: 100vh;
+}
+
+@supports (height: 100dvh) {
+    :root {
+        --fc-safe-viewport: 100dvh;
+    }
 }
 
 body.fc-notes-locked {
@@ -9,8 +16,8 @@ body.fc-notes-locked {
 }
 
 .firenotes-chat {
-    height: 100vh;
-    min-height: 100vh;
+    height: var(--fc-safe-viewport);
+    min-height: var(--fc-safe-viewport);
     display: flex;
     flex-direction: column;
     overflow: hidden;

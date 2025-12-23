@@ -91,12 +91,12 @@
                                 <div id="fc-mention-root" class="fc-composer__mention-root" hidden></div>
                             </div>
                             <div class="fc-composer__actions">
-                                <button type="button" id="fc-send-button" class="fc-icon-button fc-icon-button--primary" aria-label="Send message" disabled>
-                                    <span aria-hidden="true">➤</span>
-                                </button>
                                 <input type="file" id="fc-attachment-input" class="fc-composer__file-input" multiple hidden>
                                 <button type="button" id="fc-attach-button" class="fc-icon-button" aria-label="Add files" disabled>
                                     <span aria-hidden="true">＋</span>
+                                </button>
+                                <button type="button" id="fc-send-button" class="fc-icon-button fc-icon-button--primary" aria-label="Send message" disabled>
+                                    <span aria-hidden="true">➤</span>
                                 </button>
                             </div>
                         </div>
@@ -148,6 +148,20 @@
             const mobileLayoutQuery = typeof window !== 'undefined' && typeof window.matchMedia === 'function'
                 ? window.matchMedia('(max-width: 768px)')
                 : null;
+
+            const setViewportHeightVar = () => {
+                const viewportHeight = window.visualViewport && typeof window.visualViewport.height === 'number'
+                    ? window.visualViewport.height
+                    : window.innerHeight;
+                if (viewportHeight > 0) {
+                    document.documentElement.style.setProperty('--fc-safe-viewport', `${viewportHeight}px`);
+                }
+            };
+            setViewportHeightVar();
+            window.addEventListener('resize', setViewportHeightVar);
+            if (window.visualViewport && typeof window.visualViewport.addEventListener === 'function') {
+                window.visualViewport.addEventListener('resize', setViewportHeightVar);
+            }
 
             const focusNoteSearch = () => {
                 if (!noteSearchEl) {
@@ -234,6 +248,9 @@
             const handleMobileLayoutChange = (event) => {
                 if (!event.matches) {
                     closeMobileNotes();
+                }
+                if (mentionComposer.useMentionComponent) {
+                    scheduleMentionComposerRender({ immediate: true });
                 }
             };
 
@@ -1039,6 +1056,7 @@
                         className: 'fc-composer__mention',
                         textareaClassName: 'fc-composer__mention-input',
                         onPaste: handleComposerPaste,
+                        submitOnEnter: !isMobileLayout(),
                     })
                 );
                 scheduleFrame(() => {
@@ -3544,7 +3562,7 @@
                 });
                 inputEl.addEventListener('paste', handleComposerPaste);
                 inputEl.addEventListener('keydown', (event) => {
-                    if (event.key === 'Enter' && !event.shiftKey) {
+                    if (!isMobileLayout() && event.key === 'Enter' && !event.shiftKey) {
                         event.preventDefault();
                         sendMessage(inputEl.value || '');
                     }

@@ -645,6 +645,7 @@ function RecordMentionTextarea({
     minHeight = 44,
     maxHeight = null,
     onPaste = null,
+    submitOnEnter = false,
 }) {
     ensureCaretStyles();
     const containerRef = useRef(null);
@@ -890,6 +891,13 @@ function RecordMentionTextarea({
                 }
                 return;
             }
+        }
+        if (submitOnEnter && event.key === 'Enter' && !event.shiftKey && typeof onSubmit === 'function') {
+            event.preventDefault();
+            const textarea = textareaRef.current;
+            const payload = textarea ? textarea.value : value;
+            onSubmit(payload || '');
+            return;
         }
         if (event.key === 'Enter' && typeof onSubmit === 'function') {
             requestAnimationFrame(() => ensureCaretVisibility());
