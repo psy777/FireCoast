@@ -679,20 +679,21 @@ function RecordMentionTextarea({
     const ensureCaretVisibility = useCallback(() => {
         const textarea = textareaRef.current;
         const overlay = overlayRef.current;
-        if (!textarea) return;
+        if (!textarea || !overlay) return;
 
-        const caretIndex = textarea.selectionStart ?? lastCaretRef.current ?? 0;
+        const caretNode = overlay.querySelector('.record-mention-caret');
+        if (!caretNode) return;
+
         const computed = typeof window !== 'undefined' && textarea instanceof HTMLElement
             ? window.getComputedStyle(textarea)
             : null;
-        const lineHeight = computed ? parseFloat(computed.lineHeight) : null;
-        const paddingTop = computed ? parseFloat(computed.paddingTop) : 0;
         const paddingBottom = computed ? parseFloat(computed.paddingBottom) : 0;
-        const resolvedLineHeight = Number.isFinite(lineHeight) && lineHeight > 0 ? lineHeight : 20;
-        const textBeforeCaret = textarea.value.slice(0, caretIndex);
-        const lineCount = textBeforeCaret ? textBeforeCaret.split('\n').length : 1;
-        const caretTop = (lineCount - 1) * resolvedLineHeight + paddingTop;
-        const caretBottom = caretTop + resolvedLineHeight;
+
+        const overlayRect = overlay.getBoundingClientRect();
+        const caretRect = caretNode.getBoundingClientRect();
+        const caretTop = caretRect.top - overlayRect.top + overlay.scrollTop;
+        const caretBottom = caretRect.bottom - overlayRect.top + overlay.scrollTop;
+
         const viewTop = textarea.scrollTop;
         const viewBottom = textarea.scrollTop + textarea.clientHeight - paddingBottom;
 
@@ -705,9 +706,7 @@ function RecordMentionTextarea({
 
         if (targetScrollTop !== viewTop) {
             textarea.scrollTop = targetScrollTop;
-            if (overlay) {
-                overlay.scrollTop = targetScrollTop;
-            }
+            overlay.scrollTop = targetScrollTop;
         }
     }, []);
 
