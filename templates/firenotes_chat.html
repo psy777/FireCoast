@@ -91,8 +91,8 @@
                                 <div id="fc-mention-root" class="fc-composer__mention-root" hidden></div>
                             </div>
                             <div class="fc-composer__actions">
-                                <button type="button" id="fc-ping-button" class="fc-icon-button" aria-label="Notify someone" disabled>
-                                    <span aria-hidden="true">🔔</span>
+                                <button type="button" id="fc-send-button" class="fc-icon-button fc-icon-button--primary" aria-label="Send message" disabled>
+                                    <span aria-hidden="true">➤</span>
                                 </button>
                                 <input type="file" id="fc-attachment-input" class="fc-composer__file-input" multiple hidden>
                                 <button type="button" id="fc-attach-button" class="fc-icon-button" aria-label="Add files" disabled>
@@ -136,6 +136,7 @@
             const composerEl = document.querySelector('.fc-composer');
             const mentionRootEl = document.getElementById('fc-mention-root');
             const errorEl = document.getElementById('fc-error');
+            const sendButtonEl = document.getElementById('fc-send-button');
             const pingButtonEl = document.getElementById('fc-ping-button');
             const typingIndicatorEl = document.getElementById('fc-typing-indicator');
             const chatWrapperEl = document.querySelector('.fc-chat-wrapper');
@@ -1032,10 +1033,12 @@
                         },
                         disabled: state.composerDisabled,
                         rows: 1,
+                        maxHeight: MAX_COMPOSER_HEIGHT,
                         placeholder: 'Write a message',
                         entityTypes: mentionEntityTypes,
                         className: 'fc-composer__mention',
                         textareaClassName: 'fc-composer__mention-input',
+                        onPaste: handleComposerPaste,
                     })
                 );
                 scheduleFrame(() => {
@@ -1142,6 +1145,15 @@
                 return inputEl ? inputEl.value || '' : '';
             };
 
+            const updateSendButtonState = () => {
+                if (!sendButtonEl) {
+                    return;
+                }
+                const hasText = Boolean(normalizePreview(getComposerValue()));
+                const hasFiles = state.pendingFiles.length > 0;
+                sendButtonEl.disabled = state.composerDisabled || state.isSending || (!hasText && !hasFiles);
+            };
+
             function setComposerValue(value, options = {}) {
                 const next = value === null || value === undefined ? '' : String(value);
                 const forceRender = Boolean(options.forceRender);
@@ -1161,6 +1173,7 @@
                 if (hasChanged && !state.composerDisabled) {
                     notifyTypingActivity();
                 }
+                updateSendButtonState();
                 if (!options.skipResize) {
                     scheduleFrame(() => {
                         autoResizeInput();
@@ -1499,11 +1512,13 @@
 
             const renderAttachmentChips = () => {
                 if (!attachmentChipsEl) {
+                    updateSendButtonState();
                     return;
                 }
                 attachmentChipsEl.innerHTML = '';
                 if (!state.pendingFiles.length) {
                     attachmentChipsEl.hidden = true;
+                    updateSendButtonState();
                     return;
                 }
                 attachmentChipsEl.hidden = false;
@@ -1525,6 +1540,7 @@
                     fragment.appendChild(chip);
                 });
                 attachmentChipsEl.appendChild(fragment);
+                updateSendButtonState();
             };
 
             const renderReplyPreview = () => {
@@ -3041,13 +3057,23 @@
                     return;
                 }
                 textarea.style.height = 'auto';
-                const targetHeight = Math.min(MAX_COMPOSER_HEIGHT, textarea.scrollHeight || 0);
+                const scrollHeight = textarea.scrollHeight || 0;
+                const targetHeight = Math.min(MAX_COMPOSER_HEIGHT, scrollHeight);
                 const finalHeight = Math.max(targetHeight, 44);
                 textarea.style.height = `${finalHeight}px`;
+                textarea.style.overflowY = scrollHeight > MAX_COMPOSER_HEIGHT ? 'auto' : 'hidden';
+                if (scrollHeight > textarea.clientHeight) {
+                    textarea.scrollTop = textarea.scrollHeight;
+                }
                 if (mentionComposer.useMentionComponent && mentionRootEl) {
                     const overlay = mentionRootEl.querySelector('.record-mention-textarea__overlay');
                     if (overlay) {
                         overlay.style.height = `${finalHeight}px`;
+                        overlay.style.maxHeight = `${MAX_COMPOSER_HEIGHT}px`;
+                        overlay.style.overflowY = scrollHeight > MAX_COMPOSER_HEIGHT ? 'auto' : 'hidden';
+                        overlay.style.overflowX = 'hidden';
+                        overlay.style.overscrollBehavior = 'contain';
+                        overlay.scrollTop = textarea.scrollTop;
                     }
                 }
             };
@@ -3060,6 +3086,7 @@
                 if (pingButtonEl) {
                     pingButtonEl.disabled = !enabled;
                 }
+                updateSendButtonState();
                 if (composerEl) {
                     composerEl.setAttribute('data-disabled', enabled ? 'false' : 'true');
                 }
@@ -3162,6 +3189,18 @@
                     state.pendingFiles.push({ id, file });
                 });
                 renderAttachmentChips();
+            };
+
+            const handleComposerPaste = (event) => {
+                if (!event || !event.clipboardData) {
+                    return;
+                }
+                const files = Array.from(event.clipboardData.files || [])
+                    .filter((file) => file && file.type && file.type.startsWith('image/'));
+                if (!files.length) {
+                    return;
+                }
+                addPendingFiles(files);
             };
 
             const loadMessages = async (noteId, options = {}) => {
@@ -3336,6 +3375,7 @@
                     return;
                 }
                 state.isSending = true;
+                updateSendButtonState();
                 clearError();
                 try {
                     let response;
@@ -3408,6 +3448,7 @@
                     if (attachmentInputEl) {
                         attachmentInputEl.value = '';
                     }
+                    updateSendButtonState();
                 }
             };
 
@@ -3499,7 +3540,9 @@
                     state.composerValue = inputEl.value || '';
                     autoResizeInput();
                     notifyTypingActivity();
+                    updateSendButtonState();
                 });
+                inputEl.addEventListener('paste', handleComposerPaste);
                 inputEl.addEventListener('keydown', (event) => {
                     if (event.key === 'Enter' && !event.shiftKey) {
                         event.preventDefault();
@@ -3508,6 +3551,14 @@
                 });
                 inputEl.addEventListener('blur', () => {
                     stopTyping();
+                });
+            }
+
+            if (sendButtonEl) {
+                sendButtonEl.addEventListener('click', () => {
+                    if (!sendButtonEl.disabled) {
+                        sendMessage();
+                    }
                 });
             }
 

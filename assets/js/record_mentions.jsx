@@ -1,4 +1,4 @@
-const { useCallback, useEffect, useMemo, useRef, useState } = React;
+const { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } = React;
 
 const MENTION_REGEX = /(^|[^a-z0-9_.-])@([a-z0-9_.-]+)/gi;
 const ZERO_WIDTH_SPACE = String.fromCharCode(8203);
@@ -642,6 +642,9 @@ function RecordMentionTextarea({
     entityTypes = ['contact'],
     className = '',
     textareaClassName = '',
+    minHeight = 44,
+    maxHeight = null,
+    onPaste = null,
 }) {
     ensureCaretStyles();
     const containerRef = useRef(null);
@@ -665,13 +668,60 @@ function RecordMentionTextarea({
         closeContextMenu,
     } = useMentionContextMenu({ handlesMap, refresh, containerRef });
 
-    const syncOverlayScroll = () => {
+    const syncOverlayScroll = useCallback(() => {
         const textarea = textareaRef.current;
         const overlay = overlayRef.current;
         if (!textarea || !overlay) return;
         overlay.scrollTop = textarea.scrollTop;
         overlay.scrollLeft = textarea.scrollLeft;
-    };
+    }, []);
+
+    const resizeTextarea = useCallback(() => {
+        const textarea = textareaRef.current;
+        const overlay = overlayRef.current;
+        if (!textarea) return;
+
+        const computed = typeof window !== 'undefined' && textarea instanceof HTMLElement
+            ? window.getComputedStyle(textarea)
+            : null;
+
+        const cssMaxHeight = computed ? parseFloat(computed.maxHeight) : null;
+        const cssMinHeight = computed ? parseFloat(computed.minHeight) : null;
+        const resolvedMin = Math.max(0, Number.isFinite(minHeight) ? minHeight : 0, Number.isFinite(cssMinHeight) ? cssMinHeight : 0, 44);
+        const resolvedMax = Number.isFinite(maxHeight)
+            ? maxHeight
+            : (Number.isFinite(cssMaxHeight) ? cssMaxHeight : null);
+
+        textarea.style.height = 'auto';
+        const scrollHeight = textarea.scrollHeight || 0;
+        const cappedHeight = resolvedMax ? Math.min(scrollHeight, resolvedMax) : scrollHeight;
+        const finalHeight = Math.max(resolvedMin, cappedHeight || resolvedMin);
+        textarea.style.height = `${finalHeight}px`;
+        textarea.style.overflowY = resolvedMax && scrollHeight > resolvedMax ? 'auto' : 'hidden';
+        if (resolvedMax && scrollHeight > resolvedMax) {
+            textarea.scrollTop = textarea.scrollHeight;
+        }
+
+        if (overlay) {
+            overlay.style.height = `${finalHeight}px`;
+            overlay.style.maxHeight = resolvedMax ? `${resolvedMax}px` : '';
+            overlay.style.overflowY = resolvedMax ? 'auto' : 'hidden';
+            overlay.style.overflowX = 'hidden';
+            overlay.style.overscrollBehavior = 'contain';
+            overlay.scrollTop = textarea.scrollTop;
+        }
+
+        syncOverlayScroll();
+    }, [maxHeight, minHeight, syncOverlayScroll]);
+
+    useLayoutEffect(() => {
+        resizeTextarea();
+    }, [value, rows, resizeTextarea]);
+
+    useEffect(() => {
+        window.addEventListener('resize', resizeTextarea);
+        return () => window.removeEventListener('resize', resizeTextarea);
+    }, [resizeTextarea]);
 
     const updateSelectionFromTextarea = useCallback(() => {
         const textarea = textareaRef.current;
@@ -710,8 +760,11 @@ function RecordMentionTextarea({
     }, [suggestions, highlightIndex]);
 
     useEffect(() => {
-        requestAnimationFrame(() => updateSelectionFromTextarea());
-    }, [value, updateSelectionFromTextarea]);
+        requestAnimationFrame(() => {
+            updateSelectionFromTextarea();
+            resizeTextarea();
+        });
+    }, [value, updateSelectionFromTextarea, resizeTextarea]);
 
     const computeSuggestions = (inputValue, caret) => {
         const text = inputValue.slice(0, caret);
@@ -868,7 +921,7 @@ function RecordMentionTextarea({
         renderText: (segment, start, end) => (
             <span
                 key={`text-${start}-${end}`}
-                className="text-sm text-slate-700"
+                className="text-base text-slate-700"
                 style={{ pointerEvents: 'none' }}
             >
                 {segment || ZERO_WIDTH_SPACE}
@@ -925,12 +978,12 @@ function RecordMentionTextarea({
         },
         placeholder: placeholder
             ? (
-                <span className="text-sm text-slate-400" style={{ pointerEvents: 'none' }}>
+                <span className="text-base text-slate-400" style={{ pointerEvents: 'none' }}>
                     {placeholder}
                 </span>
             )
             : (
-                <span className="text-sm text-slate-700" style={{ pointerEvents: 'none' }}>
+                <span className="text-base text-slate-700" style={{ pointerEvents: 'none' }}>
                     {ZERO_WIDTH_SPACE}
                 </span>
             ),
@@ -942,6 +995,12 @@ function RecordMentionTextarea({
         : 'border-slate-300 bg-white';
     const overlayFocusClasses = !disabled && isActive ? 'border-orange-300 shadow-sm ring-2 ring-orange-200' : '';
 
+    const handlePaste = useCallback(event => {
+        if (typeof onPaste === 'function') {
+            onPaste(event);
+        }
+    }, [onPaste]);
+
     return (
         <div
             className={`record-mention-textarea space-y-2 ${className}`.trim()}
@@ -951,7 +1010,7 @@ function RecordMentionTextarea({
             <div className="relative">
                 <div
                     ref={overlayRef}
-                    className={`record-mention-textarea__overlay pointer-events-none absolute inset-0 z-20 whitespace-pre-wrap break-words rounded-md px-3 py-2 text-sm transition duration-150 ${overlayStateClasses} ${overlayFocusClasses} selection:bg-orange-200 selection:text-inherit`}
+                    className={`record-mention-textarea__overlay pointer-events-none absolute inset-0 z-20 whitespace-pre-wrap break-words rounded-md px-3 py-2 text-base leading-6 transition duration-150 ${overlayStateClasses} ${overlayFocusClasses} selection:bg-orange-200 selection:text-inherit`}
                     aria-hidden="true"
                 >
                     {highlightNodes}
@@ -967,10 +1026,11 @@ function RecordMentionTextarea({
                     onFocus={handleFocus}
                     onSelect={handleSelect}
                     onScroll={syncOverlayScroll}
+                    onPaste={handlePaste}
                     placeholder={placeholder}
                     disabled={disabled}
                     rows={rows}
-                    className={`record-mention-textarea__input relative z-10 block w-full resize-none rounded-md border-0 bg-transparent px-3 py-2 text-sm text-transparent caret-transparent selection:bg-orange-200 selection:text-orange-900 focus:outline-none focus:ring-0 disabled:cursor-not-allowed disabled:text-transparent disabled:caret-transparent ${textareaClassName}`.trim()}
+                    className={`record-mention-textarea__input relative z-10 block w-full resize-none rounded-md border-0 bg-transparent px-3 py-2 text-base leading-6 text-transparent caret-transparent selection:bg-orange-200 selection:text-orange-900 focus:outline-none focus:ring-0 disabled:cursor-not-allowed disabled:text-transparent disabled:caret-transparent ${textareaClassName}`.trim()}
                 />
                 {isOpen && (
                     <div className="record-mention-textarea__menu absolute bottom-full left-0 right-0 z-30 mb-2">
