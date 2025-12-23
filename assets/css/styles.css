@@ -201,6 +201,15 @@ main {
     transition: border-color 0.15s ease, box-shadow 0.15s ease;
 }
 
+@media (max-width: 640px) {
+    /* Prevent mobile browsers from zooming inputs on focus by enforcing a 16px font size */
+    input,
+    select,
+    textarea {
+        font-size: 16px;
+    }
+}
+
 .field input:focus,
 .field select:focus,
 .field textarea:focus {

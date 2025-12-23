@@ -868,7 +868,7 @@ function RecordMentionTextarea({
         renderText: (segment, start, end) => (
             <span
                 key={`text-${start}-${end}`}
-                className="text-sm text-slate-700"
+                className="text-base text-slate-700"
                 style={{ pointerEvents: 'none' }}
             >
                 {segment || ZERO_WIDTH_SPACE}
@@ -925,12 +925,12 @@ function RecordMentionTextarea({
         },
         placeholder: placeholder
             ? (
-                <span className="text-sm text-slate-400" style={{ pointerEvents: 'none' }}>
+                <span className="text-base text-slate-400" style={{ pointerEvents: 'none' }}>
                     {placeholder}
                 </span>
             )
             : (
-                <span className="text-sm text-slate-700" style={{ pointerEvents: 'none' }}>
+                <span className="text-base text-slate-700" style={{ pointerEvents: 'none' }}>
                     {ZERO_WIDTH_SPACE}
                 </span>
             ),
@@ -951,7 +951,7 @@ function RecordMentionTextarea({
             <div className="relative">
                 <div
                     ref={overlayRef}
-                    className={`record-mention-textarea__overlay pointer-events-none absolute inset-0 z-20 whitespace-pre-wrap break-words rounded-md px-3 py-2 text-sm transition duration-150 ${overlayStateClasses} ${overlayFocusClasses} selection:bg-orange-200 selection:text-inherit`}
+                    className={`record-mention-textarea__overlay pointer-events-none absolute inset-0 z-20 whitespace-pre-wrap break-words rounded-md px-3 py-2 text-base leading-6 transition duration-150 ${overlayStateClasses} ${overlayFocusClasses} selection:bg-orange-200 selection:text-inherit`}
                     aria-hidden="true"
                 >
                     {highlightNodes}
@@ -970,7 +970,7 @@ function RecordMentionTextarea({
                     placeholder={placeholder}
                     disabled={disabled}
                     rows={rows}
-                    className={`record-mention-textarea__input relative z-10 block w-full resize-none rounded-md border-0 bg-transparent px-3 py-2 text-sm text-transparent caret-transparent selection:bg-orange-200 selection:text-orange-900 focus:outline-none focus:ring-0 disabled:cursor-not-allowed disabled:text-transparent disabled:caret-transparent ${textareaClassName}`.trim()}
+                    className={`record-mention-textarea__input relative z-10 block w-full resize-none rounded-md border-0 bg-transparent px-3 py-2 text-base leading-6 text-transparent caret-transparent selection:bg-orange-200 selection:text-orange-900 focus:outline-none focus:ring-0 disabled:cursor-not-allowed disabled:text-transparent disabled:caret-transparent ${textareaClassName}`.trim()}
                 />
                 {isOpen && (
                     <div className="record-mention-textarea__menu absolute bottom-full left-0 right-0 z-30 mb-2">
