@@ -375,6 +375,7 @@ const OrderLogsSection = ({ orderId, canEdit, allContacts = [], onContactsChange
     const [action, setAction] = useState('Manual Entry');
     const [details, setDetails] = useState('');
     const [attachments, setAttachments] = useState([]);
+    const [captureInputKey, setCaptureInputKey] = useState(0);
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [errorMessage, setErrorMessage] = useState(null);
     const fileInputRef = useRef(null);
@@ -383,6 +384,7 @@ const OrderLogsSection = ({ orderId, canEdit, allContacts = [], onContactsChange
         setAction('Manual Entry');
         setDetails('');
         setAttachments([]);
+        setCaptureInputKey(prev => prev + 1);
         setIsSubmitting(false);
         setErrorMessage(null);
         if (fileInputRef.current) {
@@ -488,6 +490,7 @@ const OrderLogsSection = ({ orderId, canEdit, allContacts = [], onContactsChange
                             <div>
                                 <label className="block text-sm font-medium text-slate-700">Attachment</label>
                                 <input
+                                    key={captureInputKey}
                                     ref={fileInputRef}
                                     type="file"
                                     accept="image/*"
@@ -497,8 +500,8 @@ const OrderLogsSection = ({ orderId, canEdit, allContacts = [], onContactsChange
                                         const files = Array.from(event.target.files || []);
                                         if (files.length === 0) return;
                                         setAttachments(prev => [...prev, ...files]);
-                                        // Clear the input so the camera can be opened repeatedly without replacing the previous captures
-                                        event.target.value = '';
+                                        // Reset the input entirely so mobile browsers that replace the FileList after a capture keep earlier images
+                                        setCaptureInputKey(prev => prev + 1);
                                     }}
                                     className="mt-1 block w-full text-sm text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:text-sm file:font-semibold file:bg-orange-50 file:text-orange-700 hover:file:bg-orange-100"
                                 />
