@@ -717,16 +717,13 @@ const generateInvoicePdf = (order, allItems, action = 'save', brandingOverride =
     });
 
     if (isPaidInFull) {
-        const stampRadius = 16;
-        const stampX = 12 + 186 - stampRadius - 8;
-        const stampY = headerBottom - stampRadius - 6;
-        doc.setLineWidth(1.2);
-        doc.setDrawColor(74, 222, 128);
-        doc.circle(stampX, stampY, stampRadius, 'S');
-        doc.setFontSize(10);
+        const stampX = 196;
+        const stampY = Math.max(contentTop + 22, invoiceLineY + 8);
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(12);
         doc.setTextColor(22, 163, 74);
-        doc.text('Paid', stampX, stampY - 2, { align: 'center' });
-        doc.text('in Full', stampX, stampY + 4, { align: 'center' });
+        doc.text('PAID IN FULL', stampX, stampY, { align: 'right' });
+        doc.setFont('helvetica', 'normal');
         doc.setTextColor(0, 0, 0);
     }
 
