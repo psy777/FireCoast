@@ -447,17 +447,6 @@ const formatContactAddress = (address, city, state, zip) => {
                 invoiceLineY += 5;
             });
 
-            if (isPaidInFull) {
-                const stampX = 196;
-                const stampY = Math.max(contentTop + 22, invoiceLineY + 8);
-                doc.setFont('helvetica', 'bold');
-                doc.setFontSize(12);
-                doc.setTextColor(22, 163, 74);
-                doc.text('PAID IN FULL', stampX, stampY, { align: 'right' });
-                doc.setFont('helvetica', 'normal');
-                doc.setTextColor(0, 0, 0);
-            }
-
             const topSectionBottom = headerBottom;
 
             const baseContact = safeOrder.contactInfo || {};
@@ -654,6 +643,18 @@ const formatContactAddress = (address, city, state, zip) => {
 
             doc.setFontSize(12);
             doc.text(`Total: $${(totalCents / 100).toFixed(2)}`, 14, summaryY);
+
+            if (isPaidInFull) {
+                const paidLabelY = summaryY + 6;
+                doc.setFont('helvetica', 'bold');
+                doc.setFontSize(12);
+                doc.setTextColor(22, 163, 74);
+                doc.text('PAID IN FULL', 105, paidLabelY, { align: 'center' });
+                doc.setFont('helvetica', 'normal');
+                doc.setTextColor(0, 0, 0);
+                summaryY = paidLabelY + 6;
+            }
+
             summaryY += 10;
 
             doc.setFontSize(10);
