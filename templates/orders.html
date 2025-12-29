@@ -490,10 +490,14 @@ const OrderLogsSection = ({ orderId, canEdit, allContacts = [], onContactsChange
                                 <input
                                     ref={fileInputRef}
                                     type="file"
+                                    accept="image/*"
+                                    capture="environment"
                                     multiple
                                     onChange={event => {
                                         const files = Array.from(event.target.files || []);
+                                        if (files.length === 0) return;
                                         setAttachments(prev => [...prev, ...files]);
+                                        // Clear the input so the camera can be opened repeatedly without replacing the previous captures
                                         event.target.value = '';
                                     }}
                                     className="mt-1 block w-full text-sm text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:text-sm file:font-semibold file:bg-orange-50 file:text-orange-700 hover:file:bg-orange-100"
@@ -504,10 +508,18 @@ const OrderLogsSection = ({ orderId, canEdit, allContacts = [], onContactsChange
                                             <li key={`${file.name}-${index}`} className="flex items-center gap-2">
                                                 <span className="inline-flex items-center rounded-full bg-orange-100 px-2 py-0.5 text-xs font-medium text-orange-700">{index + 1}</span>
                                                 <span className="truncate">{file.name}</span>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setAttachments(prev => prev.filter((_, i) => i !== index))}
+                                                    className="text-red-500 hover:text-red-700 text-xs font-semibold"
+                                                >
+                                                    Remove
+                                                </button>
                                             </li>
                                         ))}
                                     </ul>
                                 )}
+                                <p className="mt-1 text-xs text-slate-500">Capture multiple photos in a row — each new picture is added to the list instead of replacing the previous ones.</p>
                             </div>
                             {errorMessage && <p className="text-sm text-red-600">{errorMessage}</p>}
                             <div className="flex justify-end gap-3 pt-2">
