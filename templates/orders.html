@@ -670,7 +670,7 @@ const generateInvoicePdf = (order, allItems, action = 'save', brandingOverride =
     const topSectionContentHeight = Math.max(logoHeight, nameHeight + detailHeight, invoiceInfoHeight) || 0;
     const backgroundTop = 14;
     const backgroundHeight = topSectionContentHeight + 16;
-    const headerHeight = Math.max(backgroundHeight, 60);
+    const headerHeight = Math.max(backgroundHeight, 44);
     const headerBottom = backgroundTop + headerHeight;
     doc.setDrawColor(226, 232, 240);
     doc.setFillColor(248, 250, 252);
