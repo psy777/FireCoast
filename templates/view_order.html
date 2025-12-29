@@ -401,9 +401,11 @@ const formatContactAddress = (address, city, state, zip) => {
             const topSectionContentHeight = Math.max(logoHeight, nameHeight + detailHeight, invoiceInfoHeight) || 0;
             const backgroundTop = 14;
             const backgroundHeight = topSectionContentHeight + 16;
+            const headerHeight = Math.max(backgroundHeight, 28);
+            const headerBottom = backgroundTop + headerHeight;
             doc.setDrawColor(226, 232, 240);
             doc.setFillColor(248, 250, 252);
-            doc.roundedRect(12, backgroundTop, 186, Math.max(backgroundHeight, 28), 4, 4, 'FD');
+            doc.roundedRect(12, backgroundTop, 186, headerHeight, 4, 4, 'FD');
 
             const contentLeft = 14;
             const contentTop = backgroundTop + 12;
@@ -448,7 +450,7 @@ const formatContactAddress = (address, city, state, zip) => {
             if (isPaidInFull) {
                 const stampRadius = 16;
                 const stampX = 12 + 186 - stampRadius - 8;
-                const stampY = backgroundTop + (Math.max(backgroundHeight, 28) / 2);
+                const stampY = headerBottom - stampRadius - 6;
                 doc.setLineWidth(1.2);
                 doc.setDrawColor(74, 222, 128);
                 doc.circle(stampX, stampY, stampRadius, 'S');
@@ -459,7 +461,7 @@ const formatContactAddress = (address, city, state, zip) => {
                 doc.setTextColor(0, 0, 0);
             }
 
-            const topSectionBottom = backgroundTop + Math.max(backgroundHeight, 28);
+            const topSectionBottom = headerBottom;
 
             const baseContact = safeOrder.contactInfo || {};
             const contactInfo = {
