@@ -616,7 +616,7 @@ const PriceInput = ({ value, onChange, disabled = false, ariaLabel }) => {
     );
 };
 
-const generateInvoicePdf = (order, allItems, action = 'save', brandingOverride = {}) => {
+const generateInvoicePdf = (order, allItems, action = 'save', brandingOverride = {}, options = {}) => {
     if (!order) return;
     const { jsPDF } = window.jspdf;
     const doc = new jsPDF();
@@ -636,6 +636,13 @@ const generateInvoicePdf = (order, allItems, action = 'save', brandingOverride =
         ...(window.fireCoastBranding || {}),
         ...(brandingOverride || {}),
     };
+    const invoiceOptions = {
+        documentType: 'Invoice',
+        includeSignature: true,
+        ...(options || {}),
+    };
+    const isPaidInFull = invoiceOptions.documentType === 'Invoice Paid in Full';
+    const headerTitle = isPaidInFull ? 'Invoice' : (invoiceOptions.documentType || 'Invoice');
     const accentHex = (mergedBranding.invoice_brand_color || '').trim();
     const accentRgb = hexToRgb(accentHex) || { r: 249, g: 115, b: 22 };
     const accentFillColor = [accentRgb.r, accentRgb.g, accentRgb.b];
@@ -697,7 +704,7 @@ const generateInvoicePdf = (order, allItems, action = 'save', brandingOverride =
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(18);
     doc.setTextColor(15, 23, 42);
-    doc.text('Invoice', 196, contentTop, { align: 'right' });
+    doc.text(headerTitle, 196, contentTop, { align: 'right' });
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(10);
     doc.setTextColor(0, 0, 0);
@@ -706,6 +713,20 @@ const generateInvoicePdf = (order, allItems, action = 'save', brandingOverride =
         doc.text(line, 196, invoiceLineY, { align: 'right' });
         invoiceLineY += 5;
     });
+
+    if (isPaidInFull) {
+        const stampX = 160;
+        const stampY = contentTop + 6;
+        const stampRadius = 16;
+        doc.setLineWidth(1.2);
+        doc.setDrawColor(74, 222, 128);
+        doc.circle(stampX, stampY, stampRadius, 'S');
+        doc.setFontSize(10);
+        doc.setTextColor(22, 163, 74);
+        doc.text('Paid', stampX, stampY - 2, { align: 'center' });
+        doc.text('in Full', stampX, stampY + 4, { align: 'center' });
+        doc.setTextColor(0, 0, 0);
+    }
 
     const topSectionBottom = backgroundTop + Math.max(backgroundHeight, 28);
 
@@ -951,39 +972,42 @@ const tableHead = ["Name", "Description", "Units", "Unit Price", "Total"];
         summaryY += wrappedNotes.length * 4;
     }
 
-    summaryY += 15;
-    if (summaryY > 260) {
-        doc.addPage();
-        summaryY = 20;
-    }
+    let footerY = summaryY + 5;
+    if (invoiceOptions.includeSignature) {
+        summaryY += 15;
+        if (summaryY > 260) {
+            doc.addPage();
+            summaryY = 20;
+        }
 
-    doc.setFontSize(10);
-    doc.text("Authorized Signature:", 14, summaryY);
+        doc.setFontSize(10);
+        doc.text("Authorized Signature:", 14, summaryY);
 
-    const signatureDataUrl = safeOrder.signatureDataUrl;
-    if (signatureDataUrl) {
-        try {
-            if (signatureDataUrl.startsWith('data:image')) {
-                const base64Data = signatureDataUrl.substring(signatureDataUrl.indexOf(',') + 1);
-                if (base64Data.length > 150) {
-                    const signatureImgWidth = 70;
-                    const signatureImgHeight = 20;
-                    doc.addImage(signatureDataUrl, 'PNG', 50, summaryY - (signatureImgHeight / 2) + 2, signatureImgWidth, signatureImgHeight);
+        const signatureDataUrl = safeOrder.signatureDataUrl;
+        if (signatureDataUrl) {
+            try {
+                if (signatureDataUrl.startsWith('data:image')) {
+                    const base64Data = signatureDataUrl.substring(signatureDataUrl.indexOf(',') + 1);
+                    if (base64Data.length > 150) {
+                        const signatureImgWidth = 70;
+                        const signatureImgHeight = 20;
+                        doc.addImage(signatureDataUrl, 'PNG', 50, summaryY - (signatureImgHeight / 2) + 2, signatureImgWidth, signatureImgHeight);
+                    } else {
+                        doc.line(50, summaryY, 120, summaryY);
+                    }
                 } else {
                     doc.line(50, summaryY, 120, summaryY);
                 }
-            } else {
+            } catch (error) {
+                console.error('Error rendering signature image for PDF:', error);
                 doc.line(50, summaryY, 120, summaryY);
             }
-        } catch (error) {
-            console.error('Error rendering signature image for PDF:', error);
+        } else {
             doc.line(50, summaryY, 120, summaryY);
         }
-    } else {
-        doc.line(50, summaryY, 120, summaryY);
-    }
 
-    let footerY = summaryY + 20;
+        footerY = summaryY + 20;
+    }
     if (invoiceFooter) {
         if (footerY > 260) {
             doc.addPage();
@@ -995,8 +1019,9 @@ const tableHead = ["Name", "Description", "Units", "Unit Price", "Total"];
         doc.setFontSize(10);
     }
 
+    const sanitizedDocumentTitle = (invoiceOptions.documentType || 'Invoice').replace(/\s+/g, '_');
     if (action === 'save') {
-        doc.save(`Invoice_${sanitizedFileLabel}.pdf`);
+        doc.save(`${sanitizedDocumentTitle}_${sanitizedFileLabel}.pdf`);
     } else if (action === 'preview') {
         doc.output('dataurlnewwindow');
     } else if (action === 'datauristring') {
@@ -2050,6 +2075,14 @@ const OrderForm = ({ order, navigateTo, saveOrder, deleteOrder, allContacts, all
     );
     const [useContactAddresses, setUseContactAddresses] = useState(() => orderAddressesMatchContact(primaryContactSummary, formData));
     const [lastSelectedContactId, setLastSelectedContactId] = useState(primaryContactId || '');
+    const [isInvoiceOptionsOpen, setIsInvoiceOptionsOpen] = useState(false);
+    const [invoiceOptions, setInvoiceOptions] = useState({ documentType: 'Invoice', includeSignature: true });
+    const invoiceTypeOptions = useMemo(() => ([
+        { value: 'Invoice', label: 'Invoice' },
+        { value: 'Estimate', label: 'Estimate' },
+        { value: 'Quote', label: 'Quote' },
+        { value: 'Invoice Paid in Full', label: 'Invoice Paid in Full' },
+    ]), []);
 
     useEffect(() => {
         const numericIds = formData.lineItems
@@ -2827,7 +2860,13 @@ const unpackPackage = (id, pkgCode) => {
         }
     };
 
-    const handlePreviewPdf = () => { const tempOrder = createOrderObject(); generateInvoicePdf(tempOrder, allSelectableItems, 'preview', branding); };
+    const handlePreviewPdf = () => { setIsInvoiceOptionsOpen(true); };
+
+    const handleInvoicePreviewConfirm = () => {
+        const tempOrder = createOrderObject();
+        generateInvoicePdf(tempOrder, allSelectableItems, 'preview', branding, invoiceOptions);
+        setIsInvoiceOptionsOpen(false);
+    };
     
     const handleDelete = async () => {
         if (!formData || !formData.id) {
@@ -2918,6 +2957,57 @@ const unpackPackage = (id, pkgCode) => {
                         handleSaveDraft();
                     }}
                 />
+            )}
+            {isInvoiceOptionsOpen && (
+                <div className="fixed inset-0 bg-black bg-opacity-50 flex justify-center items-center z-50">
+                    <div className="bg-white p-6 rounded-lg shadow-xl w-full max-w-md">
+                        <h3 className="text-xl font-semibold text-slate-800 mb-2">Preview Document</h3>
+                        <p className="text-sm text-slate-500 mb-4">Select the document type and whether to include a signature line.</p>
+                        <div className="space-y-3 mb-4">
+                            {invoiceTypeOptions.map(option => (
+                                <label
+                                    key={option.value}
+                                    className={`flex items-center gap-3 p-3 rounded-lg border cursor-pointer transition-colors ${invoiceOptions.documentType === option.value ? 'border-orange-500 bg-orange-50' : 'border-slate-200 hover:border-orange-400'}`}
+                                >
+                                    <input
+                                        type="radio"
+                                        name="invoiceType"
+                                        value={option.value}
+                                        checked={invoiceOptions.documentType === option.value}
+                                        onChange={() => setInvoiceOptions(prev => ({ ...prev, documentType: option.value }))}
+                                        className="h-4 w-4 text-orange-600 focus:ring-orange-500 border-slate-300"
+                                    />
+                                    <span className="text-sm font-medium text-slate-800">{option.label}</span>
+                                </label>
+                            ))}
+                        </div>
+                        <label className="flex items-center gap-3 text-sm text-slate-700 mb-6">
+                            <input
+                                type="checkbox"
+                                checked={invoiceOptions.includeSignature}
+                                onChange={event => setInvoiceOptions(prev => ({ ...prev, includeSignature: event.target.checked }))}
+                                className="h-4 w-4 rounded text-orange-600 focus:ring-orange-500 border-slate-300"
+                            />
+                            <span>Include signature line</span>
+                        </label>
+                        <div className="flex justify-end gap-3">
+                            <button
+                                type="button"
+                                onClick={() => setIsInvoiceOptionsOpen(false)}
+                                className="px-4 py-2 bg-slate-200 text-slate-800 font-semibold rounded-md hover:bg-slate-300 transition-colors"
+                            >
+                                Cancel
+                            </button>
+                            <button
+                                type="button"
+                                onClick={handleInvoicePreviewConfirm}
+                                className="px-4 py-2 bg-orange-600 text-white font-semibold rounded-md hover:bg-orange-700 transition-colors"
+                            >
+                                Preview
+                            </button>
+                        </div>
+                    </div>
+                </div>
             )}
             {/* EmailModal is now handled at the App level, triggered by setOrderForEmailModal prop */}
             <div className="mb-6"><button onClick={handleReturnToOrders} className="text-orange-600 hover:text-orange-800 font-semibold">&larr; Back to Orders</button><h1 className="text-3xl font-bold text-slate-800 mt-2">{pageHeading}</h1></div>
