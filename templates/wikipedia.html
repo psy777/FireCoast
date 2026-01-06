@@ -8,81 +8,115 @@
     <link rel="stylesheet" href="/assets/css/styles.css">
     <script src="https://cdn.tailwindcss.com"></script>
 </head>
-<body class="bg-slate-50 min-h-screen font-sans">
+<body class="bg-[#f6f6f6] text-[#202122] min-h-screen">
     {% include 'partials/navbar.html' %}
 
-    <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8">
-        <header class="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-            <div>
-                <p class="text-sm uppercase tracking-wide text-orange-500 font-semibold">Knowledge Base</p>
-                <h1 class="text-3xl font-bold text-slate-900">Wikipedia</h1>
-                <p class="text-slate-600 mt-2">Write and upload site-specific documents to keep your team aligned.</p>
-            </div>
-            <div class="flex items-center gap-3">
-                <button id="wiki-new-page" class="inline-flex items-center gap-2 rounded-md bg-orange-500 px-4 py-2 text-white shadow hover:bg-orange-600 focus:outline-none focus:ring-2 focus:ring-orange-400">
-                    <span aria-hidden="true">＋</span>
-                    <span>New Page</span>
-                </button>
-            </div>
-        </header>
-
-        <section class="grid grid-cols-1 lg:grid-cols-3 gap-6">
-            <div class="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden">
-                <div class="px-4 py-3 border-b border-slate-200 flex items-center justify-between">
-                    <div>
-                        <h2 class="text-lg font-semibold text-slate-900">Pages</h2>
-                        <p class="text-sm text-slate-500">Browse your saved documents.</p>
-                    </div>
+    <main class="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-6">
+        <section class="bg-white border border-[#a2a9b1] shadow-sm rounded-sm">
+            <div class="px-5 py-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                    <p class="text-xs tracking-wide uppercase text-[#54595d]">Knowledge Base</p>
+                    <h1 class="text-3xl font-serif font-semibold text-[#202122]">FireCoast Wikipedia</h1>
+                    <p class="text-sm text-[#54595d] mt-1">Lightweight internal wiki inspired by the classic encyclopedia layout.</p>
                 </div>
-                <div class="divide-y divide-slate-200" id="wiki-page-list" role="list"></div>
-                <p id="wiki-page-empty" class="px-4 py-6 text-sm text-slate-500 hidden">No pages yet. Create one to get started.</p>
-            </div>
-
-            <div class="lg:col-span-2 bg-white border border-slate-200 rounded-xl shadow-sm">
-                <div class="px-4 py-3 border-b border-slate-200 flex items-center justify-between">
-                    <div>
-                        <h2 class="text-lg font-semibold text-slate-900" id="wiki-editor-title">Create a new page</h2>
-                        <p class="text-sm text-slate-500">Draft internal documentation and upload supporting files.</p>
-                    </div>
-                    <button id="wiki-delete" class="inline-flex items-center gap-2 rounded-md bg-red-100 px-3 py-2 text-red-700 hover:bg-red-200 disabled:opacity-50 disabled:cursor-not-allowed" disabled>
-                        <span aria-hidden="true">🗑</span>
-                        <span>Delete</span>
+                <div class="flex items-center gap-3">
+                    <button id="wiki-new-page" class="inline-flex items-center gap-2 rounded border border-[#a2a9b1] bg-[#f8f9fa] px-4 py-2 text-sm font-medium text-[#202122] hover:bg-white focus:outline-none focus:ring-2 focus:ring-[#36c]">
+                        <span aria-hidden="true">＋</span>
+                        <span>New page</span>
                     </button>
                 </div>
-                <form id="wiki-form" class="p-4 space-y-4" enctype="multipart/form-data">
-                    <div class="space-y-1">
-                        <label for="wiki-title" class="block text-sm font-medium text-slate-700">Title</label>
-                        <input id="wiki-title" name="title" type="text" class="w-full rounded-md border-slate-300 focus:border-orange-400 focus:ring-orange-400" placeholder="Example: Onboarding Guide" required>
-                    </div>
-
-                    <div class="space-y-1">
-                        <label for="wiki-content" class="block text-sm font-medium text-slate-700">Content</label>
-                        <textarea id="wiki-content" name="content" rows="10" class="w-full rounded-md border-slate-300 focus:border-orange-400 focus:ring-orange-400" placeholder="Write your page content here..."></textarea>
-                    </div>
-
-                    <div class="space-y-2">
-                        <div class="flex items-center justify-between">
-                            <label for="wiki-attachments" class="block text-sm font-medium text-slate-700">Attachments</label>
-                            <span class="text-xs text-slate-500">Optional • files are stored in FireCoast data</span>
-                        </div>
-                        <input id="wiki-attachments" name="attachments" type="file" multiple class="block w-full text-sm text-slate-600" aria-describedby="wiki-attachment-help">
-                        <p id="wiki-attachment-help" class="text-xs text-slate-500">Upload site-specific documents, screenshots, or PDFs.</p>
-                        <div id="wiki-attachment-list" class="bg-slate-50 border border-slate-200 rounded-md px-3 py-2 space-y-2" aria-live="polite"></div>
-                    </div>
-
-                    <div class="flex flex-wrap gap-3 pt-2">
-                        <button type="submit" class="inline-flex items-center gap-2 rounded-md bg-orange-500 px-4 py-2 text-white shadow hover:bg-orange-600 focus:outline-none focus:ring-2 focus:ring-orange-400">
-                            <span aria-hidden="true">💾</span>
-                            <span id="wiki-submit-label">Save Page</span>
-                        </button>
-                        <button type="button" id="wiki-reset" class="inline-flex items-center gap-2 rounded-md bg-slate-100 px-4 py-2 text-slate-800 hover:bg-slate-200 focus:outline-none focus:ring-2 focus:ring-orange-300">
-                            <span aria-hidden="true">↺</span>
-                            <span>Reset</span>
-                        </button>
-                        <p id="wiki-status" class="text-sm text-slate-600" role="status"></p>
-                    </div>
-                </form>
             </div>
+        </section>
+
+        <section class="grid grid-cols-1 lg:grid-cols-12 gap-6">
+            <aside class="lg:col-span-4 space-y-3">
+                <div class="bg-white border border-[#a2a9b1] rounded-sm shadow-sm">
+                    <div class="px-4 py-3 border-b border-[#a2a9b1] flex items-center justify-between">
+                        <div>
+                            <p class="text-xs uppercase tracking-wide text-[#54595d]">All pages</p>
+                            <h2 class="text-lg font-serif font-semibold text-[#202122]">Article index</h2>
+                        </div>
+                        <span id="wiki-page-count" class="text-xs text-[#54595d]"></span>
+                    </div>
+                    <div class="p-4 space-y-3">
+                        <label class="block text-sm text-[#54595d]" for="wiki-search">Search articles</label>
+                        <div class="relative">
+                            <input id="wiki-search" type="search" class="w-full rounded border border-[#a2a9b1] bg-[#f8f9fa] focus:ring-2 focus:ring-[#36c] focus:border-[#36c] text-sm px-3 py-2" placeholder="Find a page..." />
+                            <span class="absolute right-3 top-2.5 text-[#a2a9b1]">🔍</span>
+                        </div>
+                    </div>
+                    <div class="border-t border-[#a2a9b1] divide-y divide-[#eaecf0]" id="wiki-page-list" role="list"></div>
+                    <p id="wiki-page-empty" class="px-4 py-6 text-sm text-[#54595d] hidden">No pages yet. Use "New page" to start documenting.</p>
+                </div>
+            </aside>
+
+            <section class="lg:col-span-8 space-y-4">
+                <article class="bg-white border border-[#a2a9b1] rounded-sm shadow-sm">
+                    <div class="px-5 py-4 border-b border-[#a2a9b1] flex items-start justify-between gap-3">
+                        <div>
+                            <p id="wiki-breadcrumb" class="text-xs text-[#54595d]">FireCoast &gt; Wikipedia</p>
+                            <h2 id="wiki-view-title" class="text-3xl font-serif font-semibold text-[#202122]">Select or create a page</h2>
+                            <p id="wiki-updated" class="text-xs text-[#54595d] mt-1">Last edited —</p>
+                        </div>
+                        <div class="flex flex-wrap gap-2">
+                            <button id="wiki-delete" class="inline-flex items-center gap-2 rounded border border-[#d33] bg-[#fef6f6] px-3 py-2 text-sm text-[#a51d2d] hover:bg-white focus:outline-none focus:ring-2 focus:ring-[#a51d2d] disabled:opacity-50 disabled:cursor-not-allowed" disabled>
+                                <span aria-hidden="true">🗑</span>
+                                <span>Delete</span>
+                            </button>
+                        </div>
+                    </div>
+                    <div class="px-5 py-4 space-y-4">
+                        <div id="wiki-preview-body" class="prose prose-slate max-w-none font-serif leading-relaxed"></div>
+                        <div class="border border-[#a2a9b1] bg-[#f8f9fa] rounded-sm p-3">
+                            <h3 class="text-sm font-semibold text-[#202122] mb-2">Attachments</h3>
+                            <div id="wiki-preview-attachments" class="space-y-2"></div>
+                        </div>
+                    </div>
+                </article>
+
+                <div class="bg-white border border-[#a2a9b1] rounded-sm shadow-sm">
+                    <div class="px-5 py-3 border-b border-[#a2a9b1] flex items-center justify-between">
+                        <div>
+                            <p class="text-xs uppercase tracking-wide text-[#54595d]">Edit</p>
+                            <h3 class="text-lg font-serif font-semibold text-[#202122]" id="wiki-editor-title">Create a new page</h3>
+                            <p class="text-sm text-[#54595d]">Use the editor to update the article content and upload supporting files.</p>
+                        </div>
+                    </div>
+                    <form id="wiki-form" class="p-5 space-y-4" enctype="multipart/form-data">
+                        <div class="space-y-1">
+                            <label for="wiki-title" class="block text-sm font-medium text-[#202122]">Title</label>
+                            <input id="wiki-title" name="title" type="text" class="w-full rounded border border-[#a2a9b1] bg-[#fff] focus:border-[#36c] focus:ring-2 focus:ring-[#36c] text-sm px-3 py-2" placeholder="Example: Onboarding" required>
+                        </div>
+
+                        <div class="space-y-1">
+                            <label for="wiki-content" class="block text-sm font-medium text-[#202122]">Content</label>
+                            <textarea id="wiki-content" name="content" rows="10" class="w-full rounded border border-[#a2a9b1] bg-white focus:border-[#36c] focus:ring-2 focus:ring-[#36c] text-sm px-3 py-2" placeholder="Write in plain text. Separate paragraphs with blank lines."></textarea>
+                        </div>
+
+                        <div class="space-y-2">
+                            <div class="flex items-center justify-between">
+                                <label for="wiki-attachments" class="block text-sm font-medium text-[#202122]">Attachments</label>
+                                <span class="text-xs text-[#54595d]">Optional • stored inside FireCoast data</span>
+                            </div>
+                            <input id="wiki-attachments" name="attachments" type="file" multiple class="block w-full text-sm text-[#202122]" aria-describedby="wiki-attachment-help">
+                            <p id="wiki-attachment-help" class="text-xs text-[#54595d]">Upload supporting documents or screenshots.</p>
+                            <div id="wiki-attachment-list" class="bg-[#f8f9fa] border border-[#a2a9b1] rounded-sm px-3 py-2 space-y-2" aria-live="polite"></div>
+                        </div>
+
+                        <div class="flex flex-wrap gap-3 pt-2">
+                            <button type="submit" class="inline-flex items-center gap-2 rounded border border-[#a2a9b1] bg-[#36c] px-4 py-2 text-sm font-semibold text-white shadow hover:bg-[#447ff5] focus:outline-none focus:ring-2 focus:ring-[#36c]">
+                                <span aria-hidden="true">💾</span>
+                                <span id="wiki-submit-label">Save page</span>
+                            </button>
+                            <button type="button" id="wiki-reset" class="inline-flex items-center gap-2 rounded border border-[#a2a9b1] bg-[#f8f9fa] px-4 py-2 text-sm text-[#202122] hover:bg-white focus:outline-none focus:ring-2 focus:ring-[#36c]">
+                                <span aria-hidden="true">↺</span>
+                                <span>Reset</span>
+                            </button>
+                            <p id="wiki-status" class="text-sm text-[#54595d]" role="status"></p>
+                        </div>
+                    </form>
+                </div>
+            </section>
         </section>
     </main>
 
@@ -90,6 +124,9 @@
         (() => {
             const pageListEl = document.getElementById('wiki-page-list');
             const pageEmptyEl = document.getElementById('wiki-page-empty');
+            const pageCountEl = document.getElementById('wiki-page-count');
+            const searchInput = document.getElementById('wiki-search');
+
             const titleInput = document.getElementById('wiki-title');
             const contentInput = document.getElementById('wiki-content');
             const attachmentsInput = document.getElementById('wiki-attachments');
@@ -101,70 +138,103 @@
             const deleteBtn = document.getElementById('wiki-delete');
             const editorTitleEl = document.getElementById('wiki-editor-title');
             const submitLabelEl = document.getElementById('wiki-submit-label');
+            const previewTitleEl = document.getElementById('wiki-view-title');
+            const previewUpdatedEl = document.getElementById('wiki-updated');
+            const previewBodyEl = document.getElementById('wiki-preview-body');
+            const previewAttachmentsEl = document.getElementById('wiki-preview-attachments');
 
             const state = {
                 pages: [],
                 selectedId: null,
             };
 
+            const escapeHtml = (value = '') => value
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#039;');
+
+            const wikiFormat = (content = '') => {
+                const paragraphs = (content || '').trim().split(/\n{2,}/).filter(Boolean);
+                if (!paragraphs.length) return '<p class="text-sm text-[#54595d]">This article is empty. Use the editor below to add content.</p>';
+
+                return paragraphs.map((block) => {
+                    const lines = block.split(/\n/);
+                    const isList = lines.every((line) => /^[-*]\s+/.test(line.trim()));
+                    if (isList) {
+                        const items = lines.map((line) => `<li class="mb-1">${escapeHtml(line.replace(/^[-*]\s+/, ''))}</li>`).join('');
+                        return `<ul class="list-disc ml-5 text-base">${items}</ul>`;
+                    }
+                    return `<p class="text-base mb-3">${escapeHtml(block).replace(/\n/g, '<br>')}</p>`;
+                }).join('\n');
+            };
+
             const setStatus = (message, tone = 'neutral') => {
                 statusEl.textContent = message || '';
-                statusEl.classList.remove('text-green-600', 'text-red-600', 'text-slate-600');
-                const toneClass = tone === 'error' ? 'text-red-600' : tone === 'success' ? 'text-green-600' : 'text-slate-600';
+                statusEl.classList.remove('text-[#a51d2d]', 'text-[#2a4b8d]', 'text-[#54595d]');
+                const toneClass = tone === 'error' ? 'text-[#a51d2d]' : tone === 'success' ? 'text-[#2a4b8d]' : 'text-[#54595d]';
                 statusEl.classList.add(toneClass);
             };
 
-            const renderAttachments = (page) => {
-                attachmentsListEl.innerHTML = '';
+            const renderAttachmentGroup = (container, page, emptyText = 'No attachments yet.') => {
+                container.innerHTML = '';
                 const attachments = (page && Array.isArray(page.attachments)) ? page.attachments : [];
                 if (!attachments.length) {
                     const empty = document.createElement('p');
-                    empty.className = 'text-sm text-slate-500';
-                    empty.textContent = 'No attachments yet.';
-                    attachmentsListEl.appendChild(empty);
+                    empty.className = 'text-sm text-[#54595d]';
+                    empty.textContent = emptyText;
+                    container.appendChild(empty);
                     return;
                 }
 
                 attachments.forEach((attachment) => {
                     const row = document.createElement('div');
-                    row.className = 'flex items-center justify-between gap-3 text-sm bg-white border border-slate-200 rounded px-3 py-2';
+                    row.className = 'flex items-center justify-between gap-3 text-sm bg-white border border-[#a2a9b1] rounded-sm px-3 py-2';
 
                     const name = document.createElement('a');
                     name.href = `/data/${attachment.path}`;
                     name.textContent = attachment.name || 'Attachment';
-                    name.className = 'text-orange-600 hover:text-orange-700 font-medium break-all';
+                    name.className = 'text-[#36c] hover:underline font-medium break-all';
                     name.target = '_blank';
                     name.rel = 'noopener noreferrer';
 
                     const meta = document.createElement('span');
-                    meta.className = 'text-xs text-slate-500';
+                    meta.className = 'text-xs text-[#54595d]';
                     meta.textContent = attachment.uploaded_at ? new Date(attachment.uploaded_at).toLocaleString() : '';
 
                     row.appendChild(name);
                     row.appendChild(meta);
-                    attachmentsListEl.appendChild(row);
+                    container.appendChild(row);
                 });
             };
 
             const renderPages = () => {
                 pageListEl.innerHTML = '';
                 const pages = state.pages || [];
-                pageEmptyEl.classList.toggle('hidden', pages.length > 0);
+                const query = (searchInput.value || '').toLowerCase().trim();
+                const filtered = pages.filter((page) => {
+                    const haystack = `${page.title || ''} ${page.content || ''}`.toLowerCase();
+                    return haystack.includes(query);
+                });
 
-                pages.forEach((page) => {
+                pageCountEl.textContent = filtered.length ? `${filtered.length} page${filtered.length === 1 ? '' : 's'}` : '';
+                pageEmptyEl.classList.toggle('hidden', filtered.length > 0);
+
+                filtered.forEach((page) => {
                     const button = document.createElement('button');
                     button.type = 'button';
-                    button.className = `w-full px-4 py-3 text-left hover:bg-orange-50 transition ${state.selectedId === page.id ? 'bg-orange-50' : ''}`;
+                    button.className = `w-full text-left px-4 py-3 hover:bg-[#f8f9fa] transition ${state.selectedId === page.id ? 'bg-[#f8f9fa]' : ''}`;
                     button.dataset.pageId = page.id;
 
                     const title = document.createElement('p');
-                    title.className = 'font-semibold text-slate-900';
+                    title.className = 'font-semibold text-[#202122]';
                     title.textContent = page.title || 'Untitled';
 
                     const meta = document.createElement('p');
-                    meta.className = 'text-xs text-slate-500 mt-1';
+                    meta.className = 'text-xs text-[#54595d] mt-1';
                     const updated = page.updated_at || page.created_at;
-                    meta.textContent = updated ? `Updated ${new Date(updated).toLocaleString()}` : 'Draft';
+                    meta.textContent = updated ? `Last edited ${new Date(updated).toLocaleString()}` : 'Draft';
 
                     button.appendChild(title);
                     button.appendChild(meta);
@@ -174,17 +244,37 @@
                 });
             };
 
+            const renderPreview = () => {
+                const page = state.pages.find((entry) => entry.id === state.selectedId);
+                if (!page) {
+                    previewTitleEl.textContent = 'Select or create a page';
+                    previewUpdatedEl.textContent = 'Last edited —';
+                    previewBodyEl.innerHTML = '<p class="text-sm text-[#54595d]">Choose a page from the index or create a new one to view content.</p>';
+                    renderAttachmentGroup(previewAttachmentsEl, null);
+                    deleteBtn.disabled = true;
+                    return;
+                }
+
+                previewTitleEl.textContent = page.title || 'Untitled';
+                const updated = page.updated_at || page.created_at;
+                previewUpdatedEl.textContent = updated ? `Last edited ${new Date(updated).toLocaleString()}` : 'Draft';
+                previewBodyEl.innerHTML = wikiFormat(page.content || '');
+                renderAttachmentGroup(previewAttachmentsEl, page);
+                deleteBtn.disabled = false;
+            };
+
             const syncEditor = () => {
                 const page = state.pages.find((entry) => entry.id === state.selectedId);
                 if (!page) {
                     editorTitleEl.textContent = 'Create a new page';
-                    submitLabelEl.textContent = 'Save Page';
+                    submitLabelEl.textContent = 'Save page';
                     formEl.reset();
                     contentInput.value = '';
                     titleInput.value = '';
                     attachmentsInput.value = '';
-                    renderAttachments({ attachments: [] });
+                    renderAttachmentGroup(attachmentsListEl, null);
                     deleteBtn.disabled = true;
+                    renderPreview();
                     return;
                 }
 
@@ -192,9 +282,10 @@
                 contentInput.value = page.content || '';
                 attachmentsInput.value = '';
                 editorTitleEl.textContent = `Editing: ${page.title || 'Untitled'}`;
-                submitLabelEl.textContent = 'Update Page';
+                submitLabelEl.textContent = 'Update page';
                 deleteBtn.disabled = false;
-                renderAttachments(page);
+                renderAttachmentGroup(attachmentsListEl, page);
+                renderPreview();
             };
 
             const loadPages = async () => {
@@ -299,6 +390,7 @@
             newPageBtn.addEventListener('click', resetEditor);
             resetBtn.addEventListener('click', resetEditor);
             deleteBtn.addEventListener('click', deletePage);
+            searchInput.addEventListener('input', renderPages);
 
             loadPages();
         })();
