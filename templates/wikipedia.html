@@ -20,9 +20,20 @@
                         <h1 class="text-3xl sm:text-4xl font-semibold text-slate-900 leading-tight">Reference Library</h1>
                         <p class="text-sm sm:text-base text-slate-600 max-w-3xl">Capture policies, playbooks, and knowledge in one place. Search pages quickly and keep the article text in a clean, readable layout.</p>
                     </div>
-                    <div class="w-full md:w-auto flex flex-col sm:flex-row gap-3 md:items-center md:justify-end">
+                </div>
+            </div>
+        </section>
+
+        <section class="space-y-4">
+            <div class="bg-white border border-slate-200 rounded-md shadow-sm">
+                <div class="px-5 py-4 border-b border-slate-200 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                    <div>
+                        <p class="text-xs uppercase tracking-wide text-slate-500">Records</p>
+                        <h2 class="text-lg font-semibold text-slate-900">Reference pages</h2>
+                    </div>
+                    <div class="w-full sm:w-auto flex flex-col sm:flex-row gap-3 sm:items-center sm:justify-end">
                         <div class="relative w-full sm:w-72 md:w-80">
-                            <input id="wiki-search" type="search" class="w-full rounded-md border border-slate-200 bg-slate-50 focus:ring-2 focus:ring-orange-400 focus:border-orange-400 text-sm px-3 py-2 shadow-inner" placeholder="Search pages" />
+                            <input id="wiki-search" type="search" class="w-full rounded-md border border-slate-200 bg-slate-50 focus:ring-2 focus:ring-orange-400 focus:border-orange-400 text-sm px-3 py-2 shadow-inner" placeholder="Search titles or content" />
                             <span class="absolute right-3 top-2.5 text-slate-400">🔍</span>
                         </div>
                         <button id="wiki-new-page" class="inline-flex items-center justify-center gap-2 rounded-md border border-orange-500 bg-orange-500 px-4 py-2 text-sm font-semibold text-white shadow hover:bg-orange-600 focus:outline-none focus:ring-2 focus:ring-orange-400">
@@ -31,20 +42,23 @@
                         </button>
                     </div>
                 </div>
-            </div>
-        </section>
-
-        <section class="space-y-4">
-            <div class="bg-white border border-slate-200 rounded-md shadow-sm">
-                <div class="px-5 py-4 border-b border-slate-200 flex items-center justify-between">
-                    <div>
-                        <p class="text-xs uppercase tracking-wide text-slate-500">Pages</p>
-                        <h2 class="text-lg font-semibold text-slate-900">Browse and open</h2>
-                    </div>
-                    <span id="wiki-page-count" class="text-xs text-slate-500"></span>
+                <div class="overflow-x-auto">
+                    <table class="w-full text-left">
+                        <thead class="bg-slate-50 border-b border-slate-200 text-xs uppercase tracking-wide text-slate-500">
+                            <tr>
+                                <th class="px-5 py-3 font-semibold">Title</th>
+                                <th class="px-5 py-3 font-semibold">Summary</th>
+                                <th class="px-5 py-3 font-semibold whitespace-nowrap">Updated</th>
+                                <th class="px-5 py-3 font-semibold whitespace-nowrap">Attachments</th>
+                            </tr>
+                        </thead>
+                        <tbody id="wiki-page-list" class="divide-y divide-slate-100" role="list"></tbody>
+                    </table>
                 </div>
-                <div id="wiki-page-list" class="divide-y divide-slate-100" role="list"></div>
-                <p id="wiki-page-empty" class="px-5 py-5 text-sm text-slate-500 hidden">No pages yet. Use "New page" to start documenting.</p>
+                <div class="flex items-center justify-between px-5 py-3 text-xs text-slate-500 border-t border-slate-200">
+                    <span id="wiki-page-empty" class="hidden">No pages match your search.</span>
+                    <span id="wiki-page-count"></span>
+                </div>
             </div>
 
             <article id="wiki-view" class="bg-white border border-slate-200 rounded-md shadow-sm">
@@ -374,29 +388,48 @@
                     return haystack.includes(query);
                 });
 
-                pageCountEl.textContent = filtered.length ? `${filtered.length} page${filtered.length === 1 ? '' : 's'}` : '';
+                const totalCountLabel = pages.length ? `Showing ${filtered.length} of ${pages.length} page${pages.length === 1 ? '' : 's'}` : 'No pages yet';
+                pageCountEl.textContent = totalCountLabel;
                 pageEmptyEl.classList.toggle('hidden', filtered.length > 0);
 
+                if (!filtered.length) {
+                    return;
+                }
+
+                const snippet = (value = '') => {
+                    const compact = value.replace(/\s+/g, ' ').trim();
+                    if (!compact) return 'Empty page';
+                    return compact.length > 140 ? `${compact.slice(0, 140)}…` : compact;
+                };
+
                 filtered.forEach((page) => {
-                    const button = document.createElement('button');
-                    button.type = 'button';
-                    button.className = `w-full text-left px-5 py-3 hover:bg-orange-50 transition ${state.selectedId === page.id ? 'bg-orange-50' : ''}`;
-                    button.dataset.pageId = page.id;
+                    const row = document.createElement('tr');
+                    row.className = `cursor-pointer transition-colors ${state.selectedId === page.id ? 'bg-orange-50' : 'hover:bg-slate-50'}`;
+                    row.addEventListener('click', () => selectPage(page.id));
 
-                    const title = document.createElement('p');
-                    title.className = 'font-semibold text-slate-900';
-                    title.textContent = page.title || 'Untitled';
+                    const titleCell = document.createElement('td');
+                    titleCell.className = 'px-5 py-3 align-top text-sm font-semibold text-slate-900';
+                    titleCell.textContent = page.title || 'Untitled';
 
-                    const meta = document.createElement('p');
-                    meta.className = 'text-xs text-slate-500 mt-1';
+                    const summaryCell = document.createElement('td');
+                    summaryCell.className = 'px-5 py-3 align-top text-sm text-slate-700';
+                    summaryCell.textContent = snippet(page.content || '');
+
+                    const updatedCell = document.createElement('td');
+                    updatedCell.className = 'px-5 py-3 align-top text-sm text-slate-600 whitespace-nowrap';
                     const updated = page.updated_at || page.created_at;
-                    meta.textContent = updated ? `Last edited ${new Date(updated).toLocaleString()}` : 'Draft';
+                    updatedCell.textContent = updated ? new Date(updated).toLocaleString() : 'Draft';
 
-                    button.appendChild(title);
-                    button.appendChild(meta);
+                    const attachmentsCell = document.createElement('td');
+                    attachmentsCell.className = 'px-5 py-3 align-top text-sm text-slate-600 whitespace-nowrap';
+                    const attachmentCount = Array.isArray(page.attachments) ? page.attachments.length : 0;
+                    attachmentsCell.textContent = `${attachmentCount} file${attachmentCount === 1 ? '' : 's'}`;
 
-                    button.addEventListener('click', () => selectPage(page.id));
-                    pageListEl.appendChild(button);
+                    row.appendChild(titleCell);
+                    row.appendChild(summaryCell);
+                    row.appendChild(updatedCell);
+                    row.appendChild(attachmentsCell);
+                    pageListEl.appendChild(row);
                 });
             };
 
@@ -452,6 +485,10 @@
                     }
                     const data = await response.json();
                     state.pages = data.pages || [];
+                    const hasSelected = state.pages.some((entry) => entry.id === state.selectedId);
+                    if (!hasSelected) {
+                        state.selectedId = state.pages.length ? state.pages[0].id : null;
+                    }
                     renderPages();
                     syncEditor();
                     setStatus('');
