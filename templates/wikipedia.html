@@ -110,12 +110,13 @@
                             <div class="flex flex-wrap gap-2 rounded-md border border-slate-200 bg-slate-50 px-2 py-2 text-sm text-slate-700 shadow-sm" aria-label="Formatting toolbar">
                                 <button type="button" class="wiki-toolbar inline-flex items-center gap-1 rounded border border-transparent bg-white px-3 py-1.5 shadow-sm hover:border-orange-300 hover:text-orange-600 focus:outline-none focus:ring-2 focus:ring-orange-300" data-action="bold">Bold</button>
                                 <button type="button" class="wiki-toolbar inline-flex items-center gap-1 rounded border border-transparent bg-white px-3 py-1.5 shadow-sm hover:border-orange-300 hover:text-orange-600 focus:outline-none focus:ring-2 focus:ring-orange-300" data-action="italic">Italic</button>
+                                <button type="button" class="wiki-toolbar inline-flex items-center gap-1 rounded border border-transparent bg-white px-3 py-1.5 shadow-sm hover:border-orange-300 hover:text-orange-600 focus:outline-none focus:ring-2 focus:ring-orange-300" data-action="strikethrough">Strikethrough</button>
+                                <button type="button" class="wiki-toolbar inline-flex items-center gap-1 rounded border border-transparent bg-white px-3 py-1.5 shadow-sm hover:border-orange-300 hover:text-orange-600 focus:outline-none focus:ring-2 focus:ring-orange-300" data-action="underline">Underline</button>
                                 <button type="button" class="wiki-toolbar inline-flex items-center gap-1 rounded border border-transparent bg-white px-3 py-1.5 shadow-sm hover:border-orange-300 hover:text-orange-600 focus:outline-none focus:ring-2 focus:ring-orange-300" data-action="heading">Heading</button>
                                 <button type="button" class="wiki-toolbar inline-flex items-center gap-1 rounded border border-transparent bg-white px-3 py-1.5 shadow-sm hover:border-orange-300 hover:text-orange-600 focus:outline-none focus:ring-2 focus:ring-orange-300" data-action="list">List</button>
                                 <button type="button" class="wiki-toolbar inline-flex items-center gap-1 rounded border border-transparent bg-white px-3 py-1.5 shadow-sm hover:border-orange-300 hover:text-orange-600 focus:outline-none focus:ring-2 focus:ring-orange-300" data-action="quote">Quote</button>
                                 <button type="button" class="wiki-toolbar inline-flex items-center gap-1 rounded border border-transparent bg-white px-3 py-1.5 shadow-sm hover:border-orange-300 hover:text-orange-600 focus:outline-none focus:ring-2 focus:ring-orange-300" data-action="code">Code</button>
                                 <button type="button" class="wiki-toolbar inline-flex items-center gap-1 rounded border border-transparent bg-white px-3 py-1.5 shadow-sm hover:border-orange-300 hover:text-orange-600 focus:outline-none focus:ring-2 focus:ring-orange-300" data-action="codeblock">Code block</button>
-                                <button type="button" class="wiki-toolbar inline-flex items-center gap-1 rounded border border-transparent bg-white px-3 py-1.5 shadow-sm hover:border-orange-300 hover:text-orange-600 focus:outline-none focus:ring-2 focus:ring-orange-300" data-action="spoiler">Spoiler</button>
                                 <button type="button" class="wiki-toolbar inline-flex items-center gap-1 rounded border border-transparent bg-white px-3 py-1.5 shadow-sm hover:border-orange-300 hover:text-orange-600 focus:outline-none focus:ring-2 focus:ring-orange-300" data-action="link">Link</button>
                                 <button type="button" class="wiki-toolbar inline-flex items-center gap-1 rounded border border-transparent bg-white px-3 py-1.5 shadow-sm hover:border-orange-300 hover:text-orange-600 focus:outline-none focus:ring-2 focus:ring-orange-300" data-action="image">Image</button>
                             </div>
@@ -231,8 +232,6 @@
                     if (key) lookup[key] = attachment;
                 });
 
-                const wrapSpoiler = (text) => `<span class="bg-slate-900 text-slate-50 rounded px-1">${text}</span>`;
-
                 const inlineImage = (alt, token) => {
                     const key = (token || '').toLowerCase();
                     const attachment = lookup[key];
@@ -250,7 +249,8 @@
                     safe = safe.replace(/\*\*\*([^*]+)\*\*\*/g, '<strong><em>$1</em></strong>');
                     safe = safe.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
                     safe = safe.replace(/\*([^*]+)\*/g, '<em>$1</em>');
-                    safe = safe.replace(/\|\|(.+?)\|\|/g, (_, hidden) => wrapSpoiler(hidden));
+                    safe = safe.replace(/~~([^~]+)~~/g, '<del>$1</del>');
+                    safe = safe.replace(/__([^_]+)__/g, '<u>$1</u>');
                     safe = safe.replace(/\[([^\]]+)\]\{([^}]+)\}/g, (_, alt, token) => inlineImage(alt, token));
                     safe = safe.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer" class="text-orange-600 hover:underline">$1</a>');
                     safe = safe.replace(/\[\[(.+?)\]\]/g, (_, title) => {
@@ -352,6 +352,10 @@
                         flushCode();
                         html.push(`<blockquote class="border-l-4 border-orange-200 pl-3 italic text-base text-slate-700 mb-4">${applyInlineFormatting(trimmed.replace(/^>\s+/, ''))}</blockquote>`);
                         return;
+                    }
+
+                    if (list) {
+                        flushList();
                     }
 
                     paragraph.push(trimmed);
@@ -593,14 +597,17 @@
                     case 'italic':
                         insertMarkup('*', '*', 'emphasis');
                         break;
+                    case 'strikethrough':
+                        insertMarkup('~~', '~~', 'crossed text');
+                        break;
+                    case 'underline':
+                        insertMarkup('__', '__', 'underlined');
+                        break;
                     case 'code':
                         insertMarkup('`', '`', 'code');
                         break;
                     case 'codeblock':
                         insertMarkup('\n```\n', '\n```\n', 'multi-line code');
-                        break;
-                    case 'spoiler':
-                        insertMarkup('||', '||', 'spoiler text');
                         break;
                     case 'heading':
                         insertMarkup('\n# ', '\n', 'Heading 1');
