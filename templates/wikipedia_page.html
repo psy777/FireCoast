@@ -243,15 +243,21 @@
 
                     if (/^[*-]\s+/.test(trimmed)) {
                         flushParagraph();
-                        if (!list || list.type !== 'ul') list = { type: 'ul', items: [] };
+                        if (list && list.type !== 'ul') {
+                            flushList();
+                        }
+                        if (!list) list = { type: 'ul', items: [] };
                         list.items.push(trimmed.replace(/^[*-]\s+/, ''));
                         return;
                     }
 
-                    if (/^\d+\.\s+/.test(trimmed)) {
+                    if (/^\d+[\.).]?\s+/.test(trimmed)) {
                         flushParagraph();
-                        if (!list || list.type !== 'ol') list = { type: 'ol', items: [] };
-                        list.items.push(trimmed.replace(/^\d+\.\s+/, ''));
+                        if (list && list.type !== 'ol') {
+                            flushList();
+                        }
+                        if (!list) list = { type: 'ol', items: [] };
+                        list.items.push(trimmed.replace(/^\d+[\.).]?\s+/, ''));
                         return;
                     }
 
