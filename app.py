@@ -8064,6 +8064,16 @@ def calendar_page():
 def wikipedia_page():
     return render_with_navigation('wikipedia.html', active_nav='wikipedia')
 
+
+@app.route('/wikipedia/<string:page_id>')
+def wikipedia_page_detail(page_id: str):
+    return render_with_navigation('wikipedia_page.html', active_nav='wikipedia', page_id=page_id)
+
+
+@app.route('/wikipedia/new')
+def wikipedia_page_new():
+    return render_with_navigation('wikipedia_page.html', active_nav='wikipedia', page_id=None)
+
 @app.route('/api/export-data', methods=['GET'])
 def export_data():
     """Create a zip archive of the application's data directory."""

@@ -1,0 +1,522 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Reference Page | FireCoast</title>
+    <link rel="icon" href="/favicon.ico" type="image/x-icon">
+    <link rel="stylesheet" href="/assets/css/styles.css">
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-slate-50 text-slate-900 min-h-screen">
+    {% include 'partials/navbar.html' %}
+
+    <main class="page-main page-main--wide page-main--flush py-6 sm:py-8">
+        <div class="bg-white border border-slate-200 rounded-md shadow-sm">
+            <div class="px-5 py-4 border-b border-slate-200 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                <div>
+                    <a href="/wikipedia" class="text-sm text-orange-600 hover:underline">← Back to records</a>
+                    <h1 id="wiki-view-title" class="text-3xl sm:text-4xl font-serif font-semibold text-slate-900 leading-tight mt-2">Loading…</h1>
+                </div>
+                <div class="flex items-center gap-3 self-start">
+                    <p id="wiki-updated" class="text-xs sm:text-sm text-slate-500">Last edited —</p>
+                    <button id="wiki-edit" class="inline-flex items-center gap-2 rounded-md border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-orange-300 disabled:opacity-50 disabled:cursor-not-allowed" disabled>
+                        <span aria-hidden="true">✏️</span>
+                        <span>Edit</span>
+                    </button>
+                </div>
+            </div>
+
+            <article id="wiki-view" class="px-5 py-5 space-y-6">
+                <div id="wiki-preview-body" class="prose prose-slate max-w-none font-serif leading-relaxed text-[16px] sm:text-[17px]"></div>
+                <div>
+                    <div class="flex items-center justify-between flex-wrap gap-2 mb-2">
+                        <h3 class="text-sm font-semibold text-slate-900">Attachments</h3>
+                    </div>
+                    <div id="wiki-preview-attachments" class="space-y-2"></div>
+                </div>
+            </article>
+
+            <div id="wiki-editor" class="hidden border-t border-slate-200">
+                <div class="px-5 py-4 border-b border-slate-200 flex items-center justify-between">
+                    <div>
+                        <p class="text-xs uppercase tracking-wide text-slate-500">Edit</p>
+                        <h3 class="text-lg font-semibold text-slate-900" id="wiki-editor-title">Create a new page</h3>
+                        <p class="text-sm text-slate-600">Use the editor to update the article content and upload supporting files.</p>
+                    </div>
+                </div>
+                <form id="wiki-form" class="p-5 space-y-4" enctype="multipart/form-data">
+                    <div class="space-y-1">
+                        <label for="wiki-title" class="block text-sm font-medium text-slate-900">Title</label>
+                        <input id="wiki-title" name="title" type="text" class="w-full rounded-md border border-slate-200 bg-white focus:border-orange-400 focus:ring-2 focus:ring-orange-400 text-sm px-3 py-2 shadow-sm" placeholder="Example: Onboarding" required>
+                    </div>
+
+                    <div class="space-y-1">
+                        <div class="flex items-center justify-between">
+                            <label for="wiki-content" class="block text-sm font-medium text-slate-900">Content</label>
+                            <p class="text-xs text-slate-500">Supports FireCoast markdown</p>
+                        </div>
+                        <div class="flex flex-wrap gap-2 rounded-md border border-slate-200 bg-slate-50 px-2 py-2 text-sm text-slate-700 shadow-sm" aria-label="Formatting toolbar">
+                            <button type="button" class="wiki-toolbar inline-flex items-center gap-1 rounded border border-transparent bg-white px-3 py-1.5 shadow-sm hover:border-orange-300 hover:text-orange-600 focus:outline-none focus:ring-2 focus:ring-orange-300" data-action="bold">Bold</button>
+                            <button type="button" class="wiki-toolbar inline-flex items-center gap-1 rounded border border-transparent bg-white px-3 py-1.5 shadow-sm hover:border-orange-300 hover:text-orange-600 focus:outline-none focus:ring-2 focus:ring-orange-300" data-action="italic">Italic</button>
+                            <button type="button" class="wiki-toolbar inline-flex items-center gap-1 rounded border border-transparent bg-white px-3 py-1.5 shadow-sm hover:border-orange-300 hover:text-orange-600 focus:outline-none focus:ring-2 focus:ring-orange-300" data-action="strikethrough">Strikethrough</button>
+                            <button type="button" class="wiki-toolbar inline-flex items-center gap-1 rounded border border-transparent bg-white px-3 py-1.5 shadow-sm hover:border-orange-300 hover:text-orange-600 focus:outline-none focus:ring-2 focus:ring-orange-300" data-action="underline">Underline</button>
+                            <button type="button" class="wiki-toolbar inline-flex items-center gap-1 rounded border border-transparent bg-white px-3 py-1.5 shadow-sm hover:border-orange-300 hover:text-orange-600 focus:outline-none focus:ring-2 focus:ring-orange-300" data-action="heading">Heading</button>
+                            <button type="button" class="wiki-toolbar inline-flex items-center gap-1 rounded border border-transparent bg-white px-3 py-1.5 shadow-sm hover:border-orange-300 hover:text-orange-600 focus:outline-none focus:ring-2 focus:ring-orange-300" data-action="list">List</button>
+                            <button type="button" class="wiki-toolbar inline-flex items-center gap-1 rounded border border-transparent bg-white px-3 py-1.5 shadow-sm hover:border-orange-300 hover:text-orange-600 focus:outline-none focus:ring-2 focus:ring-orange-300" data-action="quote">Quote</button>
+                            <button type="button" class="wiki-toolbar inline-flex items-center gap-1 rounded border border-transparent bg-white px-3 py-1.5 shadow-sm hover:border-orange-300 hover:text-orange-600 focus:outline-none focus:ring-2 focus:ring-orange-300" data-action="code">Code</button>
+                            <button type="button" class="wiki-toolbar inline-flex items-center gap-1 rounded border border-transparent bg-white px-3 py-1.5 shadow-sm hover:border-orange-300 hover:text-orange-600 focus:outline-none focus:ring-2 focus:ring-orange-300" data-action="codeblock">Code block</button>
+                            <button type="button" class="wiki-toolbar inline-flex items-center gap-1 rounded border border-transparent bg-white px-3 py-1.5 shadow-sm hover:border-orange-300 hover:text-orange-600 focus:outline-none focus:ring-2 focus:ring-orange-300" data-action="link">Link</button>
+                            <button type="button" class="wiki-toolbar inline-flex items-center gap-1 rounded border border-transparent bg-white px-3 py-1.5 shadow-sm hover:border-orange-300 hover:text-orange-600 focus:outline-none focus:ring-2 focus:ring-orange-300" data-action="image">Image</button>
+                        </div>
+                        <textarea id="wiki-content" name="content" rows="14" class="w-full rounded-md border border-slate-200 bg-white focus:border-orange-400 focus:ring-2 focus:ring-orange-400 text-sm px-3 py-3 shadow-sm font-serif" placeholder="Use FireCoast markdown: # Heading, **bold**, *italic*, `code`, [Text](url), [Alt]{Image}"></textarea>
+                    </div>
+
+                    <div class="space-y-2">
+                        <div class="flex items-center justify-between">
+                            <label for="wiki-attachments" class="block text-sm font-medium text-slate-900">Attachments</label>
+                            <span class="text-xs text-slate-500">Optional • stored inside FireCoast data</span>
+                        </div>
+                        <input id="wiki-attachments" name="attachments" type="file" multiple class="block w-full text-sm text-[#202122]" aria-describedby="wiki-attachment-help">
+                        <p id="wiki-attachment-help" class="text-xs text-slate-500">Upload supporting documents or screenshots.</p>
+                        <div id="wiki-attachment-list" class="bg-slate-50 border border-slate-200 rounded-md px-3 py-2 space-y-2" aria-live="polite"></div>
+                    </div>
+
+                    <div class="flex flex-wrap gap-3 pt-2">
+                        <button type="submit" class="inline-flex items-center gap-2 rounded-md border border-orange-500 bg-orange-500 px-4 py-2 text-sm font-semibold text-white shadow hover:bg-orange-600 focus:outline-none focus:ring-2 focus:ring-orange-400">
+                            <span aria-hidden="true">💾</span>
+                            <span id="wiki-submit-label">Save page</span>
+                        </button>
+                        <button type="button" id="wiki-reset" class="inline-flex items-center gap-2 rounded-md border border-slate-200 bg-white px-4 py-2 text-sm text-slate-900 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-orange-400">
+                            <span aria-hidden="true">↺</span>
+                            <span>Reset</span>
+                        </button>
+                        <p id="wiki-status" class="text-sm text-slate-600" role="status"></p>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </main>
+
+    <script>
+        (() => {
+            const pageId = '{{ page_id or "" }}';
+
+            const titleInput = document.getElementById('wiki-title');
+            const contentInput = document.getElementById('wiki-content');
+            const attachmentsInput = document.getElementById('wiki-attachments');
+            const attachmentsListEl = document.getElementById('wiki-attachment-list');
+            const statusEl = document.getElementById('wiki-status');
+            const formEl = document.getElementById('wiki-form');
+            const resetBtn = document.getElementById('wiki-reset');
+            const editBtn = document.getElementById('wiki-edit');
+            const editorTitleEl = document.getElementById('wiki-editor-title');
+            const submitLabelEl = document.getElementById('wiki-submit-label');
+            const previewTitleEl = document.getElementById('wiki-view-title');
+            const previewUpdatedEl = document.getElementById('wiki-updated');
+            const previewBodyEl = document.getElementById('wiki-preview-body');
+            const previewAttachmentsEl = document.getElementById('wiki-preview-attachments');
+            const viewSection = document.getElementById('wiki-view');
+            const editorSection = document.getElementById('wiki-editor');
+
+            const state = {
+                page: null,
+                editing: !pageId,
+            };
+
+            const escapeHtml = (value = '') => value
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#039;');
+
+            const isImage = (name = '') => /\.(png|jpe?g|gif|webp|svg)$/i.test(name);
+
+            const makeInlineFormatter = (attachments = []) => {
+                const lookup = {};
+                attachments.forEach((attachment) => {
+                    const key = (attachment && (attachment.name || attachment.path || '')).toLowerCase();
+                    if (key) lookup[key] = attachment;
+                });
+
+                const inlineImage = (alt, token) => {
+                    const key = (token || '').toLowerCase();
+                    const attachment = lookup[key];
+                    if (attachment && isImage(attachment.name || attachment.path)) {
+                        const caption = escapeHtml(alt || attachment.name || 'Image');
+                        return `<figure class="my-4 space-y-2"><img src="/data/${attachment.path}" alt="${caption}" class="w-full max-h-96 object-contain" loading="lazy" /><figcaption class="text-xs text-slate-500">${caption}</figcaption></figure>`;
+                    }
+                    return `<span class="text-xs text-slate-500 italic">[missing image: ${escapeHtml(token)}]</span>`;
+                };
+
+                return (text = '') => {
+                    let safe = escapeHtml(text);
+
+                    safe = safe.replace(/`([^`]+)`/g, '<code class="bg-slate-100 text-slate-800 px-1 py-0.5 rounded border border-slate-200 text-sm">$1</code>');
+                    safe = safe.replace(/\*\*\*([^*]+)\*\*\*/g, '<strong><em>$1</em></strong>');
+                    safe = safe.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
+                    safe = safe.replace(/\*([^*]+)\*/g, '<em>$1</em>');
+                    safe = safe.replace(/~~([^~]+)~~/g, '<del>$1</del>');
+                    safe = safe.replace(/__([^_]+)__/g, '<u>$1</u>');
+                    safe = safe.replace(/\|\|([^|]+)\|\|/g, '<span class="bg-slate-900 text-slate-50 px-1 rounded">$1</span>');
+                    safe = safe.replace(/\[([^\]]+)\]\{([^}]+)\}/g, (_, alt, token) => inlineImage(alt, token));
+                    safe = safe.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer" class="text-orange-600 hover:underline">$1</a>');
+                    safe = safe.replace(/\[\[(.+?)\]\]/g, (_, title) => {
+                        const trimmed = title.trim();
+                        return `<span class="text-orange-600">${trimmed}</span>`;
+                    });
+                    return safe;
+                };
+            };
+
+            const wikiFormat = (content = '', attachments = []) => {
+                const applyInlineFormatting = makeInlineFormatter(attachments);
+                const lines = (content || '').split(/\n/);
+                const html = [];
+                let paragraph = [];
+                let list = null;
+                let codeBlock = null;
+
+                const flushParagraph = () => {
+                    if (!paragraph.length) return;
+                    const text = paragraph.join(' ');
+                    html.push(`<p class="text-base leading-7 mb-4">${applyInlineFormatting(text)}</p>`);
+                    paragraph = [];
+                };
+
+                const flushList = () => {
+                    if (!list) return;
+                    const tag = list.type === 'ol' ? 'ol' : 'ul';
+                    const cls = list.type === 'ol' ? 'list-decimal ml-6 text-base space-y-1' : 'list-disc ml-6 text-base space-y-1';
+                    const items = list.items.map((item) => `<li>${applyInlineFormatting(item)}</li>`).join('');
+                    html.push(`<${tag} class="${cls}">${items}</${tag}>`);
+                    list = null;
+                };
+
+                const flushCode = () => {
+                    if (!codeBlock) return;
+                    const escaped = codeBlock.lines.map((line) => escapeHtml(line)).join('\n');
+                    html.push(`<pre class="bg-slate-900 text-slate-50 text-sm rounded-md px-4 py-3 overflow-x-auto border border-slate-800"><code>${escaped}</code></pre>`);
+                    codeBlock = null;
+                };
+
+                lines.forEach((line) => {
+                    const trimmed = line.trim();
+
+                    if (/^```/.test(trimmed)) {
+                        if (codeBlock) {
+                            flushParagraph();
+                            flushList();
+                            flushCode();
+                        } else {
+                            flushParagraph();
+                            flushList();
+                            codeBlock = { lines: [] };
+                        }
+                        return;
+                    }
+
+                    if (codeBlock) {
+                        codeBlock.lines.push(line);
+                        return;
+                    }
+
+                    if (!trimmed) {
+                        flushParagraph();
+                        flushList();
+                        flushCode();
+                        return;
+                    }
+
+                    const headingMatch = trimmed.match(/^(#{1,4})\s+(.+)$/);
+                    if (headingMatch) {
+                        flushParagraph();
+                        flushList();
+                        flushCode();
+                        const level = Math.min(Math.max(headingMatch[1].length, 1), 4);
+                        const headingText = applyInlineFormatting(headingMatch[2]);
+                        const sizeClass = level === 1 ? 'text-3xl' : level === 2 ? 'text-2xl' : level === 3 ? 'text-xl' : 'text-lg';
+                        html.push(`<h${level} class="font-serif font-semibold ${sizeClass} mt-5 mb-3">${headingText}</h${level}>`);
+                        return;
+                    }
+
+                    if (/^[*-]\s+/.test(trimmed)) {
+                        flushParagraph();
+                        if (!list || list.type !== 'ul') list = { type: 'ul', items: [] };
+                        list.items.push(trimmed.replace(/^[*-]\s+/, ''));
+                        return;
+                    }
+
+                    if (/^\d+\.\s+/.test(trimmed)) {
+                        flushParagraph();
+                        if (!list || list.type !== 'ol') list = { type: 'ol', items: [] };
+                        list.items.push(trimmed.replace(/^\d+\.\s+/, ''));
+                        return;
+                    }
+
+                    if (/^>\s+/.test(trimmed)) {
+                        flushParagraph();
+                        flushList();
+                        flushCode();
+                        html.push(`<blockquote class="border-l-4 border-orange-200 pl-3 italic text-base text-slate-700 mb-4">${applyInlineFormatting(trimmed.replace(/^>\s+/, ''))}</blockquote>`);
+                        return;
+                    }
+
+                    paragraph.push(trimmed);
+                });
+
+                flushParagraph();
+                flushList();
+                flushCode();
+
+                if (!html.length) {
+                    return '<p class="text-sm text-slate-500">This article is empty. Use the editor to add content.</p>';
+                }
+
+                return html.join('\n');
+            };
+
+            const setStatus = (message, tone = 'neutral') => {
+                statusEl.textContent = message || '';
+                statusEl.classList.remove('text-red-700', 'text-green-700', 'text-slate-600');
+                const toneClass = tone === 'error' ? 'text-red-700' : tone === 'success' ? 'text-green-700' : 'text-slate-600';
+                statusEl.classList.add(toneClass);
+            };
+
+            const setEditing = (editing) => {
+                state.editing = editing;
+                if (editing) {
+                    viewSection.classList.add('hidden');
+                    editorSection.classList.remove('hidden');
+                } else {
+                    editorSection.classList.add('hidden');
+                    viewSection.classList.remove('hidden');
+                }
+            };
+
+            const renderAttachmentGroup = (container, page, options = {}) => {
+                const { emptyText = 'No attachments yet.' } = options;
+                container.innerHTML = '';
+                const attachments = (page && Array.isArray(page.attachments)) ? page.attachments : [];
+                if (!attachments.length) {
+                    const empty = document.createElement('p');
+                    empty.className = 'text-sm text-slate-500';
+                    empty.textContent = emptyText;
+                    container.appendChild(empty);
+                    return;
+                }
+                attachments.forEach((attachment) => {
+                    const row = document.createElement('div');
+                    row.className = 'flex items-center justify-between gap-3 text-sm bg-white border border-slate-200 rounded-md px-3 py-2';
+
+                    const name = document.createElement('a');
+                    name.href = `/data/${attachment.path}`;
+                    name.textContent = attachment.name || 'Attachment';
+                    name.className = 'text-orange-600 hover:underline font-medium break-all';
+                    name.target = '_blank';
+                    name.rel = 'noopener noreferrer';
+
+                    const meta = document.createElement('span');
+                    meta.className = 'text-xs text-slate-600';
+                    meta.textContent = attachment.uploaded_at ? new Date(attachment.uploaded_at).toLocaleString() : '';
+
+                    row.appendChild(name);
+                    row.appendChild(meta);
+                    container.appendChild(row);
+                });
+            };
+
+            const renderPreview = () => {
+                const page = state.page;
+                if (!page) {
+                    previewTitleEl.textContent = 'Create a new page';
+                    previewUpdatedEl.textContent = 'Last edited —';
+                    previewBodyEl.innerHTML = '<p class="text-sm text-slate-500">Draft your article and save to publish it.</p>';
+                    renderAttachmentGroup(previewAttachmentsEl, null, { emptyText: 'No attachments uploaded.' });
+                    editBtn.disabled = true;
+                    return;
+                }
+
+                previewTitleEl.textContent = page.title || 'Untitled';
+                const updated = page.updated_at || page.created_at;
+                previewUpdatedEl.textContent = updated ? `Last edited ${new Date(updated).toLocaleString()}` : 'Draft';
+                previewBodyEl.innerHTML = wikiFormat(page.content || '', page.attachments || []);
+                renderAttachmentGroup(previewAttachmentsEl, page, { emptyText: 'No attachments uploaded.' });
+                editBtn.disabled = false;
+            };
+
+            const syncEditor = () => {
+                const page = state.page;
+                if (!page) {
+                    editorTitleEl.textContent = 'Create a new page';
+                    submitLabelEl.textContent = 'Save page';
+                    formEl.reset();
+                    contentInput.value = '';
+                    titleInput.value = '';
+                    attachmentsInput.value = '';
+                    renderAttachmentGroup(attachmentsListEl, null, { emptyText: 'No attachments yet.' });
+                    renderPreview();
+                    return;
+                }
+
+                titleInput.value = page.title || '';
+                contentInput.value = page.content || '';
+                attachmentsInput.value = '';
+                editorTitleEl.textContent = `Editing: ${page.title || 'Untitled'}`;
+                submitLabelEl.textContent = 'Update page';
+                renderAttachmentGroup(attachmentsListEl, page, { emptyText: 'No attachments yet.' });
+                renderPreview();
+            };
+
+            const loadPage = async () => {
+                if (!pageId) {
+                    state.page = null;
+                    syncEditor();
+                    setEditing(true);
+                    return;
+                }
+                try {
+                    const response = await fetch(`/api/wikipedia/pages/${pageId}`);
+                    if (!response.ok) {
+                        throw new Error('Failed to load page');
+                    }
+                    const data = await response.json();
+                    state.page = data;
+                    syncEditor();
+                    setEditing(false);
+                } catch (error) {
+                    console.error(error);
+                    previewTitleEl.textContent = 'Page not found';
+                    previewBodyEl.innerHTML = '<p class="text-sm text-red-700">Unable to load this page.</p>';
+                    editBtn.disabled = true;
+                }
+            };
+
+            const resetEditor = () => {
+                state.page = null;
+                formEl.reset();
+                contentInput.value = '';
+                titleInput.value = '';
+                attachmentsInput.value = '';
+                syncEditor();
+                setEditing(true);
+                setStatus('Ready for a new page.');
+            };
+
+            const insertMarkup = (before = '', after = '', placeholder = '') => {
+                const target = contentInput;
+                const start = target.selectionStart || 0;
+                const end = target.selectionEnd || 0;
+                const current = target.value;
+                const selected = current.substring(start, end) || placeholder;
+                const nextValue = `${current.substring(0, start)}${before}${selected}${after}${current.substring(end)}`;
+                target.value = nextValue;
+                const cursor = start + before.length + selected.length;
+                target.focus();
+                target.setSelectionRange(cursor, cursor);
+            };
+
+            const handleToolbarClick = (action) => {
+                switch (action) {
+                    case 'bold':
+                        insertMarkup('**', '**', 'bold text');
+                        break;
+                    case 'italic':
+                        insertMarkup('*', '*', 'emphasis');
+                        break;
+                    case 'strikethrough':
+                        insertMarkup('~~', '~~', 'strikethrough');
+                        break;
+                    case 'underline':
+                        insertMarkup('__', '__', 'underline');
+                        break;
+                    case 'code':
+                        insertMarkup('`', '`', 'code');
+                        break;
+                    case 'codeblock':
+                        insertMarkup('\n```\n', '\n```\n', 'multi-line code');
+                        break;
+                    case 'heading':
+                        insertMarkup('\n# ', '\n', 'Heading 1');
+                        break;
+                    case 'list':
+                        insertMarkup('\n- ', '', 'List item');
+                        break;
+                    case 'quote':
+                        insertMarkup('\n> ', '', 'Quoted text');
+                        break;
+                    case 'link':
+                        insertMarkup('[', '](url)', 'Text');
+                        break;
+                    case 'image': {
+                        const hint = (attachmentsInput.files && attachmentsInput.files[0]) ? attachmentsInput.files[0].name : 'image.png';
+                        insertMarkup('[', `]{${hint}}`, 'Alt text');
+                        break;
+                    }
+                    default:
+                        break;
+                }
+            };
+
+            const savePage = async (event) => {
+                event.preventDefault();
+                const title = titleInput.value.trim();
+                const content = contentInput.value.trim();
+
+                if (!title) {
+                    setStatus('Title is required.', 'error');
+                    titleInput.focus();
+                    return;
+                }
+
+                const formData = new FormData();
+                formData.append('title', title);
+                formData.append('content', content);
+                Array.from(attachmentsInput.files || []).forEach((file) => {
+                    formData.append('attachments', file);
+                });
+
+                const isEditingExisting = Boolean(state.page && state.page.id);
+                const endpoint = isEditingExisting ? `/api/wikipedia/pages/${state.page.id}` : '/api/wikipedia/pages';
+                const method = isEditingExisting ? 'PATCH' : 'POST';
+                setStatus(isEditingExisting ? 'Updating page…' : 'Saving page…');
+
+                try {
+                    const response = await fetch(endpoint, { method, body: formData });
+                    if (!response.ok) {
+                        const errorBody = await response.json().catch(() => ({}));
+                        throw new Error(errorBody.message || 'Failed to save page');
+                    }
+                    const saved = await response.json();
+                    state.page = saved;
+                    setStatus(isEditingExisting ? 'Page updated.' : 'Page created.', 'success');
+                    if (!isEditingExisting) {
+                        window.location.href = `/wikipedia/${saved.id}`;
+                        return;
+                    }
+                    await loadPage();
+                    setEditing(false);
+                } catch (error) {
+                    console.error(error);
+                    setStatus(error.message || 'Failed to save page.', 'error');
+                }
+            };
+
+            formEl.addEventListener('submit', savePage);
+            resetBtn.addEventListener('click', resetEditor);
+            editBtn.addEventListener('click', () => {
+                if (!state.page) return;
+                setEditing(true);
+                syncEditor();
+            });
+            document.querySelectorAll('.wiki-toolbar').forEach((button) => {
+                button.addEventListener('click', () => handleToolbarClick(button.dataset.action));
+            });
+
+            loadPage();
+            setEditing(state.editing);
+        })();
+    </script>
+</body>
+</html>
