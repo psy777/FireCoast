@@ -61,6 +61,7 @@
             `;
             document.body.appendChild(contextMenu);
 
+            const STORAGE_KEY = 'wikiColumnPrefs';
             const state = {
                 pages: [],
                 columns: [
@@ -107,6 +108,38 @@
                 .replace(/>/g, '&gt;')
                 .replace(/"/g, '&quot;')
                 .replace(/'/g, '&#039;');
+
+            const persistColumns = () => {
+                try {
+                    const payload = state.columns.map((col) => ({ key: col.key, visible: !!col.visible }));
+                    localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
+                } catch (error) {
+                    console.warn('Unable to store column preferences', error);
+                }
+            };
+
+            const hydrateColumns = () => {
+                try {
+                    const saved = localStorage.getItem(STORAGE_KEY);
+                    if (!saved) return;
+
+                    const parsed = JSON.parse(saved);
+                    if (!Array.isArray(parsed)) return;
+
+                    const defaultMap = new Map(state.columns.map((col) => [col.key, col]));
+                    const ordered = [];
+                    parsed.forEach(({ key, visible }) => {
+                        if (!defaultMap.has(key)) return;
+                        const base = defaultMap.get(key);
+                        ordered.push({ ...base, visible: visible !== undefined ? !!visible : base.visible });
+                        defaultMap.delete(key);
+                    });
+
+                    state.columns = [...ordered, ...defaultMap.values()];
+                } catch (error) {
+                    console.warn('Unable to read column preferences', error);
+                }
+            };
 
             const renderTableHeader = () => {
                 tableHeaderEl.innerHTML = '';
@@ -201,6 +234,7 @@
                     checkbox.className = 'h-4 w-4 text-orange-500 rounded border-slate-300 focus:ring-orange-400';
                     checkbox.addEventListener('change', () => {
                         col.visible = checkbox.checked;
+                        persistColumns();
                         renderTableHeader();
                         renderPages();
                     });
@@ -220,6 +254,7 @@
                         if (index === 0) return;
                         const [removed] = state.columns.splice(index, 1);
                         state.columns.splice(index - 1, 0, removed);
+                        persistColumns();
                         buildMenu();
                         renderTableHeader();
                         renderPages();
@@ -234,6 +269,7 @@
                         if (index === state.columns.length - 1) return;
                         const [removed] = state.columns.splice(index, 1);
                         state.columns.splice(index + 1, 0, removed);
+                        persistColumns();
                         buildMenu();
                         renderTableHeader();
                         renderPages();
@@ -292,6 +328,7 @@
             });
 
             searchInput.addEventListener('input', renderPages);
+            hydrateColumns();
             renderTableHeader();
             loadPages();
         })();
