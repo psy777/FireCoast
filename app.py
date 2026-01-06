@@ -534,6 +534,13 @@ ensure_data_root()
 DATA_DIR = DATA_ROOT
 SETTINGS_FILE = DATA_DIR / 'settings.json'
 PASSWORDS_FILE = DATA_DIR / 'passwords.json'
+WIKIPEDIA_DATA_DIR = DATA_DIR / 'wikipedia'
+WIKIPEDIA_UPLOADS_DIR = WIKIPEDIA_DATA_DIR / 'uploads'
+WIKIPEDIA_PAGES_FILE = WIKIPEDIA_DATA_DIR / 'pages.json'
+WIKIPEDIA_DATA_DIR.mkdir(parents=True, exist_ok=True)
+WIKIPEDIA_UPLOADS_DIR.mkdir(parents=True, exist_ok=True)
+
+_wikipedia_lock = Lock()
 
 
 @app.before_request
@@ -717,10 +724,17 @@ NAV_SHORTCUT_CATALOG = [
             'href': '/firenotes',
         },
     ),
+    (
+        'wikipedia',
+        {
+            'label': 'Wikipedia',
+            'href': '/wikipedia',
+        },
+    ),
 ]
 
 NAV_SHORTCUT_REGISTRY = {key: dict(value, id=key) for key, value in NAV_SHORTCUT_CATALOG}
-DEFAULT_NAV_SHORTCUT_IDS = ['orders', 'contacts', 'analytics', 'tasks', 'reminders', 'calendar', 'passwords']
+DEFAULT_NAV_SHORTCUT_IDS = ['orders', 'contacts', 'analytics', 'tasks', 'reminders', 'calendar', 'passwords', 'wikipedia']
 
 DEVICE_STATUS_PENDING = 'pending'
 DEVICE_STATUS_TRUSTED = 'trusted'
@@ -794,6 +808,75 @@ def write_json_file(file_path, data):
     with open(file_path, 'w') as f:
         json.dump(data, f, indent=4)
 
+
+def _load_wikipedia_pages() -> List[Dict[str, Any]]:
+    raw_data = read_json_file(WIKIPEDIA_PAGES_FILE)
+    if isinstance(raw_data, dict):
+        candidates = raw_data.get('pages', [])
+    else:
+        candidates = raw_data
+
+    if isinstance(candidates, list):
+        return candidates
+    return []
+
+
+def _write_wikipedia_pages(pages: List[Dict[str, Any]]) -> None:
+    write_json_file(WIKIPEDIA_PAGES_FILE, {'pages': pages})
+
+
+def _find_wikipedia_page(pages: List[Dict[str, Any]], page_id: str) -> Optional[Dict[str, Any]]:
+    for page in pages:
+        if str(page.get('id')) == str(page_id):
+            return page
+    return None
+
+
+def _remove_wikipedia_files(relative_paths: List[str]) -> None:
+    for relative_path in relative_paths:
+        if not relative_path:
+            continue
+        absolute_path = Path(app.config['UPLOAD_FOLDER']) / relative_path
+        try:
+            if absolute_path.exists():
+                absolute_path.unlink()
+                parent = absolute_path.parent
+                if parent != Path(app.config['UPLOAD_FOLDER']):
+                    try:
+                        parent.rmdir()
+                    except OSError:
+                        pass
+        except Exception as exc:  # pragma: no cover - defensive logging
+            app.logger.warning("Failed to remove wikipedia attachment %s: %s", relative_path, exc)
+
+
+def _save_wikipedia_attachments(page_id: str, uploads: List[Any]) -> Tuple[List[Dict[str, Any]], Optional[str]]:
+    saved: List[Dict[str, Any]] = []
+    page_upload_dir = WIKIPEDIA_UPLOADS_DIR / str(page_id)
+    page_upload_dir.mkdir(parents=True, exist_ok=True)
+    for upload in uploads:
+        if not upload or not getattr(upload, 'filename', None):
+            continue
+        original_name = upload.filename
+        sanitized_name = secure_filename(original_name) or f"upload_{uuid.uuid4().hex[:8]}"
+        unique_filename = f"{uuid.uuid4().hex[:8]}_{sanitized_name}"
+        relative_path = str(Path('wikipedia') / 'uploads' / str(page_id) / unique_filename)
+        absolute_path = Path(app.config['UPLOAD_FOLDER']) / relative_path
+        try:
+            absolute_path.parent.mkdir(parents=True, exist_ok=True)
+            upload.save(absolute_path)
+        except Exception as exc:
+            app.logger.error("Failed to store wikipedia attachment %s: %s", original_name, exc)
+            _remove_wikipedia_files([entry['path'] for entry in saved])
+            return [], "Failed to save attachment"
+        saved.append(
+            {
+                'path': relative_path,
+                'name': original_name,
+                'uploaded_at': datetime.now(timezone.utc).isoformat(),
+            }
+        )
+    return saved, None
 
 def read_password_entries():
     entries_blob = read_json_file(PASSWORDS_FILE)
@@ -7056,14 +7139,125 @@ def send_order_email_route():
             
         server.sendmail(from_email, all_recipients, msg.as_string())
         server.close()
-        
+
         app.logger.info(f"Email with {len(attachment_paths_to_delete)} attachment(s) sent for order {order_id_log}")
-        
+
         return jsonify({"message": "Email sent."}), 200
     except Exception as e:
         app.logger.error(f"Failed to send email for order {order_data.get('id', 'N/A')}: {e}")
         app.logger.error(traceback.format_exc())
         return jsonify({"message": f"Failed to send email: {str(e)}"}), 500
+
+
+@app.route('/api/wikipedia/pages', methods=['GET', 'POST'])
+def wikipedia_pages_api():
+    if request.method == 'GET':
+        with _wikipedia_lock:
+            pages = list(_load_wikipedia_pages())
+        pages_sorted = sorted(
+            pages,
+            key=lambda page: page.get('updated_at') or page.get('created_at') or '',
+            reverse=True,
+        )
+        return jsonify({'pages': pages_sorted}), 200
+
+    payload = request.get_json(silent=True) if request.is_json else None
+    form = request.form if not payload else None
+    title_raw = (payload or {}).get('title') if payload else form.get('title')
+    content_raw = (payload or {}).get('content') if payload else form.get('content', '')
+
+    title = (title_raw or '').strip()
+    if not title:
+        return jsonify({'message': 'Title is required.'}), 400
+
+    content = (content_raw or '').strip()
+    page_id = uuid.uuid4().hex
+    upload_candidates = request.files.getlist('attachments') if not payload else []
+    saved_attachments, error = _save_wikipedia_attachments(page_id, upload_candidates)
+    if error:
+        return jsonify({'message': error}), 500
+
+    now = datetime.now(timezone.utc).isoformat()
+    new_page = {
+        'id': page_id,
+        'title': title,
+        'content': content,
+        'attachments': saved_attachments,
+        'created_at': now,
+        'updated_at': now,
+    }
+
+    with _wikipedia_lock:
+        pages = _load_wikipedia_pages()
+        pages.append(new_page)
+        _write_wikipedia_pages(pages)
+
+    return jsonify(new_page), 201
+
+
+@app.route('/api/wikipedia/pages/<string:page_id>', methods=['GET', 'PATCH', 'DELETE'])
+def wikipedia_page_api(page_id: str):
+    if request.method == 'GET':
+        with _wikipedia_lock:
+            pages = _load_wikipedia_pages()
+            page = _find_wikipedia_page(pages, page_id)
+        if not page:
+            return jsonify({'message': 'Page not found.'}), 404
+        return jsonify(page), 200
+
+    if request.method == 'DELETE':
+        with _wikipedia_lock:
+            pages = _load_wikipedia_pages()
+            page = _find_wikipedia_page(pages, page_id)
+            if not page:
+                return jsonify({'message': 'Page not found.'}), 404
+
+            attachments = page.get('attachments', [])
+            _remove_wikipedia_files([entry.get('path') for entry in attachments])
+            page_dir = WIKIPEDIA_UPLOADS_DIR / str(page_id)
+            if page_dir.exists():
+                try:
+                    shutil.rmtree(page_dir)
+                except Exception as exc:  # pragma: no cover - defensive logging
+                    app.logger.warning("Failed to clean wikipedia folder %s: %s", page_dir, exc)
+            pages = [entry for entry in pages if str(entry.get('id')) != str(page_id)]
+            _write_wikipedia_pages(pages)
+
+        return jsonify({'message': 'Page deleted.'}), 200
+
+    payload = request.get_json(silent=True) if request.is_json else None
+    form = request.form if not payload else None
+
+    with _wikipedia_lock:
+        pages = _load_wikipedia_pages()
+        page = _find_wikipedia_page(pages, page_id)
+        if not page:
+            return jsonify({'message': 'Page not found.'}), 404
+
+        title_raw = (payload or {}).get('title') if payload else form.get('title')
+        content_raw = (payload or {}).get('content') if payload else form.get('content')
+
+        if title_raw is not None:
+            new_title = str(title_raw).strip()
+            if not new_title:
+                return jsonify({'message': 'Title cannot be empty.'}), 400
+            page['title'] = new_title
+
+        if content_raw is not None:
+            page['content'] = str(content_raw).strip()
+
+        upload_candidates = request.files.getlist('attachments') if not payload else []
+        saved_attachments, error = _save_wikipedia_attachments(page_id, upload_candidates)
+        if error:
+            return jsonify({'message': error}), 500
+
+        if saved_attachments:
+            page.setdefault('attachments', []).extend(saved_attachments)
+
+        page['updated_at'] = datetime.now(timezone.utc).isoformat()
+        _write_wikipedia_pages(pages)
+
+    return jsonify(page), 200
 
 @app.route('/api/navigation', methods=['GET'])
 def get_navigation_settings():
@@ -7864,6 +8058,11 @@ def tasks_page():
 @app.route('/calendar')
 def calendar_page():
     return render_with_navigation('calendar.html', active_nav='calendar')
+
+
+@app.route('/wikipedia')
+def wikipedia_page():
+    return render_with_navigation('wikipedia.html', active_nav='wikipedia')
 
 @app.route('/api/export-data', methods=['GET'])
 def export_data():

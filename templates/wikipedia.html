@@ -1,0 +1,307 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Wikipedia | FireCoast</title>
+    <link rel="icon" href="/favicon.ico" type="image/x-icon">
+    <link rel="stylesheet" href="/assets/css/styles.css">
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-slate-50 min-h-screen font-sans">
+    {% include 'partials/navbar.html' %}
+
+    <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8">
+        <header class="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+                <p class="text-sm uppercase tracking-wide text-orange-500 font-semibold">Knowledge Base</p>
+                <h1 class="text-3xl font-bold text-slate-900">Wikipedia</h1>
+                <p class="text-slate-600 mt-2">Write and upload site-specific documents to keep your team aligned.</p>
+            </div>
+            <div class="flex items-center gap-3">
+                <button id="wiki-new-page" class="inline-flex items-center gap-2 rounded-md bg-orange-500 px-4 py-2 text-white shadow hover:bg-orange-600 focus:outline-none focus:ring-2 focus:ring-orange-400">
+                    <span aria-hidden="true">＋</span>
+                    <span>New Page</span>
+                </button>
+            </div>
+        </header>
+
+        <section class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            <div class="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden">
+                <div class="px-4 py-3 border-b border-slate-200 flex items-center justify-between">
+                    <div>
+                        <h2 class="text-lg font-semibold text-slate-900">Pages</h2>
+                        <p class="text-sm text-slate-500">Browse your saved documents.</p>
+                    </div>
+                </div>
+                <div class="divide-y divide-slate-200" id="wiki-page-list" role="list"></div>
+                <p id="wiki-page-empty" class="px-4 py-6 text-sm text-slate-500 hidden">No pages yet. Create one to get started.</p>
+            </div>
+
+            <div class="lg:col-span-2 bg-white border border-slate-200 rounded-xl shadow-sm">
+                <div class="px-4 py-3 border-b border-slate-200 flex items-center justify-between">
+                    <div>
+                        <h2 class="text-lg font-semibold text-slate-900" id="wiki-editor-title">Create a new page</h2>
+                        <p class="text-sm text-slate-500">Draft internal documentation and upload supporting files.</p>
+                    </div>
+                    <button id="wiki-delete" class="inline-flex items-center gap-2 rounded-md bg-red-100 px-3 py-2 text-red-700 hover:bg-red-200 disabled:opacity-50 disabled:cursor-not-allowed" disabled>
+                        <span aria-hidden="true">🗑</span>
+                        <span>Delete</span>
+                    </button>
+                </div>
+                <form id="wiki-form" class="p-4 space-y-4" enctype="multipart/form-data">
+                    <div class="space-y-1">
+                        <label for="wiki-title" class="block text-sm font-medium text-slate-700">Title</label>
+                        <input id="wiki-title" name="title" type="text" class="w-full rounded-md border-slate-300 focus:border-orange-400 focus:ring-orange-400" placeholder="Example: Onboarding Guide" required>
+                    </div>
+
+                    <div class="space-y-1">
+                        <label for="wiki-content" class="block text-sm font-medium text-slate-700">Content</label>
+                        <textarea id="wiki-content" name="content" rows="10" class="w-full rounded-md border-slate-300 focus:border-orange-400 focus:ring-orange-400" placeholder="Write your page content here..."></textarea>
+                    </div>
+
+                    <div class="space-y-2">
+                        <div class="flex items-center justify-between">
+                            <label for="wiki-attachments" class="block text-sm font-medium text-slate-700">Attachments</label>
+                            <span class="text-xs text-slate-500">Optional • files are stored in FireCoast data</span>
+                        </div>
+                        <input id="wiki-attachments" name="attachments" type="file" multiple class="block w-full text-sm text-slate-600" aria-describedby="wiki-attachment-help">
+                        <p id="wiki-attachment-help" class="text-xs text-slate-500">Upload site-specific documents, screenshots, or PDFs.</p>
+                        <div id="wiki-attachment-list" class="bg-slate-50 border border-slate-200 rounded-md px-3 py-2 space-y-2" aria-live="polite"></div>
+                    </div>
+
+                    <div class="flex flex-wrap gap-3 pt-2">
+                        <button type="submit" class="inline-flex items-center gap-2 rounded-md bg-orange-500 px-4 py-2 text-white shadow hover:bg-orange-600 focus:outline-none focus:ring-2 focus:ring-orange-400">
+                            <span aria-hidden="true">💾</span>
+                            <span id="wiki-submit-label">Save Page</span>
+                        </button>
+                        <button type="button" id="wiki-reset" class="inline-flex items-center gap-2 rounded-md bg-slate-100 px-4 py-2 text-slate-800 hover:bg-slate-200 focus:outline-none focus:ring-2 focus:ring-orange-300">
+                            <span aria-hidden="true">↺</span>
+                            <span>Reset</span>
+                        </button>
+                        <p id="wiki-status" class="text-sm text-slate-600" role="status"></p>
+                    </div>
+                </form>
+            </div>
+        </section>
+    </main>
+
+    <script>
+        (() => {
+            const pageListEl = document.getElementById('wiki-page-list');
+            const pageEmptyEl = document.getElementById('wiki-page-empty');
+            const titleInput = document.getElementById('wiki-title');
+            const contentInput = document.getElementById('wiki-content');
+            const attachmentsInput = document.getElementById('wiki-attachments');
+            const attachmentsListEl = document.getElementById('wiki-attachment-list');
+            const statusEl = document.getElementById('wiki-status');
+            const formEl = document.getElementById('wiki-form');
+            const newPageBtn = document.getElementById('wiki-new-page');
+            const resetBtn = document.getElementById('wiki-reset');
+            const deleteBtn = document.getElementById('wiki-delete');
+            const editorTitleEl = document.getElementById('wiki-editor-title');
+            const submitLabelEl = document.getElementById('wiki-submit-label');
+
+            const state = {
+                pages: [],
+                selectedId: null,
+            };
+
+            const setStatus = (message, tone = 'neutral') => {
+                statusEl.textContent = message || '';
+                statusEl.classList.remove('text-green-600', 'text-red-600', 'text-slate-600');
+                const toneClass = tone === 'error' ? 'text-red-600' : tone === 'success' ? 'text-green-600' : 'text-slate-600';
+                statusEl.classList.add(toneClass);
+            };
+
+            const renderAttachments = (page) => {
+                attachmentsListEl.innerHTML = '';
+                const attachments = (page && Array.isArray(page.attachments)) ? page.attachments : [];
+                if (!attachments.length) {
+                    const empty = document.createElement('p');
+                    empty.className = 'text-sm text-slate-500';
+                    empty.textContent = 'No attachments yet.';
+                    attachmentsListEl.appendChild(empty);
+                    return;
+                }
+
+                attachments.forEach((attachment) => {
+                    const row = document.createElement('div');
+                    row.className = 'flex items-center justify-between gap-3 text-sm bg-white border border-slate-200 rounded px-3 py-2';
+
+                    const name = document.createElement('a');
+                    name.href = `/data/${attachment.path}`;
+                    name.textContent = attachment.name || 'Attachment';
+                    name.className = 'text-orange-600 hover:text-orange-700 font-medium break-all';
+                    name.target = '_blank';
+                    name.rel = 'noopener noreferrer';
+
+                    const meta = document.createElement('span');
+                    meta.className = 'text-xs text-slate-500';
+                    meta.textContent = attachment.uploaded_at ? new Date(attachment.uploaded_at).toLocaleString() : '';
+
+                    row.appendChild(name);
+                    row.appendChild(meta);
+                    attachmentsListEl.appendChild(row);
+                });
+            };
+
+            const renderPages = () => {
+                pageListEl.innerHTML = '';
+                const pages = state.pages || [];
+                pageEmptyEl.classList.toggle('hidden', pages.length > 0);
+
+                pages.forEach((page) => {
+                    const button = document.createElement('button');
+                    button.type = 'button';
+                    button.className = `w-full px-4 py-3 text-left hover:bg-orange-50 transition ${state.selectedId === page.id ? 'bg-orange-50' : ''}`;
+                    button.dataset.pageId = page.id;
+
+                    const title = document.createElement('p');
+                    title.className = 'font-semibold text-slate-900';
+                    title.textContent = page.title || 'Untitled';
+
+                    const meta = document.createElement('p');
+                    meta.className = 'text-xs text-slate-500 mt-1';
+                    const updated = page.updated_at || page.created_at;
+                    meta.textContent = updated ? `Updated ${new Date(updated).toLocaleString()}` : 'Draft';
+
+                    button.appendChild(title);
+                    button.appendChild(meta);
+
+                    button.addEventListener('click', () => selectPage(page.id));
+                    pageListEl.appendChild(button);
+                });
+            };
+
+            const syncEditor = () => {
+                const page = state.pages.find((entry) => entry.id === state.selectedId);
+                if (!page) {
+                    editorTitleEl.textContent = 'Create a new page';
+                    submitLabelEl.textContent = 'Save Page';
+                    formEl.reset();
+                    contentInput.value = '';
+                    titleInput.value = '';
+                    attachmentsInput.value = '';
+                    renderAttachments({ attachments: [] });
+                    deleteBtn.disabled = true;
+                    return;
+                }
+
+                titleInput.value = page.title || '';
+                contentInput.value = page.content || '';
+                attachmentsInput.value = '';
+                editorTitleEl.textContent = `Editing: ${page.title || 'Untitled'}`;
+                submitLabelEl.textContent = 'Update Page';
+                deleteBtn.disabled = false;
+                renderAttachments(page);
+            };
+
+            const loadPages = async () => {
+                setStatus('Loading pages…');
+                try {
+                    const response = await fetch('/api/wikipedia/pages');
+                    if (!response.ok) {
+                        throw new Error('Failed to load pages');
+                    }
+                    const data = await response.json();
+                    state.pages = data.pages || [];
+                    renderPages();
+                    syncEditor();
+                    setStatus('');
+                } catch (error) {
+                    console.error(error);
+                    setStatus('Unable to load pages.', 'error');
+                }
+            };
+
+            const selectPage = (pageId) => {
+                state.selectedId = pageId;
+                renderPages();
+                syncEditor();
+            };
+
+            const resetEditor = () => {
+                state.selectedId = null;
+                formEl.reset();
+                contentInput.value = '';
+                titleInput.value = '';
+                attachmentsInput.value = '';
+                renderPages();
+                syncEditor();
+                setStatus('Ready for a new page.');
+            };
+
+            const savePage = async (event) => {
+                event.preventDefault();
+                const title = titleInput.value.trim();
+                const content = contentInput.value.trim();
+
+                if (!title) {
+                    setStatus('Title is required.', 'error');
+                    titleInput.focus();
+                    return;
+                }
+
+                const formData = new FormData();
+                formData.append('title', title);
+                formData.append('content', content);
+                Array.from(attachmentsInput.files || []).forEach((file) => {
+                    formData.append('attachments', file);
+                });
+
+                const isEditing = Boolean(state.selectedId);
+                const endpoint = isEditing ? `/api/wikipedia/pages/${state.selectedId}` : '/api/wikipedia/pages';
+                const method = isEditing ? 'PATCH' : 'POST';
+                setStatus(isEditing ? 'Updating page…' : 'Saving page…');
+
+                try {
+                    const response = await fetch(endpoint, { method, body: formData });
+                    if (!response.ok) {
+                        const errorBody = await response.json().catch(() => ({}));
+                        throw new Error(errorBody.message || 'Failed to save page');
+                    }
+                    const saved = await response.json();
+                    await loadPages();
+                    state.selectedId = saved.id;
+                    renderPages();
+                    syncEditor();
+                    setStatus(isEditing ? 'Page updated.' : 'Page created.', 'success');
+                } catch (error) {
+                    console.error(error);
+                    setStatus(error.message || 'Failed to save page.', 'error');
+                }
+            };
+
+            const deletePage = async () => {
+                if (!state.selectedId) return;
+                if (!confirm('Delete this page and its attachments?')) return;
+
+                setStatus('Deleting page…');
+                try {
+                    const response = await fetch(`/api/wikipedia/pages/${state.selectedId}`, { method: 'DELETE' });
+                    if (!response.ok) {
+                        const errorBody = await response.json().catch(() => ({}));
+                        throw new Error(errorBody.message || 'Failed to delete page');
+                    }
+                    state.selectedId = null;
+                    await loadPages();
+                    renderPages();
+                    syncEditor();
+                    setStatus('Page deleted.', 'success');
+                } catch (error) {
+                    console.error(error);
+                    setStatus(error.message || 'Failed to delete page.', 'error');
+                }
+            };
+
+            formEl.addEventListener('submit', savePage);
+            newPageBtn.addEventListener('click', resetEditor);
+            resetBtn.addEventListener('click', resetEditor);
+            deleteBtn.addEventListener('click', deletePage);
+
+            loadPages();
+        })();
+    </script>
+</body>
+</html>
