@@ -30,15 +30,8 @@
                 </div>
             </div>
             <div class="overflow-x-auto">
-                <table class="w-full text-left">
-                    <thead class="bg-slate-50 border-b border-slate-200 text-xs uppercase tracking-wide text-slate-500">
-                        <tr>
-                            <th class="px-5 py-3 font-semibold">Title</th>
-                            <th class="px-5 py-3 font-semibold">Summary</th>
-                            <th class="px-5 py-3 font-semibold whitespace-nowrap">Updated</th>
-                            <th class="px-5 py-3 font-semibold whitespace-nowrap">Attachments</th>
-                        </tr>
-                    </thead>
+                <table class="w-full text-left" id="wiki-table">
+                    <thead id="wiki-table-header" class="bg-slate-50 border-b border-slate-200 text-xs uppercase tracking-wide text-slate-500"></thead>
                     <tbody id="wiki-page-list" class="divide-y divide-slate-100" role="list"></tbody>
                 </table>
             </div>
@@ -55,9 +48,57 @@
             const pageEmptyEl = document.getElementById('wiki-page-empty');
             const pageCountEl = document.getElementById('wiki-page-count');
             const searchInput = document.getElementById('wiki-search');
+            const tableHeaderEl = document.getElementById('wiki-table-header');
+
+            const contextMenu = document.createElement('div');
+            contextMenu.className = 'hidden fixed z-30 w-64 rounded-lg border border-slate-200 bg-white shadow-xl shadow-slate-200/60';
+            contextMenu.innerHTML = `
+                <div class="px-4 py-3 border-b border-slate-200">
+                    <p class="text-sm font-semibold text-slate-900">Choose columns</p>
+                    <p class="text-xs text-slate-500">Long press or right click header to reorder or hide fields.</p>
+                </div>
+                <div id="wiki-column-options" class="max-h-64 overflow-y-auto py-2"></div>
+            `;
+            document.body.appendChild(contextMenu);
 
             const state = {
                 pages: [],
+                columns: [
+                    {
+                        key: 'title',
+                        label: 'Title',
+                        visible: true,
+                        className: 'px-5 py-3 align-top text-sm font-semibold text-slate-900 relative',
+                        render: (page) => page.title || 'Untitled',
+                    },
+                    {
+                        key: 'summary',
+                        label: 'Summary',
+                        visible: true,
+                        className: 'px-5 py-3 align-top text-sm text-slate-700 relative',
+                        render: (page, helpers) => helpers.snippet(page.content || ''),
+                    },
+                    {
+                        key: 'updated',
+                        label: 'Updated',
+                        visible: true,
+                        className: 'px-5 py-3 align-top text-sm text-slate-600 whitespace-nowrap relative',
+                        render: (page) => {
+                            const updated = page.updated_at || page.created_at;
+                            return updated ? new Date(updated).toLocaleString() : 'Draft';
+                        },
+                    },
+                    {
+                        key: 'attachments',
+                        label: 'Attachments',
+                        visible: true,
+                        className: 'px-5 py-3 align-top text-sm text-slate-600 whitespace-nowrap relative',
+                        render: (page) => {
+                            const attachmentCount = Array.isArray(page.attachments) ? page.attachments.length : 0;
+                            return `${attachmentCount} file${attachmentCount === 1 ? '' : 's'}`;
+                        },
+                    },
+                ],
             };
 
             const escapeHtml = (value = '') => value
@@ -66,6 +107,18 @@
                 .replace(/>/g, '&gt;')
                 .replace(/"/g, '&quot;')
                 .replace(/'/g, '&#039;');
+
+            const renderTableHeader = () => {
+                tableHeaderEl.innerHTML = '';
+                const row = document.createElement('tr');
+                state.columns.filter((col) => col.visible).forEach((col) => {
+                    const th = document.createElement('th');
+                    th.className = 'px-5 py-3 font-semibold select-none';
+                    th.textContent = col.label;
+                    row.appendChild(th);
+                });
+                tableHeaderEl.appendChild(row);
+            };
 
             const renderPages = () => {
                 pageListEl.innerHTML = '';
@@ -92,40 +145,22 @@
 
                 filtered.forEach((page) => {
                     const row = document.createElement('tr');
-                    row.className = 'hover:bg-slate-50';
+                    row.className = 'hover:bg-slate-50 relative';
 
                     const goToPage = document.createElement('a');
                     goToPage.href = `/wikipedia/${page.id}`;
                     goToPage.className = 'absolute inset-0';
                     goToPage.setAttribute('aria-label', `Open ${page.title || 'Untitled'}`);
 
-                    const titleCell = document.createElement('td');
-                    titleCell.className = 'px-5 py-3 align-top text-sm font-semibold text-slate-900 relative';
-                    titleCell.textContent = page.title || 'Untitled';
-                    titleCell.appendChild(goToPage.cloneNode());
+                    state.columns.filter((col) => col.visible).forEach((col) => {
+                        const td = document.createElement('td');
+                        td.className = col.className;
+                        const value = col.render(page, { snippet });
+                        td.textContent = value;
+                        td.appendChild(goToPage.cloneNode());
+                        row.appendChild(td);
+                    });
 
-                    const summaryCell = document.createElement('td');
-                    summaryCell.className = 'px-5 py-3 align-top text-sm text-slate-700 relative';
-                    summaryCell.textContent = snippet(page.content || '');
-                    summaryCell.appendChild(goToPage.cloneNode());
-
-                    const updatedCell = document.createElement('td');
-                    updatedCell.className = 'px-5 py-3 align-top text-sm text-slate-600 whitespace-nowrap relative';
-                    const updated = page.updated_at || page.created_at;
-                    updatedCell.textContent = updated ? new Date(updated).toLocaleString() : 'Draft';
-                    updatedCell.appendChild(goToPage.cloneNode());
-
-                    const attachmentsCell = document.createElement('td');
-                    attachmentsCell.className = 'px-5 py-3 align-top text-sm text-slate-600 whitespace-nowrap relative';
-                    const attachmentCount = Array.isArray(page.attachments) ? page.attachments.length : 0;
-                    attachmentsCell.textContent = `${attachmentCount} file${attachmentCount === 1 ? '' : 's'}`;
-                    attachmentsCell.appendChild(goToPage.cloneNode());
-
-                    row.appendChild(titleCell);
-                    row.appendChild(summaryCell);
-                    row.appendChild(updatedCell);
-                    row.appendChild(attachmentsCell);
-                    row.classList.add('relative');
                     pageListEl.appendChild(row);
                 });
             };
@@ -138,6 +173,7 @@
                     }
                     const data = await response.json();
                     state.pages = data.pages || [];
+                    renderTableHeader();
                     renderPages();
                 } catch (error) {
                     console.error(error);
@@ -146,7 +182,117 @@
                 }
             };
 
+            const closeMenu = () => {
+                contextMenu.classList.add('hidden');
+            };
+
+            const buildMenu = () => {
+                const container = document.getElementById('wiki-column-options');
+                container.innerHTML = '';
+                state.columns.forEach((col, index) => {
+                    const row = document.createElement('div');
+                    row.className = 'flex items-center justify-between gap-3 px-4 py-2 hover:bg-slate-50';
+
+                    const left = document.createElement('label');
+                    left.className = 'flex items-center gap-2 text-sm text-slate-800 cursor-pointer select-none';
+                    const checkbox = document.createElement('input');
+                    checkbox.type = 'checkbox';
+                    checkbox.checked = col.visible;
+                    checkbox.className = 'h-4 w-4 text-orange-500 rounded border-slate-300 focus:ring-orange-400';
+                    checkbox.addEventListener('change', () => {
+                        col.visible = checkbox.checked;
+                        renderTableHeader();
+                        renderPages();
+                    });
+                    const span = document.createElement('span');
+                    span.textContent = col.label;
+                    left.appendChild(checkbox);
+                    left.appendChild(span);
+
+                    const controls = document.createElement('div');
+                    controls.className = 'flex items-center gap-1';
+                    const up = document.createElement('button');
+                    up.type = 'button';
+                    up.className = 'p-1 rounded hover:bg-slate-200 text-slate-600';
+                    up.textContent = '↑';
+                    up.disabled = index === 0;
+                    up.addEventListener('click', () => {
+                        if (index === 0) return;
+                        const [removed] = state.columns.splice(index, 1);
+                        state.columns.splice(index - 1, 0, removed);
+                        buildMenu();
+                        renderTableHeader();
+                        renderPages();
+                    });
+
+                    const down = document.createElement('button');
+                    down.type = 'button';
+                    down.className = 'p-1 rounded hover:bg-slate-200 text-slate-600';
+                    down.textContent = '↓';
+                    down.disabled = index === state.columns.length - 1;
+                    down.addEventListener('click', () => {
+                        if (index === state.columns.length - 1) return;
+                        const [removed] = state.columns.splice(index, 1);
+                        state.columns.splice(index + 1, 0, removed);
+                        buildMenu();
+                        renderTableHeader();
+                        renderPages();
+                    });
+
+                    controls.appendChild(up);
+                    controls.appendChild(down);
+                    row.appendChild(left);
+                    row.appendChild(controls);
+                    container.appendChild(row);
+                });
+            };
+
+            const openMenuAt = (x, y) => {
+                buildMenu();
+                contextMenu.style.left = `${x}px`;
+                contextMenu.style.top = `${y}px`;
+                contextMenu.classList.remove('hidden');
+            };
+
+            let touchTimer = null;
+            const longPressDelay = 500;
+
+            tableHeaderEl.addEventListener('contextmenu', (event) => {
+                event.preventDefault();
+                openMenuAt(event.clientX, event.clientY);
+            });
+
+            tableHeaderEl.addEventListener('touchstart', (event) => {
+                const touch = event.touches[0];
+                if (!touch) return;
+                touchTimer = setTimeout(() => {
+                    openMenuAt(touch.clientX, touch.clientY);
+                }, longPressDelay);
+            });
+
+            ['touchend', 'touchmove', 'touchcancel'].forEach((type) => {
+                tableHeaderEl.addEventListener(type, () => {
+                    if (touchTimer) {
+                        clearTimeout(touchTimer);
+                        touchTimer = null;
+                    }
+                });
+            });
+
+            document.addEventListener('click', (event) => {
+                if (!contextMenu.contains(event.target)) {
+                    closeMenu();
+                }
+            });
+
+            document.addEventListener('keydown', (event) => {
+                if (event.key === 'Escape') {
+                    closeMenu();
+                }
+            });
+
             searchInput.addEventListener('input', renderPages);
+            renderTableHeader();
             loadPages();
         })();
     </script>
