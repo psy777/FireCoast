@@ -11,17 +11,17 @@
 <body class="bg-slate-50 text-slate-900 min-h-screen">
     {% include 'partials/navbar.html' %}
 
-    <main class="w-full px-3 sm:px-6 lg:px-10 py-6 sm:py-8 space-y-5">
+    <main class="max-w-6xl mx-auto px-3 sm:px-6 lg:px-8 py-6 sm:py-8 space-y-5">
         <section class="bg-white border border-slate-200 shadow-sm rounded-md">
             <div class="px-5 py-5 space-y-4">
-                <div class="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+                <div class="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
                     <div class="space-y-1">
-                        <p class="text-xs font-semibold uppercase tracking-wide text-orange-500">Knowledge Base</p>
-                        <h1 class="text-3xl sm:text-4xl font-semibold text-slate-900 leading-tight">FireCoast Reference</h1>
-                        <p class="text-sm sm:text-base text-slate-600 max-w-4xl">Share procedures, playbooks, and tribal knowledge. Draft pages with wiki-style markup, preview inline media, and connect topics together.</p>
+                        <p class="text-xs font-semibold uppercase tracking-wide text-orange-500">Reference</p>
+                        <h1 class="text-3xl sm:text-4xl font-semibold text-slate-900 leading-tight">Reference Library</h1>
+                        <p class="text-sm sm:text-base text-slate-600 max-w-3xl">Capture policies, playbooks, and knowledge in one place. Search pages quickly and keep the article text in a clean, readable layout.</p>
                     </div>
-                    <div class="w-full lg:w-auto flex flex-col sm:flex-row gap-3 lg:items-center lg:justify-end">
-                        <div class="relative w-full sm:w-72 lg:w-80">
+                    <div class="w-full md:w-auto flex flex-col sm:flex-row gap-3 md:items-center md:justify-end">
+                        <div class="relative w-full sm:w-72 md:w-80">
                             <input id="wiki-search" type="search" class="w-full rounded-md border border-slate-200 bg-slate-50 focus:ring-2 focus:ring-orange-400 focus:border-orange-400 text-sm px-3 py-2 shadow-inner" placeholder="Search pages" />
                             <span class="absolute right-3 top-2.5 text-slate-400">🔍</span>
                         </div>
@@ -31,122 +31,104 @@
                         </button>
                     </div>
                 </div>
-                <div class="flex flex-wrap items-center justify-between gap-3">
-                    <div class="flex items-center gap-2 text-xs text-slate-600">
-                        <span class="inline-flex h-6 w-6 items-center justify-center rounded-full bg-orange-100 text-orange-500">★</span>
-                        <span>Fast access to every page. Index hides on mobile to keep reading comfortable.</span>
-                    </div>
-                    <button id="wiki-index-toggle" class="inline-flex items-center gap-2 rounded-md border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 shadow-sm hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-orange-400 xl:hidden">
-                        <span aria-hidden="true">☰</span>
-                        <span>Show index</span>
-                    </button>
-                </div>
             </div>
         </section>
 
-        <section class="flex flex-col xl:flex-row-reverse gap-4 lg:gap-6">
-            <aside class="xl:w-80 shrink-0 space-y-3 hidden xl:block" id="wiki-index-panel">
-                <div class="bg-white border border-slate-200 rounded-md shadow-sm xl:sticky xl:top-4">
-                    <div class="px-4 py-4 border-b border-slate-200 flex items-center justify-between">
-                        <div>
-                            <p class="text-xs uppercase tracking-wide text-slate-500">All pages</p>
-                            <h2 class="text-lg font-semibold text-slate-900">Article index</h2>
-                        </div>
-                        <span id="wiki-page-count" class="text-xs text-slate-500"></span>
+        <section class="space-y-4">
+            <div class="bg-white border border-slate-200 rounded-md shadow-sm">
+                <div class="px-5 py-4 border-b border-slate-200 flex items-center justify-between">
+                    <div>
+                        <p class="text-xs uppercase tracking-wide text-slate-500">Pages</p>
+                        <h2 class="text-lg font-semibold text-slate-900">Browse and open</h2>
                     </div>
-                    <div class="border-t border-slate-200 divide-y divide-slate-100" id="wiki-page-list" role="list"></div>
-                    <p id="wiki-page-empty" class="px-4 py-6 text-sm text-slate-500 hidden">No pages yet. Use "New page" to start documenting.</p>
+                    <span id="wiki-page-count" class="text-xs text-slate-500"></span>
                 </div>
-            </aside>
+                <div id="wiki-page-list" class="divide-y divide-slate-100" role="list"></div>
+                <p id="wiki-page-empty" class="px-5 py-5 text-sm text-slate-500 hidden">No pages yet. Use "New page" to start documenting.</p>
+            </div>
 
-            <section class="flex-1 space-y-4">
-                <article class="bg-white border border-slate-200 rounded-md shadow-sm">
-                    <div class="px-5 py-4 border-b border-slate-200 flex items-start justify-between gap-3 flex-col lg:flex-row">
-                        <div>
-                            <p id="wiki-breadcrumb" class="text-xs text-slate-500">FireCoast &gt; Reference</p>
-                            <h2 id="wiki-view-title" class="text-3xl sm:text-4xl font-serif font-semibold text-slate-900 leading-tight">Select or create a page</h2>
-                            <p id="wiki-updated" class="text-xs sm:text-sm text-slate-500 mt-2">Last edited —</p>
-                        </div>
-                        <div class="flex flex-wrap gap-2 self-start">
-                            <button id="wiki-delete" class="inline-flex items-center gap-2 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700 hover:bg-white focus:outline-none focus:ring-2 focus:ring-red-300 disabled:opacity-50 disabled:cursor-not-allowed" disabled>
-                                <span aria-hidden="true">🗑</span>
-                                <span>Delete</span>
-                            </button>
-                        </div>
+            <article id="wiki-view" class="bg-white border border-slate-200 rounded-md shadow-sm">
+                <div class="px-5 py-4 border-b border-slate-200 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                    <div>
+                        <h2 id="wiki-view-title" class="text-3xl sm:text-4xl font-serif font-semibold text-slate-900 leading-tight">Select or create a page</h2>
                     </div>
-                    <div class="px-5 py-5 space-y-6">
-                        <div id="wiki-preview-body" class="prose prose-slate max-w-none font-serif leading-relaxed text-[16px] sm:text-[17px]"></div>
-                        <div class="border border-slate-200 bg-slate-50 rounded-md p-3">
-                            <div class="flex items-center justify-between flex-wrap gap-2 mb-2">
-                                <div>
-                                    <h3 class="text-sm font-semibold text-slate-900">Attachments</h3>
-                                    <p class="text-xs text-slate-600">Inline previews for images and videos.</p>
-                                </div>
-                            </div>
-                            <div id="wiki-preview-attachments" class="grid gap-3 sm:grid-cols-2"></div>
-                        </div>
+                    <div class="flex items-center gap-3 self-start">
+                        <p id="wiki-updated" class="text-xs sm:text-sm text-slate-500">Last edited —</p>
+                        <button id="wiki-edit" class="inline-flex items-center gap-2 rounded-md border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-orange-300 disabled:opacity-50 disabled:cursor-not-allowed" disabled>
+                            <span aria-hidden="true">✏️</span>
+                            <span>Edit</span>
+                        </button>
                     </div>
-                </article>
-
-                <div class="bg-white border border-slate-200 rounded-md shadow-sm">
-                    <div class="px-5 py-4 border-b border-slate-200 flex items-center justify-between">
-                        <div>
-                            <p class="text-xs uppercase tracking-wide text-slate-500">Edit</p>
-                            <h3 class="text-lg font-semibold text-slate-900" id="wiki-editor-title">Create a new page</h3>
-                            <p class="text-sm text-slate-600">Use the editor to update the article content and upload supporting files.</p>
-                        </div>
-                    </div>
-                    <form id="wiki-form" class="p-5 space-y-4" enctype="multipart/form-data">
-                        <div class="space-y-1">
-                            <label for="wiki-title" class="block text-sm font-medium text-slate-900">Title</label>
-                            <input id="wiki-title" name="title" type="text" class="w-full rounded-md border border-slate-200 bg-white focus:border-orange-400 focus:ring-2 focus:ring-orange-400 text-sm px-3 py-2 shadow-sm" placeholder="Example: Onboarding" required>
-                        </div>
-
-                        <div class="space-y-1">
-                            <div class="flex items-center justify-between">
-                                <label for="wiki-content" class="block text-sm font-medium text-slate-900">Content</label>
-                                <p class="text-xs text-slate-500">Supports FireCoast markdown</p>
-                            </div>
-                            <div class="flex flex-wrap gap-2 rounded-md border border-slate-200 bg-slate-50 px-2 py-2 text-sm text-slate-700 shadow-sm" aria-label="Formatting toolbar">
-                                <button type="button" class="wiki-toolbar inline-flex items-center gap-1 rounded border border-transparent bg-white px-3 py-1.5 shadow-sm hover:border-orange-300 hover:text-orange-600 focus:outline-none focus:ring-2 focus:ring-orange-300" data-action="bold">Bold</button>
-                                <button type="button" class="wiki-toolbar inline-flex items-center gap-1 rounded border border-transparent bg-white px-3 py-1.5 shadow-sm hover:border-orange-300 hover:text-orange-600 focus:outline-none focus:ring-2 focus:ring-orange-300" data-action="italic">Italic</button>
-                                <button type="button" class="wiki-toolbar inline-flex items-center gap-1 rounded border border-transparent bg-white px-3 py-1.5 shadow-sm hover:border-orange-300 hover:text-orange-600 focus:outline-none focus:ring-2 focus:ring-orange-300" data-action="strikethrough">Strikethrough</button>
-                                <button type="button" class="wiki-toolbar inline-flex items-center gap-1 rounded border border-transparent bg-white px-3 py-1.5 shadow-sm hover:border-orange-300 hover:text-orange-600 focus:outline-none focus:ring-2 focus:ring-orange-300" data-action="underline">Underline</button>
-                                <button type="button" class="wiki-toolbar inline-flex items-center gap-1 rounded border border-transparent bg-white px-3 py-1.5 shadow-sm hover:border-orange-300 hover:text-orange-600 focus:outline-none focus:ring-2 focus:ring-orange-300" data-action="heading">Heading</button>
-                                <button type="button" class="wiki-toolbar inline-flex items-center gap-1 rounded border border-transparent bg-white px-3 py-1.5 shadow-sm hover:border-orange-300 hover:text-orange-600 focus:outline-none focus:ring-2 focus:ring-orange-300" data-action="list">List</button>
-                                <button type="button" class="wiki-toolbar inline-flex items-center gap-1 rounded border border-transparent bg-white px-3 py-1.5 shadow-sm hover:border-orange-300 hover:text-orange-600 focus:outline-none focus:ring-2 focus:ring-orange-300" data-action="quote">Quote</button>
-                                <button type="button" class="wiki-toolbar inline-flex items-center gap-1 rounded border border-transparent bg-white px-3 py-1.5 shadow-sm hover:border-orange-300 hover:text-orange-600 focus:outline-none focus:ring-2 focus:ring-orange-300" data-action="code">Code</button>
-                                <button type="button" class="wiki-toolbar inline-flex items-center gap-1 rounded border border-transparent bg-white px-3 py-1.5 shadow-sm hover:border-orange-300 hover:text-orange-600 focus:outline-none focus:ring-2 focus:ring-orange-300" data-action="codeblock">Code block</button>
-                                <button type="button" class="wiki-toolbar inline-flex items-center gap-1 rounded border border-transparent bg-white px-3 py-1.5 shadow-sm hover:border-orange-300 hover:text-orange-600 focus:outline-none focus:ring-2 focus:ring-orange-300" data-action="link">Link</button>
-                                <button type="button" class="wiki-toolbar inline-flex items-center gap-1 rounded border border-transparent bg-white px-3 py-1.5 shadow-sm hover:border-orange-300 hover:text-orange-600 focus:outline-none focus:ring-2 focus:ring-orange-300" data-action="image">Image</button>
-                            </div>
-                            <textarea id="wiki-content" name="content" rows="14" class="w-full rounded-md border border-slate-200 bg-white focus:border-orange-400 focus:ring-2 focus:ring-orange-400 text-sm px-3 py-3 shadow-sm font-serif" placeholder="Use FireCoast markdown: # Heading, **bold**, *italic*, `code`, [Text](url), [Alt]{Image}"></textarea>
-                        </div>
-
-                        <div class="space-y-2">
-                            <div class="flex items-center justify-between">
-                                <label for="wiki-attachments" class="block text-sm font-medium text-slate-900">Attachments</label>
-                                <span class="text-xs text-slate-500">Optional • stored inside FireCoast data</span>
-                            </div>
-                            <input id="wiki-attachments" name="attachments" type="file" multiple class="block w-full text-sm text-[#202122]" aria-describedby="wiki-attachment-help">
-                            <p id="wiki-attachment-help" class="text-xs text-slate-500">Upload supporting documents or screenshots.</p>
-                            <div id="wiki-attachment-list" class="bg-slate-50 border border-slate-200 rounded-md px-3 py-2 space-y-2" aria-live="polite"></div>
-                        </div>
-
-                        <div class="flex flex-wrap gap-3 pt-2">
-                            <button type="submit" class="inline-flex items-center gap-2 rounded-md border border-orange-500 bg-orange-500 px-4 py-2 text-sm font-semibold text-white shadow hover:bg-orange-600 focus:outline-none focus:ring-2 focus:ring-orange-400">
-                                <span aria-hidden="true">💾</span>
-                                <span id="wiki-submit-label">Save page</span>
-                            </button>
-                            <button type="button" id="wiki-reset" class="inline-flex items-center gap-2 rounded-md border border-slate-200 bg-white px-4 py-2 text-sm text-slate-900 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-orange-400">
-                                <span aria-hidden="true">↺</span>
-                                <span>Reset</span>
-                            </button>
-                            <p id="wiki-status" class="text-sm text-slate-600" role="status"></p>
-                        </div>
-                    </form>
                 </div>
-            </section>
+                <div class="px-5 py-5 space-y-6">
+                    <div id="wiki-preview-body" class="prose prose-slate max-w-none font-serif leading-relaxed text-[16px] sm:text-[17px]"></div>
+                    <div>
+                        <div class="flex items-center justify-between flex-wrap gap-2 mb-2">
+                            <h3 class="text-sm font-semibold text-slate-900">Attachments</h3>
+                        </div>
+                        <div id="wiki-preview-attachments" class="space-y-2"></div>
+                    </div>
+                </div>
+            </article>
+
+            <div id="wiki-editor" class="bg-white border border-slate-200 rounded-md shadow-sm hidden">
+                <div class="px-5 py-4 border-b border-slate-200 flex items-center justify-between">
+                    <div>
+                        <p class="text-xs uppercase tracking-wide text-slate-500">Edit</p>
+                        <h3 class="text-lg font-semibold text-slate-900" id="wiki-editor-title">Create a new page</h3>
+                        <p class="text-sm text-slate-600">Use the editor to update the article content and upload supporting files.</p>
+                    </div>
+                </div>
+                <form id="wiki-form" class="p-5 space-y-4" enctype="multipart/form-data">
+                    <div class="space-y-1">
+                        <label for="wiki-title" class="block text-sm font-medium text-slate-900">Title</label>
+                        <input id="wiki-title" name="title" type="text" class="w-full rounded-md border border-slate-200 bg-white focus:border-orange-400 focus:ring-2 focus:ring-orange-400 text-sm px-3 py-2 shadow-sm" placeholder="Example: Onboarding" required>
+                    </div>
+
+                    <div class="space-y-1">
+                        <div class="flex items-center justify-between">
+                            <label for="wiki-content" class="block text-sm font-medium text-slate-900">Content</label>
+                            <p class="text-xs text-slate-500">Supports FireCoast markdown</p>
+                        </div>
+                        <div class="flex flex-wrap gap-2 rounded-md border border-slate-200 bg-slate-50 px-2 py-2 text-sm text-slate-700 shadow-sm" aria-label="Formatting toolbar">
+                            <button type="button" class="wiki-toolbar inline-flex items-center gap-1 rounded border border-transparent bg-white px-3 py-1.5 shadow-sm hover:border-orange-300 hover:text-orange-600 focus:outline-none focus:ring-2 focus:ring-orange-300" data-action="bold">Bold</button>
+                            <button type="button" class="wiki-toolbar inline-flex items-center gap-1 rounded border border-transparent bg-white px-3 py-1.5 shadow-sm hover:border-orange-300 hover:text-orange-600 focus:outline-none focus:ring-2 focus:ring-orange-300" data-action="italic">Italic</button>
+                            <button type="button" class="wiki-toolbar inline-flex items-center gap-1 rounded border border-transparent bg-white px-3 py-1.5 shadow-sm hover:border-orange-300 hover:text-orange-600 focus:outline-none focus:ring-2 focus:ring-orange-300" data-action="strikethrough">Strikethrough</button>
+                            <button type="button" class="wiki-toolbar inline-flex items-center gap-1 rounded border border-transparent bg-white px-3 py-1.5 shadow-sm hover:border-orange-300 hover:text-orange-600 focus:outline-none focus:ring-2 focus:ring-orange-300" data-action="underline">Underline</button>
+                            <button type="button" class="wiki-toolbar inline-flex items-center gap-1 rounded border border-transparent bg-white px-3 py-1.5 shadow-sm hover:border-orange-300 hover:text-orange-600 focus:outline-none focus:ring-2 focus:ring-orange-300" data-action="heading">Heading</button>
+                            <button type="button" class="wiki-toolbar inline-flex items-center gap-1 rounded border border-transparent bg-white px-3 py-1.5 shadow-sm hover:border-orange-300 hover:text-orange-600 focus:outline-none focus:ring-2 focus:ring-orange-300" data-action="list">List</button>
+                            <button type="button" class="wiki-toolbar inline-flex items-center gap-1 rounded border border-transparent bg-white px-3 py-1.5 shadow-sm hover:border-orange-300 hover:text-orange-600 focus:outline-none focus:ring-2 focus:ring-orange-300" data-action="quote">Quote</button>
+                            <button type="button" class="wiki-toolbar inline-flex items-center gap-1 rounded border border-transparent bg-white px-3 py-1.5 shadow-sm hover:border-orange-300 hover:text-orange-600 focus:outline-none focus:ring-2 focus:ring-orange-300" data-action="code">Code</button>
+                            <button type="button" class="wiki-toolbar inline-flex items-center gap-1 rounded border border-transparent bg-white px-3 py-1.5 shadow-sm hover:border-orange-300 hover:text-orange-600 focus:outline-none focus:ring-2 focus:ring-orange-300" data-action="codeblock">Code block</button>
+                            <button type="button" class="wiki-toolbar inline-flex items-center gap-1 rounded border border-transparent bg-white px-3 py-1.5 shadow-sm hover:border-orange-300 hover:text-orange-600 focus:outline-none focus:ring-2 focus:ring-orange-300" data-action="link">Link</button>
+                            <button type="button" class="wiki-toolbar inline-flex items-center gap-1 rounded border border-transparent bg-white px-3 py-1.5 shadow-sm hover:border-orange-300 hover:text-orange-600 focus:outline-none focus:ring-2 focus:ring-orange-300" data-action="image">Image</button>
+                        </div>
+                        <textarea id="wiki-content" name="content" rows="14" class="w-full rounded-md border border-slate-200 bg-white focus:border-orange-400 focus:ring-2 focus:ring-orange-400 text-sm px-3 py-3 shadow-sm font-serif" placeholder="Use FireCoast markdown: # Heading, **bold**, *italic*, `code`, [Text](url), [Alt]{Image}"></textarea>
+                    </div>
+
+                    <div class="space-y-2">
+                        <div class="flex items-center justify-between">
+                            <label for="wiki-attachments" class="block text-sm font-medium text-slate-900">Attachments</label>
+                            <span class="text-xs text-slate-500">Optional • stored inside FireCoast data</span>
+                        </div>
+                        <input id="wiki-attachments" name="attachments" type="file" multiple class="block w-full text-sm text-[#202122]" aria-describedby="wiki-attachment-help">
+                        <p id="wiki-attachment-help" class="text-xs text-slate-500">Upload supporting documents or screenshots.</p>
+                        <div id="wiki-attachment-list" class="bg-slate-50 border border-slate-200 rounded-md px-3 py-2 space-y-2" aria-live="polite"></div>
+                    </div>
+
+                    <div class="flex flex-wrap gap-3 pt-2">
+                        <button type="submit" class="inline-flex items-center gap-2 rounded-md border border-orange-500 bg-orange-500 px-4 py-2 text-sm font-semibold text-white shadow hover:bg-orange-600 focus:outline-none focus:ring-2 focus:ring-orange-400">
+                            <span aria-hidden="true">💾</span>
+                            <span id="wiki-submit-label">Save page</span>
+                        </button>
+                        <button type="button" id="wiki-reset" class="inline-flex items-center gap-2 rounded-md border border-slate-200 bg-white px-4 py-2 text-sm text-slate-900 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-orange-400">
+                            <span aria-hidden="true">↺</span>
+                            <span>Reset</span>
+                        </button>
+                        <p id="wiki-status" class="text-sm text-slate-600" role="status"></p>
+                    </div>
+                </form>
+            </div>
         </section>
     </main>
 
@@ -165,55 +147,21 @@
             const formEl = document.getElementById('wiki-form');
             const newPageBtn = document.getElementById('wiki-new-page');
             const resetBtn = document.getElementById('wiki-reset');
-            const deleteBtn = document.getElementById('wiki-delete');
+            const editBtn = document.getElementById('wiki-edit');
             const editorTitleEl = document.getElementById('wiki-editor-title');
             const submitLabelEl = document.getElementById('wiki-submit-label');
             const previewTitleEl = document.getElementById('wiki-view-title');
             const previewUpdatedEl = document.getElementById('wiki-updated');
             const previewBodyEl = document.getElementById('wiki-preview-body');
             const previewAttachmentsEl = document.getElementById('wiki-preview-attachments');
-            const indexPanelEl = document.getElementById('wiki-index-panel');
-            const indexToggleBtn = document.getElementById('wiki-index-toggle');
+            const viewSection = document.getElementById('wiki-view');
+            const editorSection = document.getElementById('wiki-editor');
 
             const state = {
                 pages: [],
                 selectedId: null,
+                editing: false,
             };
-
-            const setIndexVisibility = (isOpen) => {
-                if (!indexPanelEl) return;
-                const labelEl = indexToggleBtn ? indexToggleBtn.querySelector('span:last-child') : null;
-                if (isOpen) {
-                    indexPanelEl.classList.remove('hidden');
-                    indexPanelEl.classList.add('block');
-                    if (indexToggleBtn) {
-                        indexToggleBtn.setAttribute('aria-pressed', 'true');
-                        if (labelEl) labelEl.textContent = 'Hide index';
-                    }
-                } else {
-                    indexPanelEl.classList.add('hidden');
-                    indexPanelEl.classList.remove('block');
-                    if (indexToggleBtn) {
-                        indexToggleBtn.setAttribute('aria-pressed', 'false');
-                        if (labelEl) labelEl.textContent = 'Show index';
-                    }
-                }
-            };
-
-            const syncIndexToViewport = () => {
-                const shouldShow = window.matchMedia('(min-width: 1280px)').matches;
-                setIndexVisibility(shouldShow);
-            };
-
-            if (indexToggleBtn) {
-                indexToggleBtn.addEventListener('click', () => {
-                    const isOpen = indexPanelEl && !indexPanelEl.classList.contains('hidden');
-                    setIndexVisibility(!isOpen);
-                });
-            }
-
-            window.addEventListener('resize', syncIndexToViewport);
-            syncIndexToViewport();
 
             const escapeHtml = (value = '') => value
                 .replace(/&/g, '&amp;')
@@ -223,7 +171,6 @@
                 .replace(/'/g, '&#039;');
 
             const isImage = (name = '') => /\.(png|jpe?g|gif|webp|svg)$/i.test(name);
-            const isVideo = (name = '') => /\.(mp4|webm|ogg)$/i.test(name);
 
             const makeInlineFormatter = (attachments = []) => {
                 const lookup = {};
@@ -237,7 +184,7 @@
                     const attachment = lookup[key];
                     if (attachment && isImage(attachment.name || attachment.path)) {
                         const caption = escapeHtml(alt || attachment.name || 'Image');
-                        return `<figure class="my-4 space-y-2"><img src="/data/${attachment.path}" alt="${caption}" class="w-full max-h-96 object-contain rounded border border-slate-200 bg-slate-50" loading="lazy" /><figcaption class="text-xs text-slate-500">${caption}</figcaption></figure>`;
+                        return `<figure class="my-4 space-y-2"><img src="/data/${attachment.path}" alt="${caption}" class="w-full max-h-96 object-contain rounded-md shadow-sm" loading="lazy" /><figcaption class="text-xs text-slate-500">${caption}</figcaption></figure>`;
                     }
                     return `<span class="text-xs text-slate-500 italic">[missing image: ${escapeHtml(token)}]</span>`;
                 };
@@ -354,10 +301,6 @@
                         return;
                     }
 
-                    if (list) {
-                        flushList();
-                    }
-
                     paragraph.push(trimmed);
                 });
 
@@ -366,7 +309,7 @@
                 flushCode();
 
                 if (!html.length) {
-                    return '<p class="text-sm text-slate-500">This article is empty. Use the editor below to add content.</p>';
+                    return '<p class="text-sm text-slate-500">This article is empty. Use the editor to add content.</p>';
                 }
 
                 return html.join('\n');
@@ -379,8 +322,19 @@
                 statusEl.classList.add(toneClass);
             };
 
+            const setEditing = (editing) => {
+                state.editing = editing;
+                if (editing) {
+                    viewSection.classList.add('hidden');
+                    editorSection.classList.remove('hidden');
+                } else {
+                    editorSection.classList.add('hidden');
+                    viewSection.classList.remove('hidden');
+                }
+            };
+
             const renderAttachmentGroup = (container, page, options = {}) => {
-                const { emptyText = 'No attachments yet.', mode = 'list' } = options;
+                const { emptyText = 'No attachments yet.' } = options;
                 container.innerHTML = '';
                 const attachments = (page && Array.isArray(page.attachments)) ? page.attachments : [];
                 if (!attachments.length) {
@@ -391,57 +345,6 @@
                     return;
                 }
                 attachments.forEach((attachment) => {
-                    if (mode === 'preview') {
-                        const wrapper = document.createElement('div');
-                        wrapper.className = 'border border-slate-200 bg-white rounded-md overflow-hidden shadow-sm';
-
-                        if (isImage(attachment.name || attachment.path)) {
-                            const figure = document.createElement('figure');
-                            figure.className = 'space-y-2';
-                            const img = document.createElement('img');
-                            img.src = `/data/${attachment.path}`;
-                            img.alt = attachment.name || 'Attachment image';
-                            img.className = 'w-full max-h-80 object-contain bg-slate-50';
-                            img.loading = 'lazy';
-                            const figcaption = document.createElement('figcaption');
-                            figcaption.className = 'px-3 pb-3 text-xs text-slate-600 flex items-center justify-between gap-2';
-                            figcaption.innerHTML = `<span class="font-medium text-slate-900 break-all">${escapeHtml(attachment.name || 'Image')}</span><span>${attachment.uploaded_at ? new Date(attachment.uploaded_at).toLocaleString() : ''}</span>`;
-                            figure.appendChild(img);
-                            figure.appendChild(figcaption);
-                            wrapper.appendChild(figure);
-                        } else if (isVideo(attachment.name || attachment.path)) {
-                            const video = document.createElement('video');
-                            video.className = 'w-full bg-black';
-                            video.controls = true;
-                            const source = document.createElement('source');
-                            source.src = `/data/${attachment.path}`;
-                            video.appendChild(source);
-                            const meta = document.createElement('div');
-                            meta.className = 'px-3 py-2 text-xs text-slate-600 flex items-center justify-between gap-2';
-                            meta.innerHTML = `<span class="font-medium text-slate-900 break-all">${escapeHtml(attachment.name || 'Video')}</span><span>${attachment.uploaded_at ? new Date(attachment.uploaded_at).toLocaleString() : ''}</span>`;
-                            wrapper.appendChild(video);
-                            wrapper.appendChild(meta);
-                        } else {
-                            const row = document.createElement('div');
-                            row.className = 'px-3 py-3 flex flex-col gap-2';
-                            const name = document.createElement('a');
-                            name.href = `/data/${attachment.path}`;
-                            name.textContent = attachment.name || 'Attachment';
-                            name.className = 'text-orange-600 hover:underline font-semibold break-all';
-                            name.target = '_blank';
-                            name.rel = 'noopener noreferrer';
-                            const meta = document.createElement('span');
-                            meta.className = 'text-xs text-slate-600';
-                            meta.textContent = attachment.uploaded_at ? new Date(attachment.uploaded_at).toLocaleString() : '';
-                            row.appendChild(name);
-                            row.appendChild(meta);
-                            wrapper.appendChild(row);
-                        }
-
-                        container.appendChild(wrapper);
-                        return;
-                    }
-
                     const row = document.createElement('div');
                     row.className = 'flex items-center justify-between gap-3 text-sm bg-white border border-slate-200 rounded-md px-3 py-2';
 
@@ -477,7 +380,7 @@
                 filtered.forEach((page) => {
                     const button = document.createElement('button');
                     button.type = 'button';
-                    button.className = `w-full text-left px-4 py-3 hover:bg-orange-50 transition border-l-4 ${state.selectedId === page.id ? 'bg-orange-50 border-orange-400' : 'border-transparent'}`;
+                    button.className = `w-full text-left px-5 py-3 hover:bg-orange-50 transition ${state.selectedId === page.id ? 'bg-orange-50' : ''}`;
                     button.dataset.pageId = page.id;
 
                     const title = document.createElement('p');
@@ -502,9 +405,9 @@
                 if (!page) {
                     previewTitleEl.textContent = 'Select or create a page';
                     previewUpdatedEl.textContent = 'Last edited —';
-                    previewBodyEl.innerHTML = '<p class="text-sm text-slate-500">Choose a page from the index or create a new one to view content.</p>';
-                    renderAttachmentGroup(previewAttachmentsEl, null, { mode: 'preview' });
-                    deleteBtn.disabled = true;
+                    previewBodyEl.innerHTML = '<p class="text-sm text-slate-500">Choose a page from the list or create a new one to view content.</p>';
+                    renderAttachmentGroup(previewAttachmentsEl, null, { emptyText: 'No attachments uploaded.' });
+                    editBtn.disabled = true;
                     return;
                 }
 
@@ -512,9 +415,9 @@
                 const updated = page.updated_at || page.created_at;
                 previewUpdatedEl.textContent = updated ? `Last edited ${new Date(updated).toLocaleString()}` : 'Draft';
                 previewBodyEl.innerHTML = wikiFormat(page.content || '', page.attachments || []);
-                renderAttachmentGroup(previewAttachmentsEl, page, { mode: 'preview', emptyText: 'No attachments uploaded.' });
+                renderAttachmentGroup(previewAttachmentsEl, page, { emptyText: 'No attachments uploaded.' });
                 bindWikiLinks();
-                deleteBtn.disabled = false;
+                editBtn.disabled = false;
             };
 
             const syncEditor = () => {
@@ -526,8 +429,7 @@
                     contentInput.value = '';
                     titleInput.value = '';
                     attachmentsInput.value = '';
-                    renderAttachmentGroup(attachmentsListEl, null, { mode: 'list' });
-                    deleteBtn.disabled = true;
+                    renderAttachmentGroup(attachmentsListEl, null, { emptyText: 'No attachments yet.' });
                     renderPreview();
                     return;
                 }
@@ -537,8 +439,7 @@
                 attachmentsInput.value = '';
                 editorTitleEl.textContent = `Editing: ${page.title || 'Untitled'}`;
                 submitLabelEl.textContent = 'Update page';
-                deleteBtn.disabled = false;
-                renderAttachmentGroup(attachmentsListEl, page, { mode: 'list' });
+                renderAttachmentGroup(attachmentsListEl, page, { emptyText: 'No attachments yet.' });
                 renderPreview();
             };
 
@@ -562,6 +463,7 @@
 
             const selectPage = (pageId) => {
                 state.selectedId = pageId;
+                setEditing(false);
                 renderPages();
                 syncEditor();
             };
@@ -574,6 +476,7 @@
                 attachmentsInput.value = '';
                 renderPages();
                 syncEditor();
+                setEditing(true);
                 setStatus('Ready for a new page.');
             };
 
@@ -598,10 +501,10 @@
                         insertMarkup('*', '*', 'emphasis');
                         break;
                     case 'strikethrough':
-                        insertMarkup('~~', '~~', 'crossed text');
+                        insertMarkup('~~', '~~', 'strikethrough');
                         break;
                     case 'underline':
-                        insertMarkup('__', '__', 'underlined');
+                        insertMarkup('__', '__', 'underline');
                         break;
                     case 'code':
                         insertMarkup('`', '`', 'code');
@@ -643,6 +546,7 @@
                         } else {
                             titleInput.value = link.textContent || '';
                             titleInput.focus();
+                            setEditing(true);
                             setStatus('No page found. Start drafting it below.', 'neutral');
                         }
                     });
@@ -667,10 +571,10 @@
                     formData.append('attachments', file);
                 });
 
-                const isEditing = Boolean(state.selectedId);
-                const endpoint = isEditing ? `/api/wikipedia/pages/${state.selectedId}` : '/api/wikipedia/pages';
-                const method = isEditing ? 'PATCH' : 'POST';
-                setStatus(isEditing ? 'Updating page…' : 'Saving page…');
+                const isEditingExisting = Boolean(state.selectedId);
+                const endpoint = isEditingExisting ? `/api/wikipedia/pages/${state.selectedId}` : '/api/wikipedia/pages';
+                const method = isEditingExisting ? 'PATCH' : 'POST';
+                setStatus(isEditingExisting ? 'Updating page…' : 'Saving page…');
 
                 try {
                     const response = await fetch(endpoint, { method, body: formData });
@@ -683,39 +587,24 @@
                     state.selectedId = saved.id;
                     renderPages();
                     syncEditor();
-                    setStatus(isEditing ? 'Page updated.' : 'Page created.', 'success');
+                    setEditing(false);
+                    setStatus(isEditingExisting ? 'Page updated.' : 'Page created.', 'success');
                 } catch (error) {
                     console.error(error);
                     setStatus(error.message || 'Failed to save page.', 'error');
                 }
             };
 
-            const deletePage = async () => {
-                if (!state.selectedId) return;
-                if (!confirm('Delete this page and its attachments?')) return;
-
-                setStatus('Deleting page…');
-                try {
-                    const response = await fetch(`/api/wikipedia/pages/${state.selectedId}`, { method: 'DELETE' });
-                    if (!response.ok) {
-                        const errorBody = await response.json().catch(() => ({}));
-                        throw new Error(errorBody.message || 'Failed to delete page');
-                    }
-                    state.selectedId = null;
-                    await loadPages();
-                    renderPages();
-                    syncEditor();
-                    setStatus('Page deleted.', 'success');
-                } catch (error) {
-                    console.error(error);
-                    setStatus(error.message || 'Failed to delete page.', 'error');
-                }
-            };
-
             formEl.addEventListener('submit', savePage);
-            newPageBtn.addEventListener('click', resetEditor);
+            newPageBtn.addEventListener('click', () => {
+                resetEditor();
+            });
             resetBtn.addEventListener('click', resetEditor);
-            deleteBtn.addEventListener('click', deletePage);
+            editBtn.addEventListener('click', () => {
+                if (!state.selectedId) return;
+                setEditing(true);
+                syncEditor();
+            });
             searchInput.addEventListener('input', renderPages);
             document.querySelectorAll('.wiki-toolbar').forEach((button) => {
                 button.addEventListener('click', () => handleToolbarClick(button.dataset.action));
