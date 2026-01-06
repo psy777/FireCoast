@@ -727,7 +727,7 @@ NAV_SHORTCUT_CATALOG = [
     (
         'wikipedia',
         {
-            'label': 'Wikipedia',
+            'label': 'Reference',
             'href': '/wikipedia',
         },
     ),
