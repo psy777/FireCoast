@@ -1644,6 +1644,90 @@ const Dashboard = ({ orders, navigateTo, viewOrder, allContacts, allSelectableIt
     const [dateKeyword, setDateKeyword] = useState('');
     const [isSearching, setIsSearching] = useState(false);
     const [searchError, setSearchError] = useState(null);
+    const longPressTimeout = 500;
+    const columnStorageKey = 'ordersColumnPrefs';
+    const [columns, setColumns] = useState(() => ([
+        {
+            key: 'order',
+            label: 'Order',
+            visible: true,
+            className: 'px-4 py-3 align-top',
+            render: (order) => {
+                const orderTitle = (order.title || '').trim();
+                const displayIdValue = typeof order.display_id === 'string' ? order.display_id : '';
+                const trimmedDisplayId = displayIdValue.trim();
+                const hasDisplayId = Boolean(trimmedDisplayId);
+                const primaryLabel = orderTitle || 'Untitled Order';
+                const shortId = order.id ? (order.id.length > 12 ? `${order.id.slice(0, 8)}…` : order.id) : '';
+                const secondaryTags = [];
+                if (hasDisplayId) {
+                    secondaryTags.push(`Ref: ${trimmedDisplayId}`);
+                }
+                if (order.id && (!hasDisplayId || trimmedDisplayId !== order.id)) {
+                    secondaryTags.push(`ID: ${shortId}`);
+                }
+                const idLabel = secondaryTags.join(' • ');
+                return (
+                    <div className="flex flex-col">
+                        <span className="font-medium text-slate-800">{primaryLabel}</span>
+                        {idLabel && <span className="text-xs text-slate-500" title={order.id}>{idLabel}</span>}
+                    </div>
+                );
+            },
+        },
+        {
+            key: 'customer',
+            label: 'Customer',
+            visible: true,
+            className: 'px-4 py-3',
+            render: (order) => getContactDisplayName(order.primaryContact || order.contactInfo),
+        },
+        {
+            key: 'date',
+            label: 'Date',
+            visible: true,
+            className: 'px-4 py-3 whitespace-nowrap',
+            render: (order) => formatInTimeZone(order.date, defaultTimeZone, { year: 'numeric', month: 'long', day: 'numeric' }),
+        },
+        {
+            key: 'total',
+            label: 'Total',
+            visible: true,
+            className: 'px-4 py-3 whitespace-nowrap',
+            render: (order) => `$${parseFloat(order.total || 0).toFixed(2)}`,
+        },
+        {
+            key: 'status',
+            label: 'Status',
+            visible: true,
+            className: 'px-4 py-3',
+            render: (order) => (order.status === 'Shipped'
+                ? <ShippedStatusBadge statusText={order.status} />
+                : (
+                    <span className={`px-2 py-1 text-xs font-semibold rounded-full ${
+                        order.status === 'Paid' ? 'bg-green-100 text-green-800'
+                        : order.status === 'Sent' ? 'bg-blue-100 text-blue-800'
+                        : 'bg-slate-100 text-slate-800'
+                    }`}>
+                        {order.status}
+                    </span>
+                )),
+        },
+        {
+            key: 'actions',
+            label: 'Actions',
+            visible: true,
+            className: 'px-4 py-3 text-center',
+            render: (order) => (
+                <div className="flex items-center justify-center space-x-2">
+                    <button onClick={() => generateInvoicePdf(order, allSelectableItems, 'preview', branding)} className="p-1 text-slate-500 hover:text-orange-600"><PdfIcon /></button>
+                    <button onClick={() => setOrderForEmailModal(order)} className="p-1 text-slate-500 hover:text-orange-600"><EmailIcon /></button>
+                </div>
+            ),
+        },
+    ]));
+    const [columnMenu, setColumnMenu] = useState({ open: false, x: 0, y: 0 });
+    const touchTimerRef = useRef(null);
 
     useEffect(() => {
         return () => {
@@ -1652,6 +1736,93 @@ const Dashboard = ({ orders, navigateTo, viewOrder, allContacts, allSelectableIt
             }
         };
     }, []);
+
+    useEffect(() => {
+        try {
+            const saved = localStorage.getItem(columnStorageKey);
+            if (!saved) return;
+            const parsed = JSON.parse(saved);
+            if (!Array.isArray(parsed)) return;
+
+            setColumns((prev) => {
+                const defaultMap = new Map(prev.map((col) => [col.key, col]));
+                const ordered = [];
+                parsed.forEach(({ key, visible }) => {
+                    if (!defaultMap.has(key)) return;
+                    const base = defaultMap.get(key);
+                    ordered.push({ ...base, visible: visible !== undefined ? !!visible : base.visible });
+                    defaultMap.delete(key);
+                });
+                return [...ordered, ...defaultMap.values()];
+            });
+        } catch (error) {
+            console.warn('Unable to read order column preferences', error);
+        }
+    }, []);
+
+    useEffect(() => {
+        try {
+            const payload = columns.map(({ key, visible }) => ({ key, visible: !!visible }));
+            localStorage.setItem(columnStorageKey, JSON.stringify(payload));
+        } catch (error) {
+            console.warn('Unable to store order column preferences', error);
+        }
+    }, [columns]);
+
+    useEffect(() => {
+        if (!columnMenu.open) return undefined;
+
+        const handleOutside = (event) => {
+            if (!event.target.closest('#orders-column-menu')) {
+                setColumnMenu((prev) => ({ ...prev, open: false }));
+            }
+        };
+
+        const handleEscape = (event) => {
+            if (event.key === 'Escape') {
+                setColumnMenu((prev) => ({ ...prev, open: false }));
+            }
+        };
+
+        document.addEventListener('mousedown', handleOutside);
+        document.addEventListener('touchstart', handleOutside);
+        document.addEventListener('keydown', handleEscape);
+
+        return () => {
+            document.removeEventListener('mousedown', handleOutside);
+            document.removeEventListener('touchstart', handleOutside);
+            document.removeEventListener('keydown', handleEscape);
+        };
+    }, [columnMenu.open]);
+
+    const openColumnMenu = (x, y) => {
+        setColumnMenu({ open: true, x, y });
+    };
+
+    const handleHeaderContextMenu = (event) => {
+        event.preventDefault();
+        openColumnMenu(event.clientX, event.clientY);
+    };
+
+    const clearLongPress = () => {
+        if (touchTimerRef.current) {
+            clearTimeout(touchTimerRef.current);
+            touchTimerRef.current = null;
+        }
+    };
+
+    const handleHeaderTouchStart = (event) => {
+        const touch = event.touches[0];
+        if (!touch) return;
+        clearLongPress();
+        touchTimerRef.current = setTimeout(() => {
+            openColumnMenu(touch.clientX, touch.clientY);
+        }, longPressTimeout);
+    };
+
+    const handleHeaderTouchEnd = () => clearLongPress();
+    const handleHeaderTouchMove = () => clearLongPress();
+    const handleHeaderTouchCancel = () => clearLongPress();
 
     const handleDateSelect = (date) => {
         const dateString = date.toISOString().split('T')[0];
@@ -1797,7 +1968,7 @@ const Dashboard = ({ orders, navigateTo, viewOrder, allContacts, allSelectableIt
     }, [orders]);
 
     // This function now expects amountInDollars
-    const formatCurrency = (amountInDollars) => { 
+    const formatCurrency = (amountInDollars) => {
         // Ensure amountInDollars is a number, default to 0 if not
         const numericAmount = typeof amountInDollars === 'number' ? amountInDollars : parseFloat(amountInDollars) || 0;
         return numericAmount.toLocaleString('en-US', {
@@ -1808,6 +1979,8 @@ const Dashboard = ({ orders, navigateTo, viewOrder, allContacts, allSelectableIt
         });
     };
 
+    const visibleColumns = columns.filter((col) => col.visible);
+
     return (
         <React.Fragment>
             {showCalendar && (
@@ -1816,6 +1989,71 @@ const Dashboard = ({ orders, navigateTo, viewOrder, allContacts, allSelectableIt
                     position={calendarPosition}
                     onClose={() => { setShowCalendar(false); setDateKeyword(''); }}
                 />
+            )}
+            {columnMenu.open && (
+                <div
+                    id="orders-column-menu"
+                    className="fixed z-30 w-64 rounded-lg border border-slate-200 bg-white shadow-xl shadow-slate-200/60"
+                    style={{ left: columnMenu.x, top: columnMenu.y }}
+                >
+                    <div className="px-4 py-3 border-b border-slate-200">
+                        <p className="text-sm font-semibold text-slate-900">Choose columns</p>
+                        <p className="text-xs text-slate-500">Long press or right click the header to hide or reorder fields.</p>
+                    </div>
+                    <div className="max-h-64 overflow-y-auto py-2">
+                        {columns.map((col, index) => (
+                            <div key={col.key} className="flex items-center justify-between gap-3 px-4 py-2 hover:bg-slate-50">
+                                <label className="flex items-center gap-2 text-sm text-slate-800 cursor-pointer select-none">
+                                    <input
+                                        type="checkbox"
+                                        checked={col.visible}
+                                        onChange={() => {
+                                            setColumns((prev) => prev.map((current) => current.key === col.key
+                                                ? { ...current, visible: !current.visible }
+                                                : current));
+                                        }}
+                                        className="h-4 w-4 text-orange-500 rounded border-slate-300 focus:ring-orange-400"
+                                    />
+                                    <span>{col.label}</span>
+                                </label>
+                                <div className="flex items-center gap-1">
+                                    <button
+                                        type="button"
+                                        className="p-1 rounded hover:bg-slate-200 text-slate-600 disabled:opacity-50"
+                                        disabled={index === 0}
+                                        onClick={() => {
+                                            setColumns((prev) => {
+                                                if (index === 0) return prev;
+                                                const next = [...prev];
+                                                const [removed] = next.splice(index, 1);
+                                                next.splice(index - 1, 0, removed);
+                                                return next;
+                                            });
+                                        }}
+                                    >
+                                        ↑
+                                    </button>
+                                    <button
+                                        type="button"
+                                        className="p-1 rounded hover:bg-slate-200 text-slate-600 disabled:opacity-50"
+                                        disabled={index === columns.length - 1}
+                                        onClick={() => {
+                                            setColumns((prev) => {
+                                                if (index === prev.length - 1) return prev;
+                                                const next = [...prev];
+                                                const [removed] = next.splice(index, 1);
+                                                next.splice(index + 1, 0, removed);
+                                                return next;
+                                            });
+                                        }}
+                                    >
+                                        ↓
+                                    </button>
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                </div>
             )}
             {/* EmailModal is now handled globally or by OrderForm, so removed from here directly */}
             <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between mb-8">
@@ -1879,51 +2117,38 @@ const Dashboard = ({ orders, navigateTo, viewOrder, allContacts, allSelectableIt
                     )}
                     {searchError && <p className="text-xs text-red-600">{searchError}</p>}
                 </div>
-                <div className="overflow-x-auto"><table className="w-full text-sm text-left text-slate-500"><thead className="text-xs text-slate-700 uppercase bg-slate-100"><tr><th className="px-4 py-3">Order</th><th className="px-4 py-3">Customer</th><th className="px-4 py-3">Date</th><th className="px-4 py-3">Total</th><th className="px-4 py-3">Status</th><th className="px-4 py-3 text-center">Actions</th></tr></thead>
-                    <tbody>{filteredOrders.map(order => {
-                        const timeZone = defaultTimeZone;
-                        const dateOptions = { year: 'numeric', month: 'long', day: 'numeric' };
-                        const orderTitle = (order.title || '').trim();
-                        const displayIdValue = typeof order.display_id === 'string' ? order.display_id : '';
-                        const trimmedDisplayId = displayIdValue.trim();
-                        const hasDisplayId = Boolean(trimmedDisplayId);
-                        const primaryLabel = orderTitle || 'Untitled Order';
-                        const shortId = order.id ? (order.id.length > 12 ? `${order.id.slice(0, 8)}…` : order.id) : '';
-                        const secondaryTags = [];
-                        if (hasDisplayId) {
-                            secondaryTags.push(`Ref: ${trimmedDisplayId}`);
-                        }
-                        if (order.id && (!hasDisplayId || trimmedDisplayId !== order.id)) {
-                            secondaryTags.push(`ID: ${shortId}`);
-                        }
-                        const idLabel = secondaryTags.join(' • ');
-                        return (<tr key={order.id} onClick={() => viewOrder(order)} className="bg-white border-b hover:bg-slate-50 cursor-pointer">
-                        <td className="px-4 py-3 align-top">
-                            <div className="flex flex-col">
-                                <span className="font-medium text-slate-800">{primaryLabel}</span>
-                                {idLabel && <span className="text-xs text-slate-500" title={order.id}>{idLabel}</span>}
-                            </div>
-                        </td><td className="px-4 py-3">{getContactDisplayName(order.primaryContact || order.contactInfo)}</td>
-                        <td className="px-4 py-3">{formatInTimeZone(order.date, timeZone, dateOptions)}</td><td className="px-4 py-3">${parseFloat(order.total || 0).toFixed(2)}</td>
-                        <td className="px-4 py-3">
-                            {order.status === 'Shipped' ? (
-                                <ShippedStatusBadge statusText={order.status} />
-                            ) : (
-                                <span className={`px-2 py-1 text-xs font-semibold rounded-full ${
-                                    order.status === 'Paid' ? 'bg-green-100 text-green-800' :
-                                    order.status === 'Sent' ? 'bg-blue-100 text-blue-800' :
-                                    'bg-slate-100 text-slate-800' // Draft or other
-                                }`}>{order.status}</span>
-                            )}
-                        </td>
-                        <td className="px-4 py-3 text-center" onClick={e => e.stopPropagation()}>
-                            <div className="flex items-center justify-center space-x-2">
-                                <button onClick={() => generateInvoicePdf(order, allSelectableItems, 'preview', branding)} className="p-1 text-slate-500 hover:text-orange-600"><PdfIcon /></button>
-                                <button onClick={() => setOrderForEmailModal(order)} className="p-1 text-slate-500 hover:text-orange-600"><EmailIcon /></button>
-                            </div>
-                        </td>
-                    </tr>)})}</tbody>
-                </table></div>
+                <div className="overflow-x-auto">
+                    <table className="w-full text-sm text-left text-slate-500">
+                        <thead
+                            className="text-xs text-slate-700 uppercase bg-slate-100"
+                            onContextMenu={handleHeaderContextMenu}
+                            onTouchStart={handleHeaderTouchStart}
+                            onTouchEnd={handleHeaderTouchEnd}
+                            onTouchMove={handleHeaderTouchMove}
+                            onTouchCancel={handleHeaderTouchCancel}
+                        >
+                            <tr>
+                                {visibleColumns.map((col) => (
+                                    <th key={col.key} className="px-4 py-3 select-none">{col.label}</th>
+                                ))}
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {filteredOrders.map(order => (
+                                <tr key={order.id} onClick={() => viewOrder(order)} className="bg-white border-b hover:bg-slate-50 cursor-pointer">
+                                    {visibleColumns.map((col) => {
+                                        const cellProps = col.key === 'actions' ? { onClick: (e) => e.stopPropagation() } : {};
+                                        return (
+                                            <td key={col.key} className={col.className} {...cellProps}>
+                                                {col.render(order)}
+                                            </td>
+                                        );
+                                    })}
+                                </tr>
+                            ))}
+                        </tbody>
+                    </table>
+                </div>
             </div>
         </React.Fragment>
     );
