@@ -108,36 +108,23 @@
             host: { label: 'Host', classes: 'bg-slate-200 text-slate-700' },
         };
 
-        const timezoneUtils = window.fireCoastTimezoneUtils || {};
-        const resolveDefaultTimezone = timezoneUtils.resolveDefaultTimezone || (() => {
-            try {
-                return Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
-            } catch (error) {
-                console.error('Failed to resolve browser timezone (fallback)', error);
-                return 'UTC';
-            }
-        });
+        const { resolveDefaultTimezone, formatDateTime } = window.fireCoastTimezoneUtils;
+        const defaultTimeZone = resolveDefaultTimezone();
 
-        const formatDateTime = timezoneUtils.formatDateTime || ((value, tz) => {
-            if (!value) return 'Unknown';
-            try {
-                let input = value;
-                if (typeof value === 'string') {
-                    const trimmed = value.trim();
-                    const hasTimezone = /[zZ]$/.test(trimmed) || /[+-]\d{2}:?\d{2}$/.test(trimmed);
-                    input = hasTimezone ? trimmed : `${trimmed.replace(' ', 'T')}Z`;
-                }
-                const date = new Date(input);
-                if (Number.isNaN(date.getTime())) return value;
-                return date.toLocaleString(undefined, { timeZone: tz || resolveDefaultTimezone() });
-            } catch (error) {
-                console.error('Failed to format date (fallback)', error);
+        const formatDateTime = (value) => {
+            if (!value) {
+                return '—';
+            }
+            const stamp = new Date(value);
+            if (Number.isNaN(stamp.getTime())) {
                 return value;
             }
-        });
-
-        const defaultTimeZone = resolveDefaultTimezone();
-        const formatLocalDateTime = (value) => formatDateTime(value, defaultTimeZone) || '—';
+            try {
+                return stamp.toLocaleString(undefined, { timeZone: defaultTimeZone });
+            } catch (error) {
+                return stamp.toLocaleString(undefined, { timeZone: defaultTimeZone });
+            }
+        };
 
         const formatTokenPreview = (token) => {
             if (!token || typeof token !== 'string') {
@@ -209,7 +196,7 @@
 
             const lastSeenCell = document.createElement('td');
             lastSeenCell.className = 'px-4 py-4 align-top text-slate-600';
-            const lastSeen = formatLocalDateTime(device.last_seen);
+            const lastSeen = formatDateTime(device.last_seen);
             lastSeenCell.innerHTML = `
                 <div>${lastSeen}</div>
                 <div class="text-xs text-slate-500">${device.last_ip || ''}</div>
@@ -268,7 +255,7 @@
                 const row = document.createElement('tr');
                 row.className = 'hover:bg-slate-50';
                 row.innerHTML = `
-                    <td class="whitespace-nowrap px-4 py-3 text-slate-700">${formatLocalDateTime(log.created_at)}</td>
+                    <td class="whitespace-nowrap px-4 py-3 text-slate-700">${formatDateTime(log.created_at)}</td>
                     <td class="px-4 py-3 text-slate-600">${log.device_id || '—'}</td>
                     <td class="px-4 py-3 text-slate-600">${getDeviceKeyLabel(log)}</td>
                     <td class="px-4 py-3 text-slate-600">${log.ip_address || '—'}</td>
