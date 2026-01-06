@@ -108,7 +108,34 @@
             host: { label: 'Host', classes: 'bg-slate-200 text-slate-700' },
         };
 
-        const { resolveDefaultTimezone, formatDateTime } = window.fireCoastTimezoneUtils;
+        const timezoneUtils = window.fireCoastTimezoneUtils || {};
+        const resolveDefaultTimezone = timezoneUtils.resolveDefaultTimezone || (() => {
+            try {
+                return Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
+            } catch (error) {
+                console.error('Failed to resolve browser timezone (fallback)', error);
+                return 'UTC';
+            }
+        });
+
+        const formatDateTime = timezoneUtils.formatDateTime || ((value, tz) => {
+            if (!value) return 'Unknown';
+            try {
+                let input = value;
+                if (typeof value === 'string') {
+                    const trimmed = value.trim();
+                    const hasTimezone = /[zZ]$/.test(trimmed) || /[+-]\d{2}:?\d{2}$/.test(trimmed);
+                    input = hasTimezone ? trimmed : `${trimmed.replace(' ', 'T')}Z`;
+                }
+                const date = new Date(input);
+                if (Number.isNaN(date.getTime())) return value;
+                return date.toLocaleString(undefined, { timeZone: tz || resolveDefaultTimezone() });
+            } catch (error) {
+                console.error('Failed to format date (fallback)', error);
+                return value;
+            }
+        });
+
         const defaultTimeZone = resolveDefaultTimezone();
         const formatLocalDateTime = (value) => formatDateTime(value, defaultTimeZone) || '—';
 
