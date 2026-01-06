@@ -105,7 +105,7 @@
                         <div class="space-y-1">
                             <div class="flex items-center justify-between">
                                 <label for="wiki-content" class="block text-sm font-medium text-slate-900">Content</label>
-                                <p class="text-xs text-slate-500">Supports wiki-style markup</p>
+                                <p class="text-xs text-slate-500">Supports FireCoast markdown</p>
                             </div>
                             <div class="flex flex-wrap gap-2 rounded-md border border-slate-200 bg-slate-50 px-2 py-2 text-sm text-slate-700 shadow-sm" aria-label="Formatting toolbar">
                                 <button type="button" class="wiki-toolbar inline-flex items-center gap-1 rounded border border-transparent bg-white px-3 py-1.5 shadow-sm hover:border-orange-300 hover:text-orange-600 focus:outline-none focus:ring-2 focus:ring-orange-300" data-action="bold">Bold</button>
@@ -113,10 +113,13 @@
                                 <button type="button" class="wiki-toolbar inline-flex items-center gap-1 rounded border border-transparent bg-white px-3 py-1.5 shadow-sm hover:border-orange-300 hover:text-orange-600 focus:outline-none focus:ring-2 focus:ring-orange-300" data-action="heading">Heading</button>
                                 <button type="button" class="wiki-toolbar inline-flex items-center gap-1 rounded border border-transparent bg-white px-3 py-1.5 shadow-sm hover:border-orange-300 hover:text-orange-600 focus:outline-none focus:ring-2 focus:ring-orange-300" data-action="list">List</button>
                                 <button type="button" class="wiki-toolbar inline-flex items-center gap-1 rounded border border-transparent bg-white px-3 py-1.5 shadow-sm hover:border-orange-300 hover:text-orange-600 focus:outline-none focus:ring-2 focus:ring-orange-300" data-action="quote">Quote</button>
+                                <button type="button" class="wiki-toolbar inline-flex items-center gap-1 rounded border border-transparent bg-white px-3 py-1.5 shadow-sm hover:border-orange-300 hover:text-orange-600 focus:outline-none focus:ring-2 focus:ring-orange-300" data-action="code">Code</button>
+                                <button type="button" class="wiki-toolbar inline-flex items-center gap-1 rounded border border-transparent bg-white px-3 py-1.5 shadow-sm hover:border-orange-300 hover:text-orange-600 focus:outline-none focus:ring-2 focus:ring-orange-300" data-action="codeblock">Code block</button>
+                                <button type="button" class="wiki-toolbar inline-flex items-center gap-1 rounded border border-transparent bg-white px-3 py-1.5 shadow-sm hover:border-orange-300 hover:text-orange-600 focus:outline-none focus:ring-2 focus:ring-orange-300" data-action="spoiler">Spoiler</button>
                                 <button type="button" class="wiki-toolbar inline-flex items-center gap-1 rounded border border-transparent bg-white px-3 py-1.5 shadow-sm hover:border-orange-300 hover:text-orange-600 focus:outline-none focus:ring-2 focus:ring-orange-300" data-action="link">Link</button>
                                 <button type="button" class="wiki-toolbar inline-flex items-center gap-1 rounded border border-transparent bg-white px-3 py-1.5 shadow-sm hover:border-orange-300 hover:text-orange-600 focus:outline-none focus:ring-2 focus:ring-orange-300" data-action="image">Image</button>
                             </div>
-                            <textarea id="wiki-content" name="content" rows="14" class="w-full rounded-md border border-slate-200 bg-white focus:border-orange-400 focus:ring-2 focus:ring-orange-400 text-sm px-3 py-3 shadow-sm font-serif" placeholder="Use wiki-like markup: headings with == Heading ==, lists with * or #, links with [[Another Page]]."></textarea>
+                            <textarea id="wiki-content" name="content" rows="14" class="w-full rounded-md border border-slate-200 bg-white focus:border-orange-400 focus:ring-2 focus:ring-orange-400 text-sm px-3 py-3 shadow-sm font-serif" placeholder="Use FireCoast markdown: # Heading, **bold**, *italic*, `code`, [Text](url), [Alt]{Image}"></textarea>
                         </div>
 
                         <div class="space-y-2">
@@ -228,20 +231,28 @@
                     if (key) lookup[key] = attachment;
                 });
 
+                const wrapSpoiler = (text) => `<span class="bg-slate-900 text-slate-50 rounded px-1">${text}</span>`;
+
+                const inlineImage = (alt, token) => {
+                    const key = (token || '').toLowerCase();
+                    const attachment = lookup[key];
+                    if (attachment && isImage(attachment.name || attachment.path)) {
+                        const caption = escapeHtml(alt || attachment.name || 'Image');
+                        return `<figure class="my-4 space-y-2"><img src="/data/${attachment.path}" alt="${caption}" class="w-full max-h-96 object-contain rounded border border-slate-200 bg-slate-50" loading="lazy" /><figcaption class="text-xs text-slate-500">${caption}</figcaption></figure>`;
+                    }
+                    return `<span class="text-xs text-slate-500 italic">[missing image: ${escapeHtml(token)}]</span>`;
+                };
+
                 return (text = '') => {
                     let safe = escapeHtml(text);
-                    safe = safe.replace(/'''(.*?)'''/g, '<strong>$1</strong>');
-                    safe = safe.replace(/''(.*?)''/g, '<em>$1</em>');
-                    safe = safe.replace(/\[(https?:\/\/[^\s]+)\s+([^\]]+)\]/g, '<a href="$1" target="_blank" rel="noopener noreferrer" class="text-orange-600 hover:underline">$2</a>');
-                    safe = safe.replace(/\[\[(?:Image|File):(.+?)\]\]/gi, (_, raw) => {
-                        const trimmed = raw.trim();
-                        const attachment = lookup[trimmed.toLowerCase()];
-                        if (attachment && isImage(attachment.name || attachment.path)) {
-                            const alt = escapeHtml(attachment.name || trimmed || 'Image');
-                            return `<figure class="my-4 space-y-2"><img src="/data/${attachment.path}" alt="${alt}" class="w-full max-h-96 object-contain rounded border border-slate-200 bg-slate-50" loading="lazy" /><figcaption class="text-xs text-slate-500">${alt}</figcaption></figure>`;
-                        }
-                        return `<span class="text-xs text-slate-500 italic">[image: ${escapeHtml(trimmed)}]</span>`;
-                    });
+
+                    safe = safe.replace(/`([^`]+)`/g, '<code class="bg-slate-100 text-slate-800 px-1 py-0.5 rounded border border-slate-200 text-sm">$1</code>');
+                    safe = safe.replace(/\*\*\*([^*]+)\*\*\*/g, '<strong><em>$1</em></strong>');
+                    safe = safe.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
+                    safe = safe.replace(/\*([^*]+)\*/g, '<em>$1</em>');
+                    safe = safe.replace(/\|\|(.+?)\|\|/g, (_, hidden) => wrapSpoiler(hidden));
+                    safe = safe.replace(/\[([^\]]+)\]\{([^}]+)\}/g, (_, alt, token) => inlineImage(alt, token));
+                    safe = safe.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer" class="text-orange-600 hover:underline">$1</a>');
                     safe = safe.replace(/\[\[(.+?)\]\]/g, (_, title) => {
                         const trimmed = title.trim();
                         return `<a href="#" class="wiki-link text-orange-600 hover:underline font-semibold" data-title="${encodeURIComponent(trimmed)}">${trimmed}</a>`;
@@ -256,6 +267,7 @@
                 const html = [];
                 let paragraph = [];
                 let list = null;
+                let codeBlock = null;
 
                 const flushParagraph = () => {
                     if (!paragraph.length) return;
@@ -273,21 +285,49 @@
                     list = null;
                 };
 
+                const flushCode = () => {
+                    if (!codeBlock) return;
+                    const escaped = codeBlock.lines.map((line) => escapeHtml(line)).join('\n');
+                    html.push(`<pre class="bg-slate-900 text-slate-50 text-sm rounded-md px-4 py-3 overflow-x-auto border border-slate-800"><code>${escaped}</code></pre>`);
+                    codeBlock = null;
+                };
+
                 lines.forEach((line) => {
                     const trimmed = line.trim();
-                    if (!trimmed) {
-                        flushParagraph();
-                        flushList();
+
+                    if (/^```/.test(trimmed)) {
+                        if (codeBlock) {
+                            flushParagraph();
+                            flushList();
+                            flushCode();
+                        } else {
+                            flushParagraph();
+                            flushList();
+                            codeBlock = { lines: [] };
+                        }
                         return;
                     }
 
-                    const headingMatch = trimmed.match(/^(=){2,5}\s*(.+?)\s*=*$/);
+                    if (codeBlock) {
+                        codeBlock.lines.push(line);
+                        return;
+                    }
+
+                    if (!trimmed) {
+                        flushParagraph();
+                        flushList();
+                        flushCode();
+                        return;
+                    }
+
+                    const headingMatch = trimmed.match(/^(#{1,4})\s+(.+)$/);
                     if (headingMatch) {
                         flushParagraph();
                         flushList();
-                        const level = Math.min(Math.max(headingMatch[1].length, 2), 5);
+                        flushCode();
+                        const level = Math.min(Math.max(headingMatch[1].length, 1), 4);
                         const headingText = applyInlineFormatting(headingMatch[2]);
-                        const sizeClass = level === 2 ? 'text-2xl' : level === 3 ? 'text-xl' : level === 4 ? 'text-lg' : 'text-base';
+                        const sizeClass = level === 1 ? 'text-3xl' : level === 2 ? 'text-2xl' : level === 3 ? 'text-xl' : 'text-lg';
                         html.push(`<h${level} class="font-serif font-semibold ${sizeClass} mt-5 mb-3">${headingText}</h${level}>`);
                         return;
                     }
@@ -299,16 +339,17 @@
                         return;
                     }
 
-                    if (/^#\s+/.test(trimmed)) {
+                    if (/^\d+\.\s+/.test(trimmed)) {
                         flushParagraph();
                         if (!list || list.type !== 'ol') list = { type: 'ol', items: [] };
-                        list.items.push(trimmed.replace(/^#\s+/, ''));
+                        list.items.push(trimmed.replace(/^\d+\.\s+/, ''));
                         return;
                     }
 
                     if (/^>\s+/.test(trimmed)) {
                         flushParagraph();
                         flushList();
+                        flushCode();
                         html.push(`<blockquote class="border-l-4 border-orange-200 pl-3 italic text-base text-slate-700 mb-4">${applyInlineFormatting(trimmed.replace(/^>\s+/, ''))}</blockquote>`);
                         return;
                     }
@@ -318,6 +359,7 @@
 
                 flushParagraph();
                 flushList();
+                flushCode();
 
                 if (!html.length) {
                     return '<p class="text-sm text-slate-500">This article is empty. Use the editor below to add content.</p>';
@@ -546,26 +588,35 @@
             const handleToolbarClick = (action) => {
                 switch (action) {
                     case 'bold':
-                        insertMarkup("'''", "'''", 'bold text');
+                        insertMarkup('**', '**', 'bold text');
                         break;
                     case 'italic':
-                        insertMarkup("''", "''", 'emphasis');
+                        insertMarkup('*', '*', 'emphasis');
+                        break;
+                    case 'code':
+                        insertMarkup('`', '`', 'code');
+                        break;
+                    case 'codeblock':
+                        insertMarkup('\n```\n', '\n```\n', 'multi-line code');
+                        break;
+                    case 'spoiler':
+                        insertMarkup('||', '||', 'spoiler text');
                         break;
                     case 'heading':
-                        insertMarkup('\n== ', ' ==\n', 'Heading');
+                        insertMarkup('\n# ', '\n', 'Heading 1');
                         break;
                     case 'list':
-                        insertMarkup('\n* ', '', 'List item');
+                        insertMarkup('\n- ', '', 'List item');
                         break;
                     case 'quote':
                         insertMarkup('\n> ', '', 'Quoted text');
                         break;
                     case 'link':
-                        insertMarkup('[[', ']]', 'Page or Link');
+                        insertMarkup('[', '](url)', 'Text');
                         break;
                     case 'image': {
                         const hint = (attachmentsInput.files && attachmentsInput.files[0]) ? attachmentsInput.files[0].name : 'image.png';
-                        insertMarkup('[[Image:', ']]', hint);
+                        insertMarkup('[', `]{${hint}}`, 'Alt text');
                         break;
                     }
                     default:
