@@ -1,0 +1,337 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Reference | FireCoast</title>
+    <link rel="icon" href="/favicon.ico" type="image/x-icon">
+    <link rel="stylesheet" href="/assets/css/styles.css">
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-slate-50 text-slate-900 min-h-screen">
+    {% include 'partials/navbar.html' %}
+
+    <main class="page-main page-main--wide page-main--flush py-6 sm:py-8">
+        <section class="bg-white border border-slate-200 rounded-md shadow-sm">
+            <div class="px-5 py-4 border-b border-slate-200 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                    <h1 class="text-xl sm:text-2xl font-semibold text-slate-900">Reference records</h1>
+                    <p class="text-sm text-slate-600">Browse every page, filter by title or text, and open the article to read or edit.</p>
+                </div>
+                <div class="w-full sm:w-auto flex flex-col sm:flex-row gap-3 sm:items-center sm:justify-end">
+                    <div class="relative w-full sm:w-72 md:w-80">
+                        <input id="wiki-search" type="search" class="w-full rounded-md border border-slate-200 bg-slate-50 focus:ring-2 focus:ring-orange-400 focus:border-orange-400 text-sm px-3 py-2 shadow-inner" placeholder="Search titles or content" />
+                        <span class="absolute right-3 top-2.5 text-slate-400">🔍</span>
+                    </div>
+                    <a href="/wikipedia/new" id="wiki-new-page" class="inline-flex items-center justify-center gap-2 rounded-md border border-orange-500 bg-orange-500 px-4 py-2 text-sm font-semibold text-white shadow hover:bg-orange-600 focus:outline-none focus:ring-2 focus:ring-orange-400">
+                        <span aria-hidden="true">＋</span>
+                        <span>New page</span>
+                    </a>
+                </div>
+            </div>
+            <div class="overflow-x-auto">
+                <table class="w-full text-left" id="wiki-table">
+                    <thead id="wiki-table-header" class="bg-slate-50 border-b border-slate-200 text-xs uppercase tracking-wide text-slate-500"></thead>
+                    <tbody id="wiki-page-list" class="divide-y divide-slate-100" role="list"></tbody>
+                </table>
+            </div>
+            <div class="flex items-center justify-between px-5 py-3 text-xs text-slate-500 border-t border-slate-200">
+                <span id="wiki-page-empty" class="hidden">No pages match your search.</span>
+                <span id="wiki-page-count"></span>
+            </div>
+        </section>
+    </main>
+
+    <script>
+        (() => {
+            const pageListEl = document.getElementById('wiki-page-list');
+            const pageEmptyEl = document.getElementById('wiki-page-empty');
+            const pageCountEl = document.getElementById('wiki-page-count');
+            const searchInput = document.getElementById('wiki-search');
+            const tableHeaderEl = document.getElementById('wiki-table-header');
+
+            const contextMenu = document.createElement('div');
+            contextMenu.className = 'hidden fixed z-30 w-64 rounded-lg border border-slate-200 bg-white shadow-xl shadow-slate-200/60';
+            contextMenu.innerHTML = `
+                <div class="px-4 py-3 border-b border-slate-200">
+                    <p class="text-sm font-semibold text-slate-900">Choose columns</p>
+                    <p class="text-xs text-slate-500">Long press or right click header to reorder or hide fields.</p>
+                </div>
+                <div id="wiki-column-options" class="max-h-64 overflow-y-auto py-2"></div>
+            `;
+            document.body.appendChild(contextMenu);
+
+            const STORAGE_KEY = 'wikiColumnPrefs';
+            const state = {
+                pages: [],
+                columns: [
+                    {
+                        key: 'title',
+                        label: 'Title',
+                        visible: true,
+                        className: 'px-5 py-3 align-top text-sm font-semibold text-slate-900 relative',
+                        render: (page) => page.title || 'Untitled',
+                    },
+                    {
+                        key: 'summary',
+                        label: 'Summary',
+                        visible: true,
+                        className: 'px-5 py-3 align-top text-sm text-slate-700 relative',
+                        render: (page, helpers) => helpers.snippet(page.content || ''),
+                    },
+                    {
+                        key: 'updated',
+                        label: 'Updated',
+                        visible: true,
+                        className: 'px-5 py-3 align-top text-sm text-slate-600 whitespace-nowrap relative',
+                        render: (page) => {
+                            const updated = page.updated_at || page.created_at;
+                            return updated ? new Date(updated).toLocaleString() : 'Draft';
+                        },
+                    },
+                    {
+                        key: 'attachments',
+                        label: 'Attachments',
+                        visible: true,
+                        className: 'px-5 py-3 align-top text-sm text-slate-600 whitespace-nowrap relative',
+                        render: (page) => {
+                            const attachmentCount = Array.isArray(page.attachments) ? page.attachments.length : 0;
+                            return `${attachmentCount} file${attachmentCount === 1 ? '' : 's'}`;
+                        },
+                    },
+                ],
+            };
+
+            const escapeHtml = (value = '') => value
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#039;');
+
+            const persistColumns = () => {
+                try {
+                    const payload = state.columns.map((col) => ({ key: col.key, visible: !!col.visible }));
+                    localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
+                } catch (error) {
+                    console.warn('Unable to store column preferences', error);
+                }
+            };
+
+            const hydrateColumns = () => {
+                try {
+                    const saved = localStorage.getItem(STORAGE_KEY);
+                    if (!saved) return;
+
+                    const parsed = JSON.parse(saved);
+                    if (!Array.isArray(parsed)) return;
+
+                    const defaultMap = new Map(state.columns.map((col) => [col.key, col]));
+                    const ordered = [];
+                    parsed.forEach(({ key, visible }) => {
+                        if (!defaultMap.has(key)) return;
+                        const base = defaultMap.get(key);
+                        ordered.push({ ...base, visible: visible !== undefined ? !!visible : base.visible });
+                        defaultMap.delete(key);
+                    });
+
+                    state.columns = [...ordered, ...defaultMap.values()];
+                } catch (error) {
+                    console.warn('Unable to read column preferences', error);
+                }
+            };
+
+            const renderTableHeader = () => {
+                tableHeaderEl.innerHTML = '';
+                const row = document.createElement('tr');
+                state.columns.filter((col) => col.visible).forEach((col) => {
+                    const th = document.createElement('th');
+                    th.className = 'px-5 py-3 font-semibold select-none';
+                    th.textContent = col.label;
+                    row.appendChild(th);
+                });
+                tableHeaderEl.appendChild(row);
+            };
+
+            const renderPages = () => {
+                pageListEl.innerHTML = '';
+                const pages = state.pages || [];
+                const query = (searchInput.value || '').toLowerCase().trim();
+                const filtered = pages.filter((page) => {
+                    const haystack = `${page.title || ''} ${page.content || ''}`.toLowerCase();
+                    return haystack.includes(query);
+                });
+
+                const totalCountLabel = pages.length ? `Showing ${filtered.length} of ${pages.length} page${pages.length === 1 ? '' : 's'}` : 'No pages yet';
+                pageCountEl.textContent = totalCountLabel;
+                pageEmptyEl.classList.toggle('hidden', filtered.length > 0);
+
+                if (!filtered.length) {
+                    return;
+                }
+
+                const snippet = (value = '') => {
+                    const compact = value.replace(/\s+/g, ' ').trim();
+                    if (!compact) return 'Empty page';
+                    return compact.length > 140 ? `${compact.slice(0, 140)}…` : compact;
+                };
+
+                filtered.forEach((page) => {
+                    const row = document.createElement('tr');
+                    row.className = 'hover:bg-slate-50 relative';
+
+                    const goToPage = document.createElement('a');
+                    goToPage.href = `/wikipedia/${page.id}`;
+                    goToPage.className = 'absolute inset-0';
+                    goToPage.setAttribute('aria-label', `Open ${page.title || 'Untitled'}`);
+
+                    state.columns.filter((col) => col.visible).forEach((col) => {
+                        const td = document.createElement('td');
+                        td.className = col.className;
+                        const value = col.render(page, { snippet });
+                        td.textContent = value;
+                        td.appendChild(goToPage.cloneNode());
+                        row.appendChild(td);
+                    });
+
+                    pageListEl.appendChild(row);
+                });
+            };
+
+            const loadPages = async () => {
+                try {
+                    const response = await fetch('/api/wikipedia/pages');
+                    if (!response.ok) {
+                        throw new Error('Failed to load pages');
+                    }
+                    const data = await response.json();
+                    state.pages = data.pages || [];
+                    renderTableHeader();
+                    renderPages();
+                } catch (error) {
+                    console.error(error);
+                    pageEmptyEl.classList.remove('hidden');
+                    pageEmptyEl.textContent = 'Unable to load pages.';
+                }
+            };
+
+            const closeMenu = () => {
+                contextMenu.classList.add('hidden');
+            };
+
+            const buildMenu = () => {
+                const container = document.getElementById('wiki-column-options');
+                container.innerHTML = '';
+                state.columns.forEach((col, index) => {
+                    const row = document.createElement('div');
+                    row.className = 'flex items-center justify-between gap-3 px-4 py-2 hover:bg-slate-50';
+
+                    const left = document.createElement('label');
+                    left.className = 'flex items-center gap-2 text-sm text-slate-800 cursor-pointer select-none';
+                    const checkbox = document.createElement('input');
+                    checkbox.type = 'checkbox';
+                    checkbox.checked = col.visible;
+                    checkbox.className = 'h-4 w-4 text-orange-500 rounded border-slate-300 focus:ring-orange-400';
+                    checkbox.addEventListener('change', () => {
+                        col.visible = checkbox.checked;
+                        persistColumns();
+                        renderTableHeader();
+                        renderPages();
+                    });
+                    const span = document.createElement('span');
+                    span.textContent = col.label;
+                    left.appendChild(checkbox);
+                    left.appendChild(span);
+
+                    const controls = document.createElement('div');
+                    controls.className = 'flex items-center gap-1';
+                    const up = document.createElement('button');
+                    up.type = 'button';
+                    up.className = 'p-1 rounded hover:bg-slate-200 text-slate-600';
+                    up.textContent = '↑';
+                    up.disabled = index === 0;
+                    up.addEventListener('click', () => {
+                        if (index === 0) return;
+                        const [removed] = state.columns.splice(index, 1);
+                        state.columns.splice(index - 1, 0, removed);
+                        persistColumns();
+                        buildMenu();
+                        renderTableHeader();
+                        renderPages();
+                    });
+
+                    const down = document.createElement('button');
+                    down.type = 'button';
+                    down.className = 'p-1 rounded hover:bg-slate-200 text-slate-600';
+                    down.textContent = '↓';
+                    down.disabled = index === state.columns.length - 1;
+                    down.addEventListener('click', () => {
+                        if (index === state.columns.length - 1) return;
+                        const [removed] = state.columns.splice(index, 1);
+                        state.columns.splice(index + 1, 0, removed);
+                        persistColumns();
+                        buildMenu();
+                        renderTableHeader();
+                        renderPages();
+                    });
+
+                    controls.appendChild(up);
+                    controls.appendChild(down);
+                    row.appendChild(left);
+                    row.appendChild(controls);
+                    container.appendChild(row);
+                });
+            };
+
+            const openMenuAt = (x, y) => {
+                buildMenu();
+                contextMenu.style.left = `${x}px`;
+                contextMenu.style.top = `${y}px`;
+                contextMenu.classList.remove('hidden');
+            };
+
+            let touchTimer = null;
+            const longPressDelay = 500;
+
+            tableHeaderEl.addEventListener('contextmenu', (event) => {
+                event.preventDefault();
+                openMenuAt(event.clientX, event.clientY);
+            });
+
+            tableHeaderEl.addEventListener('touchstart', (event) => {
+                const touch = event.touches[0];
+                if (!touch) return;
+                touchTimer = setTimeout(() => {
+                    openMenuAt(touch.clientX, touch.clientY);
+                }, longPressDelay);
+            });
+
+            ['touchend', 'touchmove', 'touchcancel'].forEach((type) => {
+                tableHeaderEl.addEventListener(type, () => {
+                    if (touchTimer) {
+                        clearTimeout(touchTimer);
+                        touchTimer = null;
+                    }
+                });
+            });
+
+            document.addEventListener('click', (event) => {
+                if (!contextMenu.contains(event.target)) {
+                    closeMenu();
+                }
+            });
+
+            document.addEventListener('keydown', (event) => {
+                if (event.key === 'Escape') {
+                    closeMenu();
+                }
+            });
+
+            searchInput.addEventListener('input', renderPages);
+            hydrateColumns();
+            renderTableHeader();
+            loadPages();
+        })();
+    </script>
+</body>
+</html>
