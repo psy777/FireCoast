@@ -18,9 +18,14 @@
                     <h1 class="text-2xl font-semibold text-slate-800 mt-1">Manage Packages</h1>
                     <p class="text-sm text-slate-500 mt-1">Packages bundle catalog items together so you can quickly add them to orders.</p>
                 </div>
-                <button id="addPackageButton" class="inline-flex items-center rounded-md bg-orange-600 px-4 py-2 text-sm font-semibold text-white shadow hover:bg-orange-700 focus:outline-none focus:ring-2 focus:ring-orange-500 focus:ring-offset-2">
-                    + New Package
-                </button>
+                <div class="flex flex-wrap items-center gap-2">
+                    <input id="packagesCsvInput" type="file" accept=".csv" class="hidden">
+                    <button id="importPackagesCsvButton" class="inline-flex items-center rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-700 shadow-sm hover:bg-slate-50">Import CSV</button>
+                    <a href="/api/export-packages-csv" class="inline-flex items-center rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-700 shadow-sm hover:bg-slate-50">Export CSV</a>
+                    <button id="addPackageButton" class="inline-flex items-center rounded-md bg-orange-600 px-4 py-2 text-sm font-semibold text-white shadow hover:bg-orange-700 focus:outline-none focus:ring-2 focus:ring-orange-500 focus:ring-offset-2">
+                        + New Package
+                    </button>
+                </div>
             </div>
 
             <div class="bg-white shadow-sm border border-slate-200 rounded-lg overflow-hidden">
@@ -94,6 +99,8 @@ Holiday Candle:1"></textarea>
         const originalPackageIdInput = document.getElementById('originalPackageId');
 
         const addPackageButton = document.getElementById('addPackageButton');
+        const importPackagesCsvButton = document.getElementById('importPackagesCsvButton');
+        const packagesCsvInput = document.getElementById('packagesCsvInput');
         const closeModalButton = document.getElementById('closeModalButton');
         const cancelPackageButton = document.getElementById('cancelPackageButton');
         const savePackageButton = document.getElementById('savePackageButton');
@@ -206,6 +213,29 @@ Holiday Candle:1"></textarea>
             packageNameInput.focus();
         };
 
+        const importPackagesCsv = async (file) => {
+            if (!file) return;
+            const formData = new FormData();
+            formData.append('csv_file', file);
+            try {
+                const response = await fetch('/api/import-packages-csv', {
+                    method: 'POST',
+                    body: formData,
+                });
+                const payload = await response.json().catch(() => null);
+                if (!response.ok) {
+                    throw new Error(payload?.message || 'Failed to import CSV');
+                }
+                await loadPackages();
+                alert(payload?.message || 'Packages imported successfully.');
+            } catch (error) {
+                console.error('Error importing packages CSV:', error);
+                alert(error.message || 'Unable to import packages CSV.');
+            } finally {
+                packagesCsvInput.value = '';
+            }
+        };
+
         const savePackage = async () => {
             const originalId = originalPackageIdInput.value.trim();
             const name = packageNameInput.value.trim();
@@ -274,6 +304,16 @@ Holiday Candle:1"></textarea>
         addPackageButton.addEventListener('click', (event) => {
             event.preventDefault();
             openNewPackageModal();
+        });
+
+        importPackagesCsvButton.addEventListener('click', (event) => {
+            event.preventDefault();
+            packagesCsvInput.click();
+        });
+
+        packagesCsvInput.addEventListener('change', async () => {
+            const file = packagesCsvInput.files && packagesCsvInput.files[0];
+            await importPackagesCsv(file);
         });
 
         closeModalButton.addEventListener('click', (event) => {

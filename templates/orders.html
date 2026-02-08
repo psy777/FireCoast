@@ -1644,6 +1644,7 @@ const Dashboard = ({ orders, navigateTo, viewOrder, allContacts, allSelectableIt
     const [dateKeyword, setDateKeyword] = useState('');
     const [isSearching, setIsSearching] = useState(false);
     const [searchError, setSearchError] = useState(null);
+    const ordersCsvInputRef = useRef(null);
 
     useEffect(() => {
         return () => {
@@ -1796,6 +1797,35 @@ const Dashboard = ({ orders, navigateTo, viewOrder, allContacts, allSelectableIt
         fetchDashboardStats();
     }, [orders]);
 
+    const importOrdersCsv = async (file) => {
+        if (!file) return;
+        const formData = new FormData();
+        formData.append('csv_file', file);
+        try {
+            const response = await fetch('/api/import-orders-csv', {
+                method: 'POST',
+                body: formData,
+            });
+            const payload = await response.json().catch(() => null);
+            if (!response.ok) {
+                throw new Error(payload?.message || 'Import failed');
+            }
+            const refreshed = await fetch('/api/orders');
+            if (refreshed.ok) {
+                const data = await refreshed.json();
+                setFilteredOrders(data);
+            }
+            alert(payload?.message || 'Orders imported successfully.');
+        } catch (error) {
+            console.error('Failed to import orders CSV:', error);
+            alert(error.message || 'Unable to import orders CSV.');
+        } finally {
+            if (ordersCsvInputRef.current) {
+                ordersCsvInputRef.current.value = '';
+            }
+        }
+    };
+
     // This function now expects amountInDollars
     const formatCurrency = (amountInDollars) => { 
         // Ensure amountInDollars is a number, default to 0 if not
@@ -1820,12 +1850,33 @@ const Dashboard = ({ orders, navigateTo, viewOrder, allContacts, allSelectableIt
             {/* EmailModal is now handled globally or by OrderForm, so removed from here directly */}
             <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between mb-8">
                 <h1 className="text-3xl font-bold text-slate-800">Orders</h1>
-                <button
-                    onClick={() => navigateTo('createOrder')}
-                    className="inline-flex items-center justify-center gap-2 self-start rounded-md bg-orange-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-orange-700 sm:self-auto"
-                >
-                    + Create New Order
-                </button>
+                <div className="flex flex-wrap items-center gap-2">
+                    <input
+                        ref={ordersCsvInputRef}
+                        type="file"
+                        accept=".csv"
+                        className="hidden"
+                        onChange={(event) => importOrdersCsv(event.target.files && event.target.files[0])}
+                    />
+                    <button
+                        onClick={() => ordersCsvInputRef.current && ordersCsvInputRef.current.click()}
+                        className="inline-flex items-center justify-center gap-2 self-start rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-700 shadow-sm transition hover:bg-slate-50 sm:self-auto"
+                    >
+                        Import CSV
+                    </button>
+                    <a
+                        href="/api/export-orders-csv"
+                        className="inline-flex items-center justify-center gap-2 self-start rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-700 shadow-sm transition hover:bg-slate-50 sm:self-auto"
+                    >
+                        Export CSV
+                    </a>
+                    <button
+                        onClick={() => navigateTo('createOrder')}
+                        className="inline-flex items-center justify-center gap-2 self-start rounded-md bg-orange-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-orange-700 sm:self-auto"
+                    >
+                        + Create New Order
+                    </button>
+                </div>
             </div>
             <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
                 <div className="space-y-4">

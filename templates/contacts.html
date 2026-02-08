@@ -853,6 +853,7 @@ const ContactsApp = () => {
     const [isMobileLayout, setIsMobileLayout] = useState(() => window.innerWidth < 1024);
     const [showMobileDetail, setShowMobileDetail] = useState(false);
     const [timezone, setTimezone] = useState(() => resolveDefaultTimezone());
+    const contactsCsvInputRef = useRef(null);
 
     useEffect(() => {
         const handleResize = () => setIsMobileLayout(window.innerWidth < 1024);
@@ -1126,6 +1127,30 @@ const ContactsApp = () => {
         }
     };
 
+    const handleContactCsvImport = async (event) => {
+        const file = event.target.files && event.target.files[0];
+        if (!file) return;
+        const formData = new FormData();
+        formData.append('csv_file', file);
+        try {
+            const response = await fetch('/api/import-contacts-csv', {
+                method: 'POST',
+                body: formData,
+            });
+            if (!response.ok) {
+                throw new Error('Failed to import contacts CSV');
+            }
+            window.location.reload();
+        } catch (err) {
+            console.error('Failed to import contacts CSV', err);
+            setError('Unable to import contacts CSV.');
+        } finally {
+            if (contactsCsvInputRef.current) {
+                contactsCsvInputRef.current.value = '';
+            }
+        }
+    };
+
     const startCreateContact = () => {
         setError(null);
         if (selectedId && selectedId !== 'new') {
@@ -1245,14 +1270,36 @@ const ContactsApp = () => {
         <div className="space-y-6">
             <div className="flex flex-wrap items-center justify-between gap-3">
                 <h1 className="text-3xl font-bold text-slate-800">Contacts</h1>
-                <button
-                    type="button"
-                    onClick={startCreateContact}
-                    disabled={isNewButtonDisabled}
-                    className={`inline-flex items-center justify-center gap-2 rounded-md px-3 py-2 text-sm font-semibold shadow transition-colors ${isNewButtonDisabled ? 'bg-slate-300 text-slate-500 cursor-not-allowed' : 'bg-orange-600 text-white hover:bg-orange-700'}`}
-                >
-                    + New Contact
-                </button>
+                <div className="flex flex-wrap items-center gap-2">
+                    <input
+                        ref={contactsCsvInputRef}
+                        type="file"
+                        accept=".csv"
+                        className="hidden"
+                        onChange={handleContactCsvImport}
+                    />
+                    <button
+                        type="button"
+                        onClick={() => contactsCsvInputRef.current && contactsCsvInputRef.current.click()}
+                        className="inline-flex items-center justify-center gap-2 rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-700 shadow-sm hover:bg-slate-50"
+                    >
+                        Import CSV
+                    </button>
+                    <a
+                        href="/api/export-contacts-csv"
+                        className="inline-flex items-center justify-center gap-2 rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-700 shadow-sm hover:bg-slate-50"
+                    >
+                        Export CSV
+                    </a>
+                    <button
+                        type="button"
+                        onClick={startCreateContact}
+                        disabled={isNewButtonDisabled}
+                        className={`inline-flex items-center justify-center gap-2 rounded-md px-3 py-2 text-sm font-semibold shadow transition-colors ${isNewButtonDisabled ? 'bg-slate-300 text-slate-500 cursor-not-allowed' : 'bg-orange-600 text-white hover:bg-orange-700'}`}
+                    >
+                        + New Contact
+                    </button>
+                </div>
             </div>
             {error && (
                 <div className="bg-red-50 border border-red-200 text-red-600 px-4 py-3 rounded-lg text-sm">

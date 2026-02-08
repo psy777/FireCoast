@@ -12,15 +12,20 @@
 
     <main class="page-main page-main--wide space-y-10">
         <div class="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
-            <div class="mb-6 flex items-center justify-between">
+            <div class="mb-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
                 <div>
                     <p class="text-sm text-slate-500"><a href="/settings" class="text-orange-600 hover:text-orange-700">&larr; Back to Settings</a></p>
                     <h1 class="text-2xl font-semibold text-slate-800 mt-1">Manage Items</h1>
                     <p class="text-sm text-slate-500 mt-1">Create and maintain the catalog entries that appear in orders. Items only need a name, description, and price.</p>
                 </div>
-                <button id="addItemButton" class="inline-flex items-center rounded-md bg-orange-600 px-4 py-2 text-sm font-semibold text-white shadow hover:bg-orange-700 focus:outline-none focus:ring-2 focus:ring-orange-500 focus:ring-offset-2">
-                    + New Item
-                </button>
+                <div class="flex flex-wrap items-center gap-2">
+                    <input id="itemsCsvInput" type="file" accept=".csv" class="hidden">
+                    <button id="importItemsCsvButton" class="inline-flex items-center rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-700 shadow-sm hover:bg-slate-50">Import CSV</button>
+                    <a href="/api/export-products-csv" class="inline-flex items-center rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-700 shadow-sm hover:bg-slate-50">Export CSV</a>
+                    <button id="addItemButton" class="inline-flex items-center rounded-md bg-orange-600 px-4 py-2 text-sm font-semibold text-white shadow hover:bg-orange-700 focus:outline-none focus:ring-2 focus:ring-orange-500 focus:ring-offset-2">
+                        + New Item
+                    </button>
+                </div>
             </div>
 
             <div class="bg-white shadow-sm border border-slate-200 rounded-lg overflow-hidden">
@@ -90,6 +95,8 @@
         const itemPriceInput = document.getElementById('itemPrice');
 
         const openModalButton = document.getElementById('addItemButton');
+        const importItemsCsvButton = document.getElementById('importItemsCsvButton');
+        const itemsCsvInput = document.getElementById('itemsCsvInput');
         const closeModalButton = document.getElementById('closeModalButton');
         const cancelItemButton = document.getElementById('cancelItemButton');
         const saveItemButton = document.getElementById('saveItemButton');
@@ -241,6 +248,28 @@
             }
         };
 
+        const importItemsCsv = async (file) => {
+            if (!file) return;
+            const formData = new FormData();
+            formData.append('csv_file', file);
+            try {
+                const response = await fetch('/api/import-products-csv', {
+                    method: 'POST',
+                    body: formData,
+                });
+                if (!response.ok) {
+                    throw new Error('Failed to import CSV');
+                }
+                await loadItems();
+                alert('Products imported successfully.');
+            } catch (error) {
+                console.error('Error importing products CSV:', error);
+                alert('Unable to import products CSV.');
+            } finally {
+                itemsCsvInput.value = '';
+            }
+        };
+
         const deleteItem = async (itemId) => {
             if (!confirm('Delete this item? This cannot be undone.')) {
                 return;
@@ -263,6 +292,16 @@
         openModalButton.addEventListener('click', (event) => {
             event.preventDefault();
             openNewItemModal();
+        });
+
+        importItemsCsvButton.addEventListener('click', (event) => {
+            event.preventDefault();
+            itemsCsvInput.click();
+        });
+
+        itemsCsvInput.addEventListener('change', async () => {
+            const file = itemsCsvInput.files && itemsCsvInput.files[0];
+            await importItemsCsv(file);
         });
 
         closeModalButton.addEventListener('click', (event) => {
