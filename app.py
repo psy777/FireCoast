@@ -1,4 +1,5 @@
 import base64
+import io
 import os
 import shutil
 from pathlib import Path
@@ -5190,6 +5191,45 @@ def _parse_price_to_cents(price_value):
     return int(round(float(value_str) * 100))
 
 
+def _get_uploaded_csv_file():
+    return request.files.get('csv_file') or request.files.get('file')
+
+
+def _read_csv_dict_rows(uploaded_file):
+    if not uploaded_file or not uploaded_file.filename:
+        raise ValueError('No selected file')
+    if not uploaded_file.filename.lower().endswith('.csv'):
+        raise ValueError('Invalid file type. Please upload a .csv file.')
+
+    uploaded_file.stream.seek(0)
+    content = uploaded_file.stream.read().decode('utf-8-sig')
+    reader = csv.DictReader(content.splitlines())
+    if not reader.fieldnames:
+        raise ValueError('CSV file is missing headers.')
+
+    normalized_rows = []
+    for row in reader:
+        normalized_rows.append({(k or '').strip().lower(): (v or '').strip() for k, v in row.items()})
+    return normalized_rows
+
+
+def _csv_response(filename, headers, rows):
+    csv_buffer = io.StringIO()
+    writer = csv.DictWriter(csv_buffer, fieldnames=headers)
+    writer.writeheader()
+    for row in rows:
+        writer.writerow({key: row.get(key, '') for key in headers})
+
+    binary_buffer = io.BytesIO(csv_buffer.getvalue().encode('utf-8'))
+    binary_buffer.seek(0)
+    return send_file(
+        binary_buffer,
+        mimetype='text/csv',
+        as_attachment=True,
+        download_name=filename,
+    )
+
+
 @app.route('/api/items', methods=['POST'])
 def add_item():
     payload = request.json or {}
@@ -6792,202 +6832,364 @@ def upload_attachment():
         app.logger.error(f"Error saving uploaded file: {e}")
         return jsonify({"status": "error", "message": f"Could not save file: {str(e)}"}), 500
 
+@app.route('/api/export-contacts-csv', methods=['GET'])
+@app.route('/api/export-customers-csv', methods=['GET'])
+def export_contacts_csv():
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute(
+        """
+        SELECT id, company_name, contact_name, email, phone,
+               billing_address, billing_city, billing_state, billing_zip_code,
+               shipping_address, shipping_city, shipping_state, shipping_zip_code,
+               created_at, updated_at
+        FROM contacts
+        ORDER BY company_name COLLATE NOCASE ASC
+        """
+    )
+    rows = [dict(row) for row in cursor.fetchall()]
+    conn.close()
+
+    headers = [
+        'id', 'company_name', 'contact_name', 'email', 'phone',
+        'billing_address', 'billing_city', 'billing_state', 'billing_zip_code',
+        'shipping_address', 'shipping_city', 'shipping_state', 'shipping_zip_code',
+        'created_at', 'updated_at',
+    ]
+    return _csv_response('contacts.csv', headers, rows)
+
+
+@app.route('/api/import-contacts-csv', methods=['POST'])
 @app.route('/api/import-customers-csv', methods=['POST'])
-def import_customers_csv():
-    if 'csv_file' not in request.files:
-        return "No file part", 400
-    file = request.files['csv_file']
-    if file.filename == '':
-        return "No selected file", 400
-    if file and file.filename and file.filename.endswith('.csv'):
-        try:
-            csv_file = file.stream.read().decode("utf-8")
-            csv_reader = csv.reader(csv_file.splitlines())
-            header = [h.lower().strip() for h in next(csv_reader)]
-            
-            header_map = {
-                'company name': 'company_name',
-                'contact name': 'contact_name',
-                'email': 'email',
-                'phone': 'phone',
-                'billing address': 'billing_address',
-                'billing city': 'billing_city',
-                'billing state': 'billing_state',
-                'billing zip code': 'billing_zip_code',
-                'shipping address': 'shipping_address',
-                'shipping city': 'shipping_city',
-                'shipping state': 'shipping_state',
-                'shipping zip code': 'shipping_zip_code'
-            }
-            
-            column_indices = {db_col: header.index(csv_col) for csv_col, db_col in header_map.items() if csv_col in header}
+def import_contacts_csv():
+    uploaded_file = _get_uploaded_csv_file()
+    try:
+        rows = _read_csv_dict_rows(uploaded_file)
+    except ValueError as exc:
+        flash(str(exc), 'danger')
+        return redirect('/contacts')
 
-            if not column_indices:
-                flash("Could not find any matching headers in the CSV file. Please make sure the file contains at least one of the following headers: Company Name, Contact Name, Email, Phone, Billing Address, Shipping Address.", "warning")
-                return redirect('/manage/customers')
+    conn = get_db_connection()
+    cursor = conn.cursor()
 
-            if 'company_name' not in column_indices:
-                flash("CSV must have a 'Company Name' column.", "danger")
-                return redirect('/manage/customers')
+    try:
+        for row in rows:
+            company_name = row.get('company_name') or row.get('company name') or ''
+            company_name = company_name.strip()
+            if not company_name:
+                continue
 
-            conn = get_db_connection()
-            cursor = conn.cursor()
-            
-            for row in csv_reader:
-                company_name_idx = column_indices.get('company_name')
-                if company_name_idx is None:
-                    continue
-                company_name = row[company_name_idx]
+            contact_id = (row.get('id') or '').strip() or str(uuid.uuid4())
+            contact_name = (row.get('contact_name') or row.get('contact name') or '').strip()
+            email = (row.get('email') or '').strip()
+            phone = (row.get('phone') or '').strip()
+            billing_address = (row.get('billing_address') or row.get('billing address') or '').strip()
+            billing_city = (row.get('billing_city') or row.get('billing city') or '').strip()
+            billing_state = (row.get('billing_state') or row.get('billing state') or '').strip()
+            billing_zip_code = (row.get('billing_zip_code') or row.get('billing zip code') or '').strip()
+            shipping_address = (row.get('shipping_address') or row.get('shipping address') or '').strip()
+            shipping_city = (row.get('shipping_city') or row.get('shipping city') or '').strip()
+            shipping_state = (row.get('shipping_state') or row.get('shipping state') or '').strip()
+            shipping_zip_code = (row.get('shipping_zip_code') or row.get('shipping zip code') or '').strip()
 
-                contact_name_idx = column_indices.get('contact_name')
-                contact_name = row[contact_name_idx] if contact_name_idx is not None else ''
+            cursor.execute("SELECT id FROM contacts WHERE id = ?", (contact_id,))
+            existing = cursor.fetchone()
+            if existing:
+                cursor.execute(
+                    """
+                    UPDATE contacts
+                    SET company_name = ?, contact_name = ?, email = ?, phone = ?,
+                        billing_address = ?, billing_city = ?, billing_state = ?, billing_zip_code = ?,
+                        shipping_address = ?, shipping_city = ?, shipping_state = ?, shipping_zip_code = ?,
+                        updated_at = CURRENT_TIMESTAMP
+                    WHERE id = ?
+                    """,
+                    (
+                        company_name, contact_name, email, phone,
+                        billing_address, billing_city, billing_state, billing_zip_code,
+                        shipping_address, shipping_city, shipping_state, shipping_zip_code,
+                        contact_id,
+                    ),
+                )
+            else:
+                cursor.execute(
+                    """
+                    INSERT INTO contacts (
+                        id, company_name, contact_name, email, phone,
+                        billing_address, billing_city, billing_state, billing_zip_code,
+                        shipping_address, shipping_city, shipping_state, shipping_zip_code
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        contact_id, company_name, contact_name, email, phone,
+                        billing_address, billing_city, billing_state, billing_zip_code,
+                        shipping_address, shipping_city, shipping_state, shipping_zip_code,
+                    ),
+                )
 
-                email_idx = column_indices.get('email')
-                email = row[email_idx] if email_idx is not None else ''
+        conn.commit()
+        flash('Contacts CSV imported successfully.', 'success')
+    except Exception as exc:
+        conn.rollback()
+        app.logger.error(f"Error importing contacts CSV: {exc}")
+        flash('Error processing contacts CSV file.', 'danger')
+    finally:
+        conn.close()
 
-                phone_idx = column_indices.get('phone')
-                phone = row[phone_idx] if phone_idx is not None else ''
+    return redirect('/contacts')
 
-                billing_address_idx = column_indices.get('billing_address')
-                billing_address = row[billing_address_idx] if billing_address_idx is not None else ''
-                billing_city_idx = column_indices.get('billing_city')
-                billing_city = row[billing_city_idx] if billing_city_idx is not None else ''
-                billing_state_idx = column_indices.get('billing_state')
-                billing_state = row[billing_state_idx] if billing_state_idx is not None else ''
-                billing_zip_code_idx = column_indices.get('billing_zip_code')
-                billing_zip_code = row[billing_zip_code_idx] if billing_zip_code_idx is not None else ''
 
-                shipping_address_idx = column_indices.get('shipping_address')
-                shipping_address = row[shipping_address_idx] if shipping_address_idx is not None else ''
-                shipping_city_idx = column_indices.get('shipping_city')
-                shipping_city = row[shipping_city_idx] if shipping_city_idx is not None else ''
-                shipping_state_idx = column_indices.get('shipping_state')
-                shipping_state = row[shipping_state_idx] if shipping_state_idx is not None else ''
-                shipping_zip_code_idx = column_indices.get('shipping_zip_code')
-                shipping_zip_code = row[shipping_zip_code_idx] if shipping_zip_code_idx is not None else ''
+@app.route('/api/export-items-csv', methods=['GET'])
+@app.route('/api/export-products-csv', methods=['GET'])
+def export_items_csv():
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute(
+        """
+        SELECT id, name, description, price_cents, created_at, updated_at
+        FROM items
+        ORDER BY name COLLATE NOCASE ASC
+        """
+    )
+    rows = [dict(row) for row in cursor.fetchall()]
+    conn.close()
 
-                cursor.execute("SELECT id FROM contacts WHERE company_name = ?", (company_name,))
-                existing_contact = cursor.fetchone()
-                
-                if existing_contact:
-                    cursor.execute("""
-                        UPDATE contacts 
-                        SET contact_name = ?, email = ?, phone = ?, billing_address = ?, billing_city = ?, billing_state = ?, billing_zip_code = ?, shipping_address = ?, shipping_city = ?, shipping_state = ?, shipping_zip_code = ?, updated_at = CURRENT_TIMESTAMP
-                        WHERE company_name = ?
-                    """, (contact_name, email, phone, billing_address, billing_city, billing_state, billing_zip_code, shipping_address, shipping_city, shipping_state, shipping_zip_code, company_name))
-                else:
-                    contact_id = str(uuid.uuid4())
-                    cursor.execute("""
-                        INSERT INTO contacts (id, company_name, contact_name, email, phone, billing_address, billing_city, billing_state, billing_zip_code, shipping_address, shipping_city, shipping_state, shipping_zip_code)
-                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                    """, (contact_id, company_name, contact_name, email, phone, billing_address, billing_city, billing_state, billing_zip_code, shipping_address, shipping_city, shipping_state, shipping_zip_code))
-            
-            conn.commit()
-            conn.close()
-            
-            return redirect('/manage/customers')
-        except Exception as e:
-            app.logger.error(f"Error processing CSV file: {e}")
-            return "Error processing file", 500
-    return "Invalid file type", 400
+    headers = ['id', 'name', 'description', 'price_cents', 'created_at', 'updated_at']
+    return _csv_response('products.csv', headers, rows)
+
 
 @app.route('/api/import-items-csv', methods=['POST'])
+@app.route('/api/import-products-csv', methods=['POST'])
 def import_items_csv():
-    if 'csv_file' not in request.files:
-        flash("No file part", "danger")
+    uploaded_file = _get_uploaded_csv_file()
+    try:
+        rows = _read_csv_dict_rows(uploaded_file)
+    except ValueError as exc:
+        flash(str(exc), 'danger')
         return redirect('/manage/items')
-    file = request.files['csv_file']
-    if file.filename == '':
-        flash("No selected file", "danger")
-        return redirect('/manage/items')
-    if file and file.filename and file.filename.endswith('.csv'):
-        try:
-            csv_file = file.stream.read().decode("utf-8")
-            csv_reader = csv.reader(csv_file.splitlines())
-            header = [h.lower().strip() for h in next(csv_reader)]
 
-            column_indices = {}
-            for idx, col in enumerate(header):
-                if col in ('item id', 'item code', 'id') and 'id' not in column_indices:
-                    column_indices['id'] = idx
-                elif col == 'name':
-                    column_indices['name'] = idx
-                elif col == 'description':
-                    column_indices['description'] = idx
-                elif col in ('price', 'price dollars', 'price$'):
-                    column_indices['price'] = idx
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    items_added = 0
+    items_updated = 0
 
-            if 'name' not in column_indices:
-                flash("CSV must have at least a 'Name' column.", "danger")
-                return redirect('/manage/items')
+    try:
+        for row in rows:
+            name = (row.get('name') or '').strip()
+            if not name:
+                continue
 
-            conn = get_db_connection()
-            cursor = conn.cursor()
+            item_id = (row.get('id') or row.get('item_id') or row.get('item id') or '').strip() or str(uuid.uuid4())
+            description = (row.get('description') or '').strip()
+            raw_price = row.get('price_cents') or row.get('price') or '0'
+            try:
+                price_cents = _parse_price_to_cents(raw_price)
+            except (ValueError, TypeError):
+                price_cents = 0
 
-            items_added = 0
-            items_updated = 0
+            cursor.execute("SELECT id FROM items WHERE id = ?", (item_id,))
+            existing_item = cursor.fetchone()
+            if existing_item:
+                cursor.execute(
+                    """
+                    UPDATE items
+                    SET name = ?, description = ?, price_cents = ?, weight_oz = NULL, updated_at = CURRENT_TIMESTAMP
+                    WHERE id = ?
+                    """,
+                    (name, description, price_cents, item_id),
+                )
+                items_updated += 1
+            else:
+                cursor.execute(
+                    """
+                    INSERT INTO items (id, name, description, price_cents, weight_oz)
+                    VALUES (?, ?, ?, ?, NULL)
+                    """,
+                    (item_id, name, description, price_cents),
+                )
+                items_added += 1
 
-            for row in csv_reader:
-                try:
-                    name = row[column_indices['name']].strip()
-                    if not name:
-                        continue
+        conn.commit()
+        flash(f'Successfully added {items_added} and updated {items_updated} products.', 'success')
+    except Exception as exc:
+        conn.rollback()
+        app.logger.error(f"Error importing items CSV: {exc}")
+        flash('Error processing products CSV file.', 'danger')
+    finally:
+        conn.close()
 
-                    item_id = None
-                    if 'id' in column_indices and column_indices['id'] < len(row):
-                        item_id = row[column_indices['id']].strip() or None
-                    if not item_id:
-                        item_id = str(uuid.uuid4())
-
-                    description = ''
-                    if 'description' in column_indices and column_indices['description'] < len(row):
-                        description = row[column_indices['description']].strip()
-
-                    price_cents = 0
-                    if 'price' in column_indices and column_indices['price'] < len(row):
-                        try:
-                            price_cents = _parse_price_to_cents(row[column_indices['price']])
-                        except (ValueError, TypeError):
-                            price_cents = 0
-
-                    cursor.execute("SELECT id FROM items WHERE id = ?", (item_id,))
-                    existing_item = cursor.fetchone()
-
-                    if existing_item:
-                        cursor.execute(
-                            """
-                            UPDATE items
-                            SET name = ?, description = ?, price_cents = ?, weight_oz = NULL, updated_at = CURRENT_TIMESTAMP
-                            WHERE id = ?
-                            """,
-                            (name, description, price_cents, item_id)
-                        )
-                        items_updated += 1
-                    else:
-                        cursor.execute(
-                            """
-                            INSERT INTO items (id, name, description, price_cents, weight_oz)
-                            VALUES (?, ?, ?, ?, NULL)
-                            """,
-                            (item_id, name, description, price_cents)
-                        )
-                        items_added += 1
-                except IndexError:
-                    app.logger.warning(f"Skipping malformed row: {row}")
-                    continue
-
-            conn.commit()
-            conn.close()
-
-            flash(f"Successfully added {items_added} and updated {items_updated} items.", "success")
-            return redirect('/manage/items')
-        except Exception as e:
-            app.logger.error(f"Error processing items CSV file: {e}")
-            flash(f"Error processing file: {e}", "danger")
-            return redirect('/manage/items')
-    
-    flash("Invalid file type. Please upload a .csv file.", "warning")
     return redirect('/manage/items')
+
+
+@app.route('/api/export-packages-csv', methods=['GET'])
+def export_packages_csv():
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute(
+        """
+        SELECT p.package_id, p.name, p.created_at, p.updated_at,
+               GROUP_CONCAT(COALESCE(i.name, pi.item_id) || ':' || COALESCE(pi.quantity, 0), ';') AS items
+        FROM packages p
+        LEFT JOIN package_items pi ON pi.package_id = p.package_id
+        LEFT JOIN items i ON i.id = pi.item_id
+        GROUP BY p.package_id, p.name, p.created_at, p.updated_at
+        ORDER BY p.name COLLATE NOCASE ASC
+        """
+    )
+    rows = [dict(row) for row in cursor.fetchall()]
+    conn.close()
+
+    headers = ['package_id', 'name', 'items', 'created_at', 'updated_at']
+    return _csv_response('packages.csv', headers, rows)
+
+
+@app.route('/api/import-packages-csv', methods=['POST'])
+def import_packages_csv():
+    uploaded_file = _get_uploaded_csv_file()
+    try:
+        rows = _read_csv_dict_rows(uploaded_file)
+    except ValueError as exc:
+        return jsonify({'message': str(exc)}), 400
+
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    created = 0
+    updated = 0
+
+    try:
+        for row in rows:
+            raw_id = (row.get('package_id') or row.get('id') or '').strip()
+            name = (row.get('name') or '').strip()
+            if not name:
+                continue
+
+            package_id = None
+            if raw_id:
+                try:
+                    package_id = int(raw_id)
+                except ValueError:
+                    package_id = None
+
+            if package_id is not None:
+                cursor.execute("SELECT package_id FROM packages WHERE package_id = ?", (package_id,))
+                existing = cursor.fetchone()
+                if existing:
+                    cursor.execute("UPDATE packages SET name = ?, updated_at = CURRENT_TIMESTAMP WHERE package_id = ?", (name, package_id))
+                    updated += 1
+                else:
+                    cursor.execute("INSERT INTO packages (package_id, name) VALUES (?, ?)", (package_id, name))
+                    created += 1
+            else:
+                cursor.execute("INSERT INTO packages (name) VALUES (?)", (name,))
+                created += 1
+
+        conn.commit()
+        return jsonify({'message': f'Imported packages. Created: {created}, Updated: {updated}.'}), 200
+    except Exception as exc:
+        conn.rollback()
+        app.logger.error(f"Error importing packages CSV: {exc}")
+        return jsonify({'message': 'Error processing packages CSV file.'}), 500
+    finally:
+        conn.close()
+
+
+@app.route('/api/export-orders-csv', methods=['GET'])
+def export_orders_csv():
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute(
+        """
+        SELECT order_id, display_id, contact_id, order_date, status,
+               total_amount, title, priority_level, fulfillment_channel,
+               customer_reference, created_at, updated_at
+        FROM orders
+        ORDER BY updated_at DESC
+        """
+    )
+    rows = [dict(row) for row in cursor.fetchall()]
+    conn.close()
+
+    headers = [
+        'order_id', 'display_id', 'contact_id', 'order_date', 'status', 'total_amount',
+        'title', 'priority_level', 'fulfillment_channel', 'customer_reference',
+        'created_at', 'updated_at',
+    ]
+    return _csv_response('orders.csv', headers, rows)
+
+
+@app.route('/api/import-orders-csv', methods=['POST'])
+def import_orders_csv():
+    uploaded_file = _get_uploaded_csv_file()
+    try:
+        rows = _read_csv_dict_rows(uploaded_file)
+    except ValueError as exc:
+        return jsonify({'message': str(exc)}), 400
+
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    created = 0
+    updated = 0
+
+    try:
+        for row in rows:
+            order_id = (row.get('order_id') or row.get('id') or '').strip() or str(uuid.uuid4())
+            status = (row.get('status') or 'Pending').strip() or 'Pending'
+            order_date = (row.get('order_date') or '').strip()
+            contact_id = (row.get('contact_id') or '').strip() or None
+            total_amount = row.get('total_amount') or 0
+            display_id = (row.get('display_id') or '').strip() or None
+            title = (row.get('title') or '').strip()
+            priority_level = (row.get('priority_level') or '').strip()
+            fulfillment_channel = (row.get('fulfillment_channel') or '').strip()
+            customer_reference = (row.get('customer_reference') or '').strip()
+
+            try:
+                total_amount_val = float(total_amount)
+            except (ValueError, TypeError):
+                total_amount_val = 0.0
+
+            cursor.execute("SELECT order_id FROM orders WHERE order_id = ?", (order_id,))
+            existing = cursor.fetchone()
+            if existing:
+                cursor.execute(
+                    """
+                    UPDATE orders
+                    SET display_id = ?, contact_id = ?, order_date = ?, status = ?, total_amount = ?,
+                        title = ?, priority_level = ?, fulfillment_channel = ?, customer_reference = ?,
+                        updated_at = CURRENT_TIMESTAMP
+                    WHERE order_id = ?
+                    """,
+                    (
+                        display_id, contact_id, order_date, status, total_amount_val,
+                        title, priority_level, fulfillment_channel, customer_reference,
+                        order_id,
+                    ),
+                )
+                updated += 1
+            else:
+                cursor.execute(
+                    """
+                    INSERT INTO orders (
+                        order_id, display_id, contact_id, order_date, status, total_amount,
+                        title, priority_level, fulfillment_channel, customer_reference
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        order_id, display_id, contact_id, order_date, status, total_amount_val,
+                        title, priority_level, fulfillment_channel, customer_reference,
+                    ),
+                )
+                created += 1
+
+        conn.commit()
+        return jsonify({'message': f'Imported orders. Created: {created}, Updated: {updated}.'}), 200
+    except Exception as exc:
+        conn.rollback()
+        app.logger.error(f"Error importing orders CSV: {exc}")
+        return jsonify({'message': 'Error processing orders CSV file.'}), 500
+    finally:
+        conn.close()
+
 
 @app.route('/api/send-order-email', methods=['POST'])
 def send_order_email_route():
