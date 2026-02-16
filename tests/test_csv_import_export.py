@@ -62,7 +62,7 @@ def test_contacts_csv_import_export(csv_env):
 
 def test_products_csv_import_export(csv_env):
     client = csv_env
-    csv_data = 'name,description,price_cents\nWidget,A test product,1999\n'
+    csv_data = 'id,name,description,price_cents\nitem-1,Widget,A test product,1999\n'
     response = client.post(
         '/api/import-products-csv',
         data={'file': (io.BytesIO(csv_data.encode('utf-8')), 'products.csv')},
@@ -74,8 +74,13 @@ def test_products_csv_import_export(csv_env):
     export_response = client.get('/api/export-products-csv')
     assert export_response.status_code == 200
     body = export_response.data.decode('utf-8')
-    assert 'name,description,price_cents' in body
+    assert 'id,name,barcode,description,price_cents' in body
     assert 'Widget' in body
+    lines = [line for line in body.splitlines() if line and not line.startswith('id,name,barcode') and 'Widget' in line]
+    assert lines
+    barcode_value = lines[0].split(',')[2]
+    assert barcode_value.isdigit()
+    assert len(barcode_value) == 13
 
 
 def test_packages_csv_import_export(csv_env):

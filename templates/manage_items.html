@@ -16,7 +16,7 @@
                 <div>
                     <p class="text-sm text-slate-500"><a href="/settings" class="text-orange-600 hover:text-orange-700">&larr; Back to Settings</a></p>
                     <h1 class="text-2xl font-semibold text-slate-800 mt-1">Manage Items</h1>
-                    <p class="text-sm text-slate-500 mt-1">Create and maintain the catalog entries that appear in orders. Items only need a name, description, and price.</p>
+                    <p class="text-sm text-slate-500 mt-1">Create and maintain the catalog entries that appear in orders. Items include a unique ID and barcode for scanner workflows. Leave barcode blank to auto-generate one.</p>
                 </div>
                 <div class="flex flex-wrap items-center gap-2">
                     <input id="itemsCsvInput" type="file" accept=".csv" class="hidden">
@@ -33,6 +33,8 @@
                     <table class="min-w-full divide-y divide-slate-200">
                         <thead class="bg-slate-100">
                             <tr>
+                                <th scope="col" class="px-6 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Item ID</th>
+                                <th scope="col" class="px-6 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Barcode</th>
                                 <th scope="col" class="px-6 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Name</th>
                                 <th scope="col" class="px-6 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">Description</th>
                                 <th scope="col" class="px-6 py-3 text-right text-xs font-semibold uppercase tracking-wide text-slate-500">Price</th>
@@ -59,6 +61,10 @@
                     <div>
                         <label for="itemName" class="block text-sm font-medium text-slate-700">Name</label>
                         <input type="text" id="itemName" class="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm shadow-sm focus:border-orange-500 focus:outline-none focus:ring-1 focus:ring-orange-500" required>
+                    </div>
+                    <div>
+                        <label for="itemBarcode" class="block text-sm font-medium text-slate-700">Barcode <span class="text-xs text-slate-500">(optional, auto-generated if blank)</span></label>
+                        <input type="text" id="itemBarcode" class="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm shadow-sm focus:border-orange-500 focus:outline-none focus:ring-1 focus:ring-orange-500">
                     </div>
                     <div>
                         <label for="itemDescription" class="block text-sm font-medium text-slate-700">Description</label>
@@ -92,6 +98,7 @@
         const itemIdInput = document.getElementById('itemId');
         const itemNameInput = document.getElementById('itemName');
         const itemDescriptionInput = document.getElementById('itemDescription');
+        const itemBarcodeInput = document.getElementById('itemBarcode');
         const itemPriceInput = document.getElementById('itemPrice');
 
         const openModalButton = document.getElementById('addItemButton');
@@ -124,7 +131,7 @@
             itemsTable.innerHTML = '';
             if (!Array.isArray(items) || items.length === 0) {
                 const emptyRow = document.createElement('tr');
-                emptyRow.innerHTML = `<td colspan="4" class="px-6 py-6 text-center text-sm text-slate-500">No catalog items yet. Create your first item to get started.</td>`;
+                emptyRow.innerHTML = `<td colspan="6" class="px-6 py-6 text-center text-sm text-slate-500">No catalog items yet. Create your first item to get started.</td>`;
                 itemsTable.appendChild(emptyRow);
                 return;
             }
@@ -132,6 +139,12 @@
             items.forEach(item => {
                 const row = document.createElement('tr');
                 row.innerHTML = `
+                    <td class="px-6 py-4 align-top">
+                        <div class="text-xs font-mono text-slate-600">${item.id || '—'}</div>
+                    </td>
+                    <td class="px-6 py-4 align-top">
+                        <div class="text-sm text-slate-700">${item.barcode || '<span class="text-slate-400">No barcode</span>'}</div>
+                    </td>
                     <td class="px-6 py-4 align-top">
                         <div class="text-sm font-medium text-slate-800">${item.name || 'Untitled Item'}</div>
                     </td>
@@ -160,7 +173,7 @@
                 populateTable(items);
             } catch (error) {
                 console.error('Error loading items:', error);
-                itemsTable.innerHTML = `<tr><td colspan="4" class="px-6 py-6 text-center text-sm text-red-500">Unable to load items. Please try again later.</td></tr>`;
+                itemsTable.innerHTML = `<tr><td colspan="6" class="px-6 py-6 text-center text-sm text-red-500">Unable to load items. Please try again later.</td></tr>`;
             }
         };
 
@@ -174,6 +187,7 @@
             itemModalTitle.textContent = 'Edit Item';
             itemIdInput.value = item.id || '';
             itemNameInput.value = item.name || '';
+            itemBarcodeInput.value = item.barcode || '';
             itemDescriptionInput.value = item.description || '';
             itemPriceInput.value = item.price ? (item.price / 100).toFixed(2) : '';
             itemMeta.textContent = item.id ? `Item ID: ${item.id}` : '';
@@ -207,6 +221,7 @@
             const id = itemIdInput.value.trim();
             const name = itemNameInput.value.trim();
             const description = itemDescriptionInput.value.trim();
+            const barcode = itemBarcodeInput.value.trim();
             const priceValue = itemPriceInput.value.trim();
 
             if (!name) {
@@ -221,6 +236,7 @@
 
             const payload = {
                 name,
+                barcode,
                 description,
                 price: priceValue,
             };

@@ -5161,7 +5161,7 @@ def get_items():
     cursor = conn.cursor()
     cursor.execute(
         """
-        SELECT id, name, description, price_cents
+        SELECT id, name, barcode, description, price_cents
         FROM items
         ORDER BY name COLLATE NOCASE ASC
         """
@@ -5173,6 +5173,7 @@ def get_items():
         items_list.append({
             'id': item_dict['id'],
             'name': item_dict['name'],
+            'barcode': item_dict.get('barcode') or '',
             'description': item_dict.get('description') or '',
             'price': item_dict['price_cents'],
         })
@@ -5189,6 +5190,17 @@ def _parse_price_to_cents(price_value):
     if not value_str:
         raise ValueError('Price is required')
     return int(round(float(value_str) * 100))
+
+
+def _generate_item_barcode(cursor):
+    """Generate a unique scanner-friendly numeric barcode for catalog items."""
+    for _ in range(20):
+        candidate = uuid.uuid4().int % 10**13
+        barcode = f"{candidate:013d}"
+        cursor.execute("SELECT 1 FROM items WHERE barcode = ?", (barcode,))
+        if not cursor.fetchone():
+            return barcode
+    raise ValueError('Unable to generate a unique barcode')
 
 
 def _get_uploaded_csv_file():
@@ -5234,10 +5246,10 @@ def _csv_response(filename, headers, rows):
 def add_item():
     payload = request.json or {}
     name = (payload.get('name') or '').strip()
+    barcode = (payload.get('barcode') or payload.get('barcode_code') or '').strip()
     description = (payload.get('description') or '').strip()
     if not name:
         return jsonify({"message": "Item name is required."}), 400
-
     try:
         price_cents = _parse_price_to_cents(payload.get('price'))
     except (ValueError, TypeError):
@@ -5247,18 +5259,24 @@ def add_item():
 
     conn = get_db_connection(); cursor = conn.cursor()
     try:
+        if not barcode:
+            barcode = _generate_item_barcode(cursor)
         cursor.execute(
-            "INSERT INTO items (id, name, description, price_cents, weight_oz) VALUES (?,?,?,?,?)",
-            (item_id, name, description, price_cents, None)
+            "INSERT INTO items (id, name, barcode, description, price_cents, weight_oz) VALUES (?,?,?,?,?,?)",
+            (item_id, name, barcode, description, price_cents, None)
         )
         conn.commit()
         created_item = {
             'id': item_id,
             'name': name,
+            'barcode': barcode,
             'description': description,
             'price': price_cents,
         }
         return jsonify({"message": "Item added.", "item": created_item}), 201
+    except sqlite3.IntegrityError:
+        conn.rollback()
+        return jsonify({"message": "Barcode must be unique."}), 400
     except sqlite3.Error as e:
         conn.rollback()
         app.logger.error(f"DB err add item {item_id}:{e}")
@@ -5287,6 +5305,13 @@ def update_item(item_id):
         updates.append("name=?")
         values.append(name)
 
+    if 'barcode' in payload or 'barcode_code' in payload:
+        barcode = (payload.get('barcode') or payload.get('barcode_code') or '').strip()
+        if not barcode:
+            barcode = _generate_item_barcode(cursor)
+        updates.append("barcode=?")
+        values.append(barcode)
+
     if 'description' in payload:
         description = (payload.get('description') or '').strip()
         updates.append("description=?")
@@ -5310,17 +5335,21 @@ def update_item(item_id):
             )
             conn.commit()
 
-        cursor.execute("SELECT id, name, description, price_cents FROM items WHERE id=?", (item_id,))
+        cursor.execute("SELECT id, name, barcode, description, price_cents FROM items WHERE id=?", (item_id,))
         row = cursor.fetchone()
         if not row:
             return jsonify({"message": "Item not found."}), 404
         updated_item = {
             'id': row['id'],
             'name': row['name'],
+            'barcode': row['barcode'] or '',
             'description': row['description'] or '',
             'price': row['price_cents'],
         }
         return jsonify({"message": "Item updated.", "item": updated_item}), 200
+    except sqlite3.IntegrityError:
+        conn.rollback()
+        return jsonify({"message": "Barcode must be unique."}), 400
     except sqlite3.Error as e:
         conn.rollback()
         app.logger.error(f"DB err update item {item_id}:{e}")
@@ -5342,6 +5371,11 @@ def resolve_item_identifier(cursor, identifier):
         return row['id']
 
     cursor.execute("SELECT id FROM items WHERE LOWER(name) = LOWER(?)", (trimmed,))
+    row = cursor.fetchone()
+    if row:
+        return row['id']
+
+    cursor.execute("SELECT id FROM items WHERE barcode = ?", (trimmed,))
     row = cursor.fetchone()
     if row:
         return row['id']
@@ -6946,7 +6980,7 @@ def export_items_csv():
     cursor = conn.cursor()
     cursor.execute(
         """
-        SELECT id, name, description, price_cents, created_at, updated_at
+        SELECT id, name, barcode, description, price_cents, created_at, updated_at
         FROM items
         ORDER BY name COLLATE NOCASE ASC
         """
@@ -6954,7 +6988,7 @@ def export_items_csv():
     rows = [dict(row) for row in cursor.fetchall()]
     conn.close()
 
-    headers = ['id', 'name', 'description', 'price_cents', 'created_at', 'updated_at']
+    headers = ['id', 'name', 'barcode', 'description', 'price_cents', 'created_at', 'updated_at']
     return _csv_response('products.csv', headers, rows)
 
 
@@ -6981,6 +7015,9 @@ def import_items_csv():
 
             item_id = (row.get('id') or row.get('item_id') or row.get('item id') or '').strip() or str(uuid.uuid4())
             description = (row.get('description') or '').strip()
+            barcode = (row.get('barcode') or row.get('barcode_code') or row.get('upc') or row.get('ean') or '').strip()
+            if not barcode:
+                barcode = _generate_item_barcode(cursor)
             raw_price = row.get('price_cents') or row.get('price') or '0'
             try:
                 price_cents = _parse_price_to_cents(raw_price)
@@ -6993,19 +7030,19 @@ def import_items_csv():
                 cursor.execute(
                     """
                     UPDATE items
-                    SET name = ?, description = ?, price_cents = ?, weight_oz = NULL, updated_at = CURRENT_TIMESTAMP
+                    SET name = ?, barcode = ?, description = ?, price_cents = ?, weight_oz = NULL, updated_at = CURRENT_TIMESTAMP
                     WHERE id = ?
                     """,
-                    (name, description, price_cents, item_id),
+                    (name, barcode or None, description, price_cents, item_id),
                 )
                 items_updated += 1
             else:
                 cursor.execute(
                     """
-                    INSERT INTO items (id, name, description, price_cents, weight_oz)
-                    VALUES (?, ?, ?, ?, NULL)
+                    INSERT INTO items (id, name, barcode, description, price_cents, weight_oz)
+                    VALUES (?, ?, ?, ?, ?, NULL)
                     """,
-                    (item_id, name, description, price_cents),
+                    (item_id, name, barcode or None, description, price_cents),
                 )
                 items_added += 1
 

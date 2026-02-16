@@ -251,7 +251,7 @@ def init_db():
     cursor.execute("DROP TABLE IF EXISTS item_styles")
     cursor.execute("DROP TABLE IF EXISTS styles")
 
-    # Ensure the items table uses the simplified schema (id, name, description, price, weight)
+    # Ensure the items table uses the simplified schema (id, name, barcode, description, price, weight)
     cursor.execute("PRAGMA table_info(items)")
     item_columns = [row[1] for row in cursor.fetchall()]
     needs_item_migration = False
@@ -271,6 +271,7 @@ def init_db():
             CREATE TABLE IF NOT EXISTS items_migrated (
                 id TEXT PRIMARY KEY NOT NULL,
                 name TEXT NOT NULL,
+                barcode TEXT UNIQUE,
                 description TEXT,
                 price_cents INTEGER NOT NULL,
                 weight_oz REAL,
@@ -285,8 +286,8 @@ def init_db():
             if 'item_code' in selectable_columns:
                 cursor.execute(
                     """
-                    INSERT OR IGNORE INTO items_migrated (id, name, description, price_cents, weight_oz, created_at, updated_at)
-                    SELECT item_code, name, '' AS description, price_cents, weight_oz,
+                    INSERT OR IGNORE INTO items_migrated (id, name, barcode, description, price_cents, weight_oz, created_at, updated_at)
+                    SELECT item_code, name, NULL AS barcode, '' AS description, price_cents, weight_oz,
                            COALESCE(created_at, CURRENT_TIMESTAMP),
                            COALESCE(updated_at, CURRENT_TIMESTAMP)
                     FROM items
@@ -295,8 +296,8 @@ def init_db():
             else:
                 cursor.execute(
                     """
-                    INSERT OR IGNORE INTO items_migrated (id, name, description, price_cents, weight_oz, created_at, updated_at)
-                    SELECT id, name, description, price_cents, weight_oz,
+                    INSERT OR IGNORE INTO items_migrated (id, name, barcode, description, price_cents, weight_oz, created_at, updated_at)
+                    SELECT id, name, NULL AS barcode, description, price_cents, weight_oz,
                            COALESCE(created_at, CURRENT_TIMESTAMP),
                            COALESCE(updated_at, CURRENT_TIMESTAMP)
                     FROM items
@@ -311,6 +312,7 @@ def init_db():
         CREATE TABLE IF NOT EXISTS items (
             id TEXT PRIMARY KEY NOT NULL,
             name TEXT NOT NULL,
+            barcode TEXT UNIQUE,
             description TEXT,
             price_cents INTEGER NOT NULL,
             weight_oz REAL,
@@ -319,6 +321,11 @@ def init_db():
         );
         """
     )
+    cursor.execute("PRAGMA table_info(items)")
+    item_columns = [row[1] for row in cursor.fetchall()]
+    if 'barcode' not in item_columns:
+        cursor.execute("ALTER TABLE items ADD COLUMN barcode TEXT")
+    cursor.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_items_barcode ON items(barcode)")
     cursor.execute(
         """
         CREATE TRIGGER IF NOT EXISTS update_items_updated_at
